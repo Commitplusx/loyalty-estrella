@@ -52,6 +52,27 @@ interface UseScheduleReturn {
   formatTime: (time: string) => string;
 }
 
+const parseTime = (timeStr: string): { hours: number; minutes: number } => {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return { hours, minutes };
+};
+
+const isTimeInRange = (
+  currentHours: number, 
+  currentMinutes: number,
+  startTime: string,
+  endTime: string
+): boolean => {
+  const start = parseTime(startTime);
+  const end = parseTime(endTime);
+  
+  const currentTotal = currentHours * 60 + currentMinutes;
+  const startTotal = start.hours * 60 + start.minutes;
+  const endTotal = end.hours * 60 + end.minutes;
+  
+  return currentTotal >= startTotal && currentTotal < endTotal;
+};
+
 export function useSchedule(): UseScheduleReturn {
   const [horarios, setHorarios] = useState<HorarioAtencion[]>(HORARIOS_ATENCION);
   const [horasFelices, setHorasFelices] = useState<HoraFeliz[]>(HORAS_FELICES);
@@ -98,26 +119,6 @@ export function useSchedule(): UseScheduleReturn {
     };
   }, []);
 
-  const parseTime = (timeStr: string): { hours: number; minutes: number } => {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    return { hours, minutes };
-  };
-
-  const isTimeInRange = (
-    currentHours: number, 
-    currentMinutes: number,
-    startTime: string,
-    endTime: string
-  ): boolean => {
-    const start = parseTime(startTime);
-    const end = parseTime(endTime);
-    
-    const currentTotal = currentHours * 60 + currentMinutes;
-    const startTotal = start.hours * 60 + start.minutes;
-    const endTotal = end.hours * 60 + end.minutes;
-    
-    return currentTotal >= startTotal && currentTotal < endTotal;
-  };
 
   const getEstadoTienda = useCallback((): StoreState => {
     const now = new Date();

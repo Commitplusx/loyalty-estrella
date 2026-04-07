@@ -31,6 +31,7 @@ export function QRScanner({ onScan, onError, isScanning = true }: QRScannerProps
       try {
         const devices = await Html5Qrcode.getCameras();
         if (devices && devices.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           setCameras(devices.map((d: any) => ({ id: d.id, label: d.label })));
           setCurrentCamera(devices[0].id);
           setHasCamera(true);
@@ -98,6 +99,7 @@ export function QRScanner({ onScan, onError, isScanning = true }: QRScannerProps
           video: { deviceId: cameraId ? { exact: cameraId } : undefined },
         });
         const track = stream.getVideoTracks()[0];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const capabilities = track.getCapabilities?.() as any;
 
         if (capabilities?.torch) {
@@ -124,6 +126,7 @@ export function QRScanner({ onScan, onError, isScanning = true }: QRScannerProps
   // Bug #13 fix: explicit stop-then-start cycle when isScanning or currentCamera changes
   useEffect(() => {
     if (isScanning && hasCamera && currentCamera) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       startScanner(currentCamera);
     } else {
       stopScanner();
@@ -155,6 +158,7 @@ export function QRScanner({ onScan, onError, isScanning = true }: QRScannerProps
     try {
       const newState = !flashlightOn;
       await videoTrackRef.current.applyConstraints({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         advanced: [{ torch: newState }] as any,
       });
       setFlashlightOn(newState);

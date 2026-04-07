@@ -1,10 +1,10 @@
 import { motion } from 'framer-motion';
 import { Award, TrendingUp, CalendarDays, DollarSign } from 'lucide-react';
-import type { Cliente } from '@/types';
+import type { Cliente, RegistroMovimiento } from '@/types';
 
 interface ClientStatsProps {
   cliente: Cliente;
-  historial: any[];
+  historial: RegistroMovimiento[];
 }
 
 export function ClientStats({ cliente, historial }: ClientStatsProps) {

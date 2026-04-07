@@ -37,12 +37,12 @@ export function ClienteView() {
   const { isDark, toggle } = useDarkMode();
 
   // Al montar, restauramos la sesión del cliente desde localStorage (intencional).
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     const saved = localStorage.getItem('estrella_cliente');
     if (saved) {
       try {
         const parsed: Cliente = JSON.parse(saved);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setCliente(parsed);
         setViewState('result');
         // También recargamos el historial actualizado
@@ -61,9 +61,10 @@ export function ClienteView() {
   }, [cliente]);
 
   // Suscripción en tiempo real
+  const clienteId = cliente?.id;
   useEffect(() => {
-    if (!cliente) return;
-    const unsubscribe = subscribeToCliente(cliente.id, (updated) => {
+    if (!clienteId) return;
+    const unsubscribe = subscribeToCliente(clienteId, (updated) => {
       setCliente(updated);
       // Mantenemos la sesión actualizada en storage también
       localStorage.setItem('estrella_cliente', JSON.stringify(updated));
@@ -72,19 +73,19 @@ export function ClienteView() {
     // Suscripción al historial: cuando se añade un nuevo registro para este
     // cliente, recargamos la lista de movimientos automáticamente
     const histChannel = supabase
-      .channel(`historial_${cliente.id}`)
+      .channel(`historial_${clienteId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'registros_puntos', filter: `cliente_id=eq.${cliente.id}` },
+        { event: 'INSERT', schema: 'public', table: 'registros_puntos', filter: `cliente_id=eq.${clienteId}` },
         async () => {
-          const fresh = await getHistorialCliente(cliente.id);
+          const fresh = await getHistorialCliente(clienteId);
           setHistorial(fresh);
         }
       )
       .subscribe();
 
     // Canal para el modal de calificación (ya existía antes)
-    const channelName = `realtime_ratings_${cliente.id}`;
+    const channelName = `realtime_ratings_${clienteId}`;
     const channel = supabase
       .channel(channelName)
       .on(
@@ -93,7 +94,7 @@ export function ClienteView() {
           event: 'INSERT',
           schema: 'public',
           table: 'registros_puntos',
-          filter: `cliente_id=eq.${cliente.id}`,
+          filter: `cliente_id=eq.${clienteId}`,
         },
         (payload: { new: { id: string } }) => {
           setActiveRegistroId(payload.new.id);
@@ -107,7 +108,7 @@ export function ClienteView() {
       supabase.removeChannel(channel);
       supabase.removeChannel(histChannel);
     };
-  }, [cliente?.id]);
+  }, [clienteId]);
 
   // Generar QR cuando hay cliente
   useEffect(() => {

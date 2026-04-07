@@ -1,0 +1,98 @@
+
+> loyalty-estrella@1.0.0 lint
+> eslint .
+
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/components/ClientStats.tsx
+  7:14  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/components/qr/QRGenerator.tsx
+  27:6  warning  React Hook useEffect has a missing dependency: 'generateQR'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/components/qr/QRScanner.tsx
+   34:38  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  101:59  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  127:7   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/components/qr/QRScanner.tsx:127:7
+  125 |   useEffect(() => {
+  126 |     if (isScanning && hasCamera && currentCamera) {
+> 127 |       startScanner(currentCamera);
+      |       ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  128 |     } else {
+  129 |       stopScanner();
+  130 |     }  react-hooks/set-state-in-effect
+  158:44  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/components/ui/badge.tsx
+  46:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/components/ui/button-group.tsx
+  82:3  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/components/ui/button.tsx
+  62:18  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/components/ui/form.tsx
+  159:3  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/components/ui/navigation-menu.tsx
+  167:3  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/components/ui/sidebar.tsx
+  611:26  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/components/ui/sidebar.tsx:611:26
+  609 |   // Random width between 50 to 90%.
+  610 |   const width = React.useMemo(() => {
+> 611 |     return `${Math.floor(Math.random() * 40) + 50}%`
+      |                          ^^^^^^^^^^^^^ Cannot call impure function
+  612 |   }, [])
+  613 |
+  614 |   return (  react-hooks/purity
+  725:3   error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               react-refresh/only-export-components
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/components/ui/toggle.tsx
+  45:18  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/hooks/usePuntos.ts
+  41:14  error  '_err' is defined but never used  @typescript-eslint/no-unused-vars
+  66:14  error  '_err' is defined but never used  @typescript-eslint/no-unused-vars
+  95:14  error  '_err' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/hooks/useSchedule.ts
+  189:6  warning  React Hook useCallback has a missing dependency: 'isTimeInRange'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  204:6  warning  React Hook useCallback has a missing dependency: 'isTimeInRange'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  217:6  warning  React Hook useCallback has a missing dependency: 'isTimeInRange'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/pages/client/ClienteView.tsx
+   40:3  warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/set-state-in-effect')
+   46:9  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/admin/Music/Kimi_Agent_Estrella_Delivery_QR/app/src/pages/client/ClienteView.tsx:46:9
+  44 |       try {
+  45 |         const parsed: Cliente = JSON.parse(saved);
+> 46 |         setCliente(parsed);
+     |         ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  47 |         setViewState('result');
+  48 |         // También recargamos el historial actualizado
+  49 |         getHistorialCliente(parsed.id).then(setHistorial).catch(() => {});  react-hooks/set-state-in-effect
+  110:6  warning  React Hook useEffect has a missing dependency: 'cliente'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          react-hooks/exhaustive-deps
+
+✖ 23 problems (17 errors, 6 warnings)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+

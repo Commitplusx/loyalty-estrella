@@ -38,7 +38,7 @@ export function usePuntos(): UsePuntosReturn {
       } else {
         setError('Cliente no encontrado');
       }
-    } catch (_err) {
+    } catch {
       setError('Error al cargar el cliente');
     } finally {
       setIsLoading(false);
@@ -63,7 +63,7 @@ export function usePuntos(): UsePuntosReturn {
       await cargarCliente(cliente.id);
 
       return { success: true, message: result.message };
-    } catch (_err) {
+    } catch {
       return { success: false, message: 'Error al acumular punto' };
     } finally {
       setIsLoading(false);
@@ -92,7 +92,7 @@ export function usePuntos(): UsePuntosReturn {
       await cargarCliente(cliente.id);
 
       return { success: true, message: result.message };
-    } catch (_err) {
+    } catch {
       return { success: false, message: 'Error al canjear el envío gratis' };
     } finally {
       setIsLoading(false);
