@@ -454,157 +454,208 @@ export function ClienteView() {
 
         {/* ── RESULT ── */}
         {viewState === 'result' && cliente && (
-          <motion.div 
-            initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} 
+          <motion.div
+            initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="space-y-6"
+            className="w-full"
             style={{ willChange: "transform, opacity" }}
           >
-            <Button variant="ghost" onClick={handleReset} className="text-gray-500 hover:text-gray-800 dark:hover:text-white transition-colors">
-              <ChevronLeft className="w-5 h-5 mr-1" /> Volver
-            </Button>
-
-            <div className="text-center">
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center justify-center gap-2">
-                {isVip && <Crown className="w-7 h-7 text-amber-500 fill-amber-400" />}
-                ¡Hola, {cliente.nombre}!
-                {isVip && <Crown className="w-7 h-7 text-amber-500 fill-amber-400" />}
-              </h1>
-              {isVip ? (
-                <p className="text-amber-600 font-semibold text-sm mt-1">✨ Cliente VIP — Meta exclusiva de {metaVip} envíos</p>
-              ) : (
-                <p className="text-gray-600">Este es tu progreso de fidelización</p>
-              )}
+            {/* Back button */}
+            <div className="mb-6">
+              <Button variant="ghost" onClick={handleReset} className="text-gray-500 hover:text-gray-800 transition-colors">
+                <ChevronLeft className="w-5 h-5 mr-1" /> Volver
+              </Button>
             </div>
 
-            {/* Toggle */}
-            <div className="flex justify-center gap-2">
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button
-                  variant={!showQR ? 'default' : 'outline'}
-                  onClick={() => setShowQR(false)}
-                  className={!showQR ? 'bg-gradient-primary text-white' : ''}
-                >
-                  <TrendingUp className="w-4 h-4 mr-2" />
-                  Mi Progreso
-                </Button>
-              </motion.div>
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button
-                  variant={showQR ? 'default' : 'outline'}
-                  onClick={() => setShowQR(true)}
-                  className={showQR ? 'bg-gradient-primary text-white' : ''}
-                >
-                  <QrCode className="w-4 h-4 mr-2" />
-                  Mi Código QR
-                </Button>
-              </motion.div>
-            </div>
+            <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-start">
 
-            {!showQR ? (
-              <>
-                {/* Progress card */}
-                {isVip ? (
-                  <Card className="border-0 shadow-xl overflow-hidden ring-2 ring-amber-400">
-                    <div className="p-6 text-white bg-gradient-to-br from-amber-400 via-yellow-400 to-amber-600">
-                      <div className="flex items-center gap-2 mb-3 justify-center">
-                        <Crown className="w-5 h-5 text-white fill-white" />
-                        <span className="font-bold text-white tracking-widest text-sm uppercase">Mi Billetera VIP</span>
-                        <Crown className="w-5 h-5 text-white fill-white" />
-                      </div>
-                      <div className="flex items-center justify-between mb-4">
-                        <div>
-                          <p className="text-sm mb-1 text-amber-100">Saldo a Favor</p>
-                          <p className="text-5xl font-black">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
-                        </div>
-                        <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
-                          <DollarSign className="w-8 h-8 text-white" />
-                        </div>
-                      </div>
-                      <p className="text-center mt-3 text-amber-100 font-medium">
-                        Úsalo para pagar envíos gratis o descuentos en comida
-                      </p>
-                    </div>
-                    <CardContent className="p-6">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-gray-50 rounded-xl p-4 text-center">
-                          <p className="text-2xl font-bold text-gray-900">{cliente.envios_totales}</p>
-                          <p className="text-xs text-gray-500">Envíos totales</p>
-                        </div>
-                        <div className="bg-amber-50 rounded-xl p-4 text-center">
-                          <p className="text-2xl font-bold text-amber-600">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
-                          <p className="text-xs text-gray-500">Saldo Disponible</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <Card className="border-0 shadow-xl overflow-hidden">
-                    <div className="p-6 text-white bg-gradient-to-br from-orange-500 to-amber-500">
-                      <div className="flex items-center justify-between mb-4">
-                        <div>
-                          <p className="text-sm mb-1 text-orange-100">Tu Progreso</p>
-                          <p className="text-4xl font-bold">
-                            {cliente.puntos % metaVip} <span className="text-2xl text-orange-200">/ {metaVip}</span>
+              {/* ── LEFT COLUMN: Card + Toggle + QR ── */}
+              <div className="space-y-6">
+                <div className="text-center lg:text-left">
+                  <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 flex items-center justify-center lg:justify-start gap-2">
+                    {isVip && <Crown className="w-7 h-7 text-amber-500 fill-amber-400" />}
+                    ¡Hola, {cliente.nombre}!
+                    {isVip && <Crown className="w-7 h-7 text-amber-500 fill-amber-400" />}
+                  </h1>
+                  {isVip ? (
+                    <p className="text-amber-600 font-semibold text-sm mt-1">✨ Cliente VIP — Meta exclusiva de {metaVip} envíos</p>
+                  ) : (
+                    <p className="text-gray-600">Este es tu progreso de fidelización</p>
+                  )}
+                </div>
+
+                {/* Toggle */}
+                <div className="flex justify-center lg:justify-start gap-2">
+                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                    <Button
+                      variant={!showQR ? 'default' : 'outline'}
+                      onClick={() => setShowQR(false)}
+                      className={!showQR ? 'bg-gradient-primary text-white' : ''}
+                    >
+                      <TrendingUp className="w-4 h-4 mr-2" />
+                      Mi Progreso
+                    </Button>
+                  </motion.div>
+                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                    <Button
+                      variant={showQR ? 'default' : 'outline'}
+                      onClick={() => setShowQR(true)}
+                      className={showQR ? 'bg-gradient-primary text-white' : ''}
+                    >
+                      <QrCode className="w-4 h-4 mr-2" />
+                      Mi Código QR
+                    </Button>
+                  </motion.div>
+                </div>
+
+                {!showQR ? (
+                  <>
+                    {/* Progress card */}
+                    {isVip ? (
+                      <Card className="border-0 shadow-xl overflow-hidden ring-2 ring-amber-400">
+                        <div className="p-6 text-white bg-gradient-to-br from-amber-400 via-yellow-400 to-amber-600">
+                          <div className="flex items-center gap-2 mb-3 justify-center">
+                            <Crown className="w-5 h-5 text-white fill-white" />
+                            <span className="font-bold text-white tracking-widest text-sm uppercase">Mi Billetera VIP</span>
+                            <Crown className="w-5 h-5 text-white fill-white" />
+                          </div>
+                          <div className="flex items-center justify-between mb-4">
+                            <div>
+                              <p className="text-sm mb-1 text-amber-100">Saldo a Favor</p>
+                              <p className="text-5xl font-black">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
+                            </div>
+                            <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
+                              <DollarSign className="w-8 h-8 text-white" />
+                            </div>
+                          </div>
+                          <p className="text-center mt-3 text-amber-100 font-medium">
+                            Úsalo para pagar envíos gratis o descuentos en comida
                           </p>
                         </div>
-                        <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
-                          <Gift className="w-8 h-8 text-white" />
-                        </div>
-                      </div>
-                      <div className="bg-white/20 rounded-full h-4 overflow-hidden">
-                        <div
-                          className="bg-white h-full rounded-full transition-all duration-1000 ease-out"
-                          style={{ width: `${progreso}%` }}
-                        />
-                      </div>
-                      <p className="text-center mt-3 text-orange-100">
-                        {enviosRestantes === 0
-                          ? '¡Tu próximo envío es GRATIS! 🎉'
-                          : `Te faltan ${enviosRestantes} envío${enviosRestantes > 1 ? 's' : ''} para el delivery gratis`}
-                      </p>
-                    </div>
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-center gap-2 mb-6">
-                        {Array.from({ length: metaVip }).map((_, idx) => {
-                          const filled = idx < (cliente.puntos % metaVip);
-                          return (
-                            <div
-                              key={idx}
-                              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center transition-all duration-500 ${
-                                filled
-                                  ? 'bg-gradient-primary shadow-lg scale-105'
-                                  : 'bg-gray-100 border-2 border-dashed border-gray-300'
-                              }`}
-                            >
-                              <Star className={`w-6 h-6 ${filled ? 'text-white fill-white' : 'text-gray-400'}`} />
+                        <CardContent className="p-6">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-gray-50 rounded-xl p-4 text-center">
+                              <p className="text-2xl font-bold text-gray-900">{cliente.envios_totales}</p>
+                              <p className="text-xs text-gray-500">Envíos totales</p>
                             </div>
-                          );
-                        })}
+                            <div className="bg-amber-50 rounded-xl p-4 text-center">
+                              <p className="text-2xl font-bold text-amber-600">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
+                              <p className="text-xs text-gray-500">Saldo Disponible</p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      <Card className="border-0 shadow-xl overflow-hidden">
+                        <div className="p-6 text-white bg-gradient-to-br from-orange-500 to-amber-500">
+                          <div className="flex items-center justify-between mb-4">
+                            <div>
+                              <p className="text-sm mb-1 text-orange-100">Tu Progreso</p>
+                              <p className="text-4xl font-bold">
+                                {cliente.puntos % metaVip} <span className="text-2xl text-orange-200">/ {metaVip}</span>
+                              </p>
+                            </div>
+                            <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
+                              <Gift className="w-8 h-8 text-white" />
+                            </div>
+                          </div>
+                          <div className="bg-white/20 rounded-full h-4 overflow-hidden">
+                            <div
+                              className="bg-white h-full rounded-full transition-all duration-1000 ease-out"
+                              style={{ width: `${progreso}%` }}
+                            />
+                          </div>
+                          <p className="text-center mt-3 text-orange-100">
+                            {enviosRestantes === 0
+                              ? '¡Tu próximo envío es GRATIS! 🎉'
+                              : `Te faltan ${enviosRestantes} envío${enviosRestantes > 1 ? 's' : ''} para el delivery gratis`}
+                          </p>
+                        </div>
+                        <CardContent className="p-6">
+                          <div className="flex items-center justify-center gap-2 mb-6">
+                            {Array.from({ length: metaVip }).map((_, idx) => {
+                              const filled = idx < (cliente.puntos % metaVip);
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center transition-all duration-500 ${
+                                    filled
+                                      ? 'bg-gradient-primary shadow-lg scale-105'
+                                      : 'bg-gray-100 border-2 border-dashed border-gray-300'
+                                  }`}
+                                >
+                                  <Star className={`w-6 h-6 ${filled ? 'text-white fill-white' : 'text-gray-400'}`} />
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="grid grid-cols-3 gap-4">
+                            <div className="bg-gray-50 rounded-xl p-4 text-center">
+                              <p className="text-2xl font-bold text-gray-900">{cliente.envios_totales}</p>
+                              <p className="text-xs text-gray-500">Envíos totales</p>
+                            </div>
+                            <div className="bg-orange-50 rounded-xl p-4 text-center">
+                              <p className="text-2xl font-bold text-orange-600">{cliente.puntos % metaVip}</p>
+                              <p className="text-xs text-gray-500">Puntos actuales</p>
+                            </div>
+                            <div className="bg-green-50 rounded-xl p-4 text-center">
+                              <p className="text-2xl font-bold text-green-600">{cliente.envios_gratis_disponibles}</p>
+                              <p className="text-xs text-gray-500">Gratis disponibles</p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </>
+                ) : (
+                  // QR View
+                  <Card className="border-0 shadow-xl">
+                    <CardContent className="p-6 flex flex-col items-center text-center gap-4">
+                      <h2 className="text-lg font-bold text-gray-800">Tu Código QR Personal</h2>
+                      <p className="text-sm text-gray-500">Muéstraselo al repartidor para registrar tu envío</p>
+
+                      {qrDataUrl ? (
+                        <div className="p-4 bg-white rounded-2xl shadow-inner border border-gray-100">
+                          <img src={qrDataUrl} alt="Tu QR" className="w-56 h-56 rounded-xl" />
+                        </div>
+                      ) : (
+                        <div className="w-56 h-56 bg-gray-100 rounded-2xl flex items-center justify-center animate-pulse">
+                          <QrCode className="w-16 h-16 text-gray-300" />
+                        </div>
+                      )}
+
+                      <div className="w-full p-3 bg-orange-50 rounded-xl">
+                        <p className="text-xs font-mono text-orange-600 break-all">{cliente.qr_code}</p>
                       </div>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div className="bg-gray-50 rounded-xl p-4 text-center">
-                          <p className="text-2xl font-bold text-gray-900">{cliente.envios_totales}</p>
-                          <p className="text-xs text-gray-500">Envíos totales</p>
-                        </div>
-                        <div className="bg-orange-50 rounded-xl p-4 text-center">
-                          <p className="text-2xl font-bold text-orange-600">{cliente.puntos % metaVip}</p>
-                          <p className="text-xs text-gray-500">Puntos actuales</p>
-                        </div>
-                        <div className="bg-green-50 rounded-xl p-4 text-center">
-                          <p className="text-2xl font-bold text-green-600">{cliente.envios_gratis_disponibles}</p>
-                          <p className="text-xs text-gray-500">Gratis disponibles</p>
-                        </div>
-                      </div>
+
+                      <p className="text-xs text-gray-400">{cliente.telefono} · {cliente.nombre}</p>
                     </CardContent>
                   </Card>
                 )}
 
+                {/* Cobertura */}
+                <Card className="border-0 shadow-lg">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <MapPin className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-900">Cobertura Total</p>
+                        <p className="text-sm text-gray-500">Servicio en toda la ciudad</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* ── RIGHT COLUMN: Stats + History + Free alert ── */}
+              <div className="space-y-6">
                 {/* Wrapped Stats */}
                 <ClientStats cliente={cliente} historial={historial} />
 
                 {/* Historial Estrella */}
-                <div className="mt-8 mb-6">
+                <div className="mb-6">
                   <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
                     <History className="w-5 h-5 text-orange-500" />
                     Historial Estrella
@@ -614,17 +665,16 @@ export function ClienteView() {
                       <p className="text-gray-500 italic text-center text-sm py-4">Aún no hay movimientos</p>
                     ) : (
                       historial.map((mov: RegistroMovimiento) => (
-                        // Bug #10 fix: use fallback key if id is missing
                         <Card key={mov.id ?? `${mov.cliente_id}-${mov.created_at}`} className="border-0 shadow-sm bg-white overflow-hidden">
                           <CardContent className="p-4 flex items-center gap-4">
                             <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${mov.tipo === 'acumulacion' ? (mov.monto_saldo ? 'bg-amber-100' : 'bg-orange-100') : 'bg-emerald-100'}`}>
-                              {mov.tipo === 'acumulacion' 
+                              {mov.tipo === 'acumulacion'
                                 ? (mov.monto_saldo ? <DollarSign className="w-6 h-6 text-amber-500" /> : <Star className="w-6 h-6 text-orange-500 fill-orange-500" />)
                                 : <Gift className="w-6 h-6 text-emerald-500 disabled" />}
                             </div>
                             <div className="flex-1">
                               <p className="font-bold text-gray-900">
-                                {mov.tipo === 'acumulacion' 
+                                {mov.tipo === 'acumulacion'
                                   ? (mov.monto_saldo ? `Envío Registrado (+$${mov.monto_saldo.toFixed(2)} Cashback)` : '+1 Punto Acumulado')
                                   : (mov.monto_saldo !== undefined && mov.monto_saldo < 0 ? `Uso de Billetera VIP` : 'Canje de Envío Gratis')}
                               </p>
@@ -654,46 +704,9 @@ export function ClienteView() {
                     </CardContent>
                   </Card>
                 )}
-              </>
-            ) : (
-              // QR View
-              <Card className="border-0 shadow-xl">
-                <CardContent className="p-6 flex flex-col items-center text-center gap-4">
-                  <h2 className="text-lg font-bold text-gray-800">Tu Código QR Personal</h2>
-                  <p className="text-sm text-gray-500">Muéstraselo al repartidor para registrar tu envío</p>
+              </div>
 
-                  {qrDataUrl ? (
-                    <div className="p-4 bg-white rounded-2xl shadow-inner border border-gray-100">
-                      <img src={qrDataUrl} alt="Tu QR" className="w-56 h-56 rounded-xl" />
-                    </div>
-                  ) : (
-                    <div className="w-56 h-56 bg-gray-100 rounded-2xl flex items-center justify-center animate-pulse">
-                      <QrCode className="w-16 h-16 text-gray-300" />
-                    </div>
-                  )}
-
-                  <div className="w-full p-3 bg-orange-50 rounded-xl">
-                    <p className="text-xs font-mono text-orange-600 break-all">{cliente.qr_code}</p>
-                  </div>
-
-                  <p className="text-xs text-gray-400">{cliente.telefono} · {cliente.nombre}</p>
-                </CardContent>
-              </Card>
-            )}
-
-            <Card className="border-0 shadow-lg">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <MapPin className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-900">Cobertura Total</p>
-                    <p className="text-sm text-gray-500">Servicio en toda la ciudad</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            </div>
           </motion.div>
         )}
       </main>
