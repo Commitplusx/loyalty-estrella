@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- Bug #25 fix: lang="es" since all content is in Spanish -->
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Estrella Delivery Pro</title>
+
+    <!-- Bug #30 fix: PWA + SEO meta tags -->
+    <meta name="description" content="Consulta tus puntos, acumula entregas y canjea envíos gratis con Estrella Delivery." />
+    <meta name="theme-color" content="#f97316" />
+
+    <!-- PWA iOS support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Estrella Delivery" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <!-- Open Graph (sharing) -->
+    <meta property="og:title" content="Estrella Delivery Pro" />
+    <meta property="og:description" content="Acumula puntos y consigue tu próximo envío gratis." />
+    <meta property="og:type" content="website" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

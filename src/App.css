@@ -1,0 +1,165 @@
+/* Estilos específicos de la aplicación */
+/* NOTE: Keyframe animations and utility classes are defined here.
+   index.css defines the Tailwind base/component/utilities layer.
+   Shared classes like .text-gradient, .bg-gradient-primary are intentionally
+   kept here (App.css) and removed from index.css to avoid duplication. */
+
+/* ─── Animations ──────────────────────────────────────────── */
+
+@keyframes scan {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(256px);
+    opacity: 1;
+  }
+}
+
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.9);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px -5px hsl(25 95% 53% / 0.4);
+  }
+  50% {
+    box-shadow: 0 0 40px -5px hsl(25 95% 53% / 0.6);
+  }
+}
+
+/* ─── Animation classes ───────────────────────────────────── */
+
+.animate-scan {
+  animation: scan 2s linear infinite;
+}
+
+.animate-twinkle {
+  animation: twinkle 2s ease-in-out infinite;
+}
+
+.animate-twinkle-delayed {
+  animation: twinkle 2s ease-in-out infinite 0.5s;
+}
+
+.animate-twinkle-delayed-2 {
+  animation: twinkle 2s ease-in-out infinite 1s;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ─── Gradient utilities ──────────────────────────────────── */
+
+.text-gradient {
+  background: linear-gradient(135deg, #f97316 0%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.bg-gradient-primary {
+  background: linear-gradient(135deg, #f97316 0%, #f59e0b 100%);
+}
+
+/* ─── Shadow utilities ────────────────────────────────────── */
+
+.shadow-glow {
+  box-shadow: 0 0 40px -10px hsl(25 95% 53% / 0.4);
+}
+
+.shadow-card {
+  box-shadow: 0 4px 24px -4px rgb(0 0 0 / 0.08);
+}
+
+/* ─── Scrollbar ───────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #fb923c;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #f97316;
+}
+
+/* ─── Focus styles ────────────────────────────────────────── */
+/* Bug #24 fix: use valid CSS box-shadow for focus ring instead of
+   Tailwind's `ring` utility which is not valid in plain CSS files. */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(249 115 22 / 0.5);
+}
+
+button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(249 115 22 / 0.5);
+}
+
+/* ─── Selection ───────────────────────────────────────────── */
+
+::selection {
+  background: rgba(249, 115, 22, 0.2);
+  color: inherit;
+}
+
+/* ─── Responsive typography ───────────────────────────────── */
+
+@media (max-width: 640px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+/* ─── Print ───────────────────────────────────────────────── */
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* ─── NOTE on global transition ─────────────────────────────
+   Bug #23: The previous `* { transition-property: ... }` rule was
+   removed. It was applied to EVERY DOM element and caused major
+   scroll/paint performance issues. Transitions per element are
+   handled by Tailwind's `transition-*` utilities on individual components.
+─────────────────────────────────────────────────────────── */
