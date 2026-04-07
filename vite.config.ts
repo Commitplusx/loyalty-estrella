@@ -51,6 +51,11 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Manual injection of environment variables for Vercel
+  define: {
+    'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(process.env.VITE_SUPABASE_URL),
+    'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY),
+  },
   server: {
     host: true, // Expone en la red local (0.0.0.0) para acceder desde el celular
   },
