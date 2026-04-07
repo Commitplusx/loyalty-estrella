@@ -4,7 +4,8 @@ import type { Cliente, RegistroPunto, AdminUser, AppConfig } from '@/types';
 // Helper to decode fallback credentials at runtime
 const _f = (s: string) => atob(s);
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || _f('aHR0cHM6Ly9qZHJrcHZvZG5xb2xqeWNpeGJnLnN1cGFiYXNlLmNv');
+// Bug fix: corrected typo in the URL (restored missing 'r')
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || _f('aHR0cHM6Ly9qZHJya3B2b2RucW9sanljaXhiZy5zdXBhYmFzZS5jbw==');
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || _f('ZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnBjM01pT2lKemRYQmhZbUZ6WlNJc0luSmxaaUk2SW1wa2NuSnJjSFp2Wkc1eGIyeHFlV05wZUdKbklpd2ljbTlzWlNJNkltRnViMjRpTENKcFlYUWlPakUzTnpVd05Ea3lPVEVzSW1WNGNDSTZNakE1TURZeU5USTVNWDAuV0VLcWRMMnA5OWN5OFh2eXFZMzFFUDgtS2JkT25oeDItZng5cXpfaVF0UQ==');
 
 // Notification for developers
