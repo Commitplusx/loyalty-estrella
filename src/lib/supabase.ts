@@ -1,18 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Cliente, RegistroPunto, AdminUser, AppConfig } from '@/types';
 
-// Bug #21 fix: validate env vars at startup so failures are obvious in dev
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-if (import.meta.env.DEV && (!supabaseUrl || !supabaseAnonKey)) {
-  console.error(
-    '[Estrella Delivery] ⚠️ Supabase env vars not set.\n' +
-    'Create a .env file with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.'
-  );
+// Debugging for Vercel
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('[Estrella Delivery] CRITICAL: Supabase environment variables are missing!');
+  console.log('VITE_SUPABASE_URL defined:', !!supabaseUrl);
+  console.log('VITE_SUPABASE_ANON_KEY defined:', !!supabaseAnonKey);
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl || 'https://placeholder-to-avoid-crash.supabase.co', supabaseAnonKey || 'placeholder');
 
 // ==================== CLIENTES ====================
 
