@@ -524,7 +524,7 @@ export function Home() {
             </h2>
           </motion.div>
 
-          <div className="grid sm:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               { num: '1', title: 'Pide tu envío', desc: 'Contacta a tu repartidor de siempre y realiza tu pedido normalmente.', icon: Phone, color: 'from-orange-500 to-red-500' },
               { num: '2', title: 'Muestra tu QR', desc: 'Abre la app, muestra tu código QR personal. El repartidor lo escanea.', icon: Star, color: 'from-amber-500 to-orange-500' },
@@ -571,7 +571,7 @@ export function Home() {
             </h2>
           </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
             {REVIEWS.map((review, i) => (
               <motion.div
                 key={review.name}
@@ -639,27 +639,31 @@ export function Home() {
               Regístrate hoy y comienza a ganar envíos gratis con cada pedido que hagas.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button
-                onClick={() => navigate('/cliente')}
-                size="lg"
-                className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold px-12 py-7 text-xl rounded-2xl shadow-2xl shadow-orange-500/30 border-0"
-              >
-                Ver Mis Puntos
-                <ArrowRight className="w-6 h-6 ml-2" />
-              </Button>
-              <Button
-                onClick={() => {
-                  const cleanNumber = contacto.whatsapp.replace(/\D/g, '');
-                  window.open(`https://wa.me/${cleanNumber}`, '_blank', 'noopener,noreferrer');
-                }}
-                variant="outline"
-                size="lg"
-                className="border border-white/20 hover:bg-white/10 text-white bg-transparent font-semibold px-12 py-7 text-xl rounded-2xl backdrop-blur-sm"
-              >
-                <Phone className="w-6 h-6 mr-2" />
-                WhatsApp
-              </Button>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center mt-4">
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} style={{ willChange: "transform" }}>
+                <Button
+                  onClick={() => navigate('/cliente')}
+                  size="lg"
+                  className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold w-full sm:w-auto px-12 py-7 text-xl rounded-2xl shadow-2xl shadow-orange-500/30 border-0"
+                >
+                  Ver Mis Puntos
+                  <ArrowRight className="w-6 h-6 ml-2" />
+                </Button>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} style={{ willChange: "transform" }}>
+                <Button
+                  onClick={() => {
+                    const cleanNumber = contacto.whatsapp.replace(/\D/g, '');
+                    window.open(`https://wa.me/${cleanNumber}`, '_blank', 'noopener,noreferrer');
+                  }}
+                  variant="outline"
+                  size="lg"
+                  className="border border-white/20 hover:bg-white/10 text-white bg-transparent font-semibold w-full sm:w-auto px-12 py-7 text-xl rounded-2xl backdrop-blur-sm"
+                >
+                  <Phone className="w-6 h-6 mr-2" />
+                  WhatsApp
+                </Button>
+              </motion.div>
             </div>
           </motion.div>
         </div>
@@ -667,7 +671,12 @@ export function Home() {
 
       {/* ══ FOOTER ══════════════════════════════════════════════════════════ */}
       <footer className="bg-black/60 border-t border-white/5 text-gray-400 py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <motion.div 
+          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
+          variants={fadeUp} initial="hidden" whileInView="visible"
+          viewport={{ once: true, amount: 0.1 }} transition={slowTransition}
+          style={{ willChange: "transform, opacity" }}
+        >
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-amber-500 rounded-lg flex items-center justify-center">
@@ -680,28 +689,28 @@ export function Home() {
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-4 text-sm">
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 whitespace-nowrap">
                 <Clock className="w-4 h-4" />
-                Lunes a Domingo: 9:00 AM – 10:00 PM
+                Lunes a Domingo: 9AM – 10PM
               </span>
-              <span className="text-gray-700">|</span>
-              <a href={`tel:${contacto.telefono}`} className="hover:text-white transition-colors">
+              <span className="hidden sm:inline text-gray-700">|</span>
+              <a href={`tel:${contacto.telefono}`} className="hover:text-white transition-colors whitespace-nowrap">
                 {contacto.telefono}
               </a>
             </div>
 
             <a href="/login" className="text-sm hover:text-white transition-colors">
-              Acceso Administrador
+              Acceso Creador
             </a>
           </div>
 
-          <div className="mt-8 pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm">
+          <div className="mt-8 pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-center sm:text-left">
             <p>© {new Date().getFullYear()} Estrella Delivery. Todos los derechos reservados.</p>
-            <p className="flex items-center gap-1 text-gray-500">
+            <p className="flex items-center justify-center gap-1 text-gray-500">
               Hecho con <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500 mx-1" /> para nuestros clientes
             </p>
           </div>
-        </div>
+        </motion.div>
       </footer>
 
     </motion.div>

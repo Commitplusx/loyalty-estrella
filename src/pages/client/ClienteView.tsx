@@ -242,7 +242,7 @@ export function ClienteView() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className={`mx-auto px-4 sm:px-6 lg:px-8 py-8 transition-all duration-500 ease-in-out ${viewState === 'search' ? 'max-w-5xl lg:max-w-6xl' : 'max-w-3xl'}`}>
 
         {/* ── LOADING ── */}
         {viewState === 'loading' && (
@@ -326,26 +326,27 @@ export function ClienteView() {
           </div>
         )}
 
-        {/* ── SEARCH ── */}
         {viewState === 'search' && (
           <motion.div 
             initial={{ opacity: 0, y: 15 }} 
             animate={{ opacity: 1, y: 0 }} 
             exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.3 }}
-            className="space-y-6"
+            className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-start"
             style={{ willChange: "transform, opacity" }}
           >
-            <AuthorityCounter />
+            {/* Left Column: Acciones principales */}
+            <div className="space-y-6">
+              <AuthorityCounter />
 
-            <div className="text-center">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                Consulta tus <span className="text-gradient">puntos</span>
-              </h1>
-              <p className="text-gray-600">Ingresa tu número de teléfono para ver tu progreso</p>
-            </div>
+              <div className="text-center lg:text-left">
+                <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+                  Consulta tus <span className="text-gradient">puntos</span>
+                </h1>
+                <p className="text-gray-600 text-lg">Ingresa tu número para ver tu fidelidad</p>
+              </div>
 
-            <PromosBanner />
+              <PromosBanner />
 
             <Card className="border-0 shadow-xl">
               <CardContent className="p-6">
@@ -386,63 +387,68 @@ export function ClienteView() {
               </CardContent>
             </Card>
 
-            {/* Info cards */}
-            <div className="grid sm:grid-cols-2 gap-4">
-              <Card className="border-0 shadow-lg">
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-                    <Gift className="w-6 h-6 text-orange-500" />
+            </div>
+            
+            {/* Right Column: Info & Horarios */}
+            <div className="space-y-6 pt-2 lg:pt-8">
+              {/* Info cards */}
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
+                  <CardContent className="p-4 flex items-center gap-4">
+                    <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
+                      <Gift className="w-6 h-6 text-orange-500" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-900">5 = 1 Gratis</p>
+                      <p className="text-sm text-gray-500">Por cada 5 envíos</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
+                  <CardContent className="p-4 flex items-center gap-4">
+                    <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center shrink-0">
+                      <Sparkles className="w-6 h-6 text-amber-500" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-900">Hora Feliz</p>
+                      <p className="text-sm text-gray-500">Lun, Mié y Sáb $35</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Horario */}
+              <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-2 mb-6">
+                    <Clock className="w-6 h-6 text-orange-500" />
+                    <h3 className="font-bold text-xl text-gray-900">Horario de Atención</h3>
                   </div>
-                  <div>
-                    <p className="font-bold text-gray-900">5 = 1 Gratis</p>
-                    <p className="text-sm text-gray-500">Por cada 5 envíos</p>
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl mb-4">
+                    <span className="text-gray-700 font-medium">Lunes a Domingo</span>
+                    <span className="font-bold text-gray-900">9:00 AM - 10:00 PM</span>
                   </div>
-                </CardContent>
-              </Card>
-              <Card className="border-0 shadow-lg">
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
-                    <Sparkles className="w-6 h-6 text-amber-500" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-gray-900">Hora Feliz</p>
-                    <p className="text-sm text-gray-500">Lun, Mié y Sáb $35</p>
-                  </div>
+                  {horasFelices.filter(h => h.activo).length > 0 && (
+                    <div className="p-5 bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl border border-orange-100/50">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Sparkles className="w-5 h-5 text-amber-500" />
+                        <h4 className="font-bold text-lg text-gray-900">Horas Felices - Envío a $35</h4>
+                      </div>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        {horasFelices.filter(h => h.activo).map((hora) => (
+                          <div key={hora.dia} className="flex items-center justify-between p-3 bg-white rounded-xl shadow-sm">
+                            <span className="text-gray-700 font-medium">{hora.nombre}</span>
+                            <span className="font-bold text-amber-600">
+                              {formatTime(hora.hora_inicio)} - {formatTime(hora.hora_fin)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
-
-            {/* Horario */}
-            <Card className="border-0 shadow-lg">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <Clock className="w-5 h-5 text-orange-500" />
-                  <h3 className="font-bold text-gray-900">Horario de Atención</h3>
-                </div>
-                <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg mb-3">
-                  <span className="text-gray-700">Lunes a Domingo</span>
-                  <span className="font-medium text-gray-900">9:00 AM - 10:00 PM</span>
-                </div>
-                {horasFelices.filter(h => h.activo).length > 0 && (
-                  <div className="p-4 bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Sparkles className="w-5 h-5 text-amber-500" />
-                      <h4 className="font-bold text-gray-900">Horas Felices - $35</h4>
-                    </div>
-                    <div className="space-y-2">
-                      {horasFelices.filter(h => h.activo).map((hora) => (
-                        <div key={hora.dia} className="flex items-center justify-between p-2 bg-white rounded-lg">
-                          <span className="text-gray-700">{hora.nombre}</span>
-                          <span className="font-medium text-amber-600">
-                            {formatTime(hora.hora_inicio)} - {formatTime(hora.hora_fin)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </motion.div>
         )}
 
