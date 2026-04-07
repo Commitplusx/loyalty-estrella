@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
-  Star, Phone, Search, Gift,
+  Star, Phone, Search, Gift, DollarSign,
   TrendingUp, Clock, MapPin, Sparkles,
   ChevronLeft, QrCode, AlertCircle, Loader2, History, Crown, Sun, Moon
 } from 'lucide-react';
@@ -498,82 +498,101 @@ export function ClienteView() {
             {!showQR ? (
               <>
                 {/* Progress card */}
-                <Card className={`border-0 shadow-xl overflow-hidden ${isVip ? 'ring-2 ring-amber-400' : ''}`}>
-                  <div className={`p-6 text-white ${isVip
-                    ? 'bg-gradient-to-br from-amber-400 via-yellow-400 to-amber-600'
-                    : 'bg-gradient-to-br from-orange-500 to-amber-500'
-                  }`}>
-                    {isVip && (
+                {isVip ? (
+                  <Card className="border-0 shadow-xl overflow-hidden ring-2 ring-amber-400">
+                    <div className="p-6 text-white bg-gradient-to-br from-amber-400 via-yellow-400 to-amber-600">
                       <div className="flex items-center gap-2 mb-3 justify-center">
                         <Crown className="w-5 h-5 text-white fill-white" />
-                        <span className="font-bold text-white tracking-widest text-sm uppercase">Miembro VIP</span>
+                        <span className="font-bold text-white tracking-widest text-sm uppercase">Mi Billetera VIP</span>
                         <Crown className="w-5 h-5 text-white fill-white" />
                       </div>
-                    )}
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <p className={`text-sm mb-1 ${isVip ? 'text-amber-100' : 'text-orange-100'}`}>Tu Progreso</p>
-                        <p className="text-4xl font-bold">
-                          {cliente.puntos % metaVip} <span className={`text-2xl ${isVip ? 'text-amber-200' : 'text-orange-200'}`}>/ {metaVip}</span>
-                        </p>
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <p className="text-sm mb-1 text-amber-100">Saldo a Favor</p>
+                          <p className="text-5xl font-black">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
+                        </div>
+                        <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
+                          <DollarSign className="w-8 h-8 text-white" />
+                        </div>
                       </div>
-                      <div className={`w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center`}>
-                        {isVip ? <Crown className="w-8 h-8 text-white fill-white/60" /> : <Gift className="w-8 h-8 text-white" />}
-                      </div>
+                      <p className="text-center mt-3 text-amber-100 font-medium">
+                        Úsalo para pagar envíos gratis o descuentos en comida
+                      </p>
                     </div>
-                    <div className="bg-white/20 rounded-full h-4 overflow-hidden">
-                      <div
-                        className="bg-white h-full rounded-full transition-all duration-1000 ease-out"
-                        style={{ width: `${progreso}%` }}
-                      />
-                    </div>
-                    <p className={`text-center mt-3 ${isVip ? 'text-amber-100' : 'text-orange-100'}`}>
-                      {enviosRestantes === 0
-                        ? '¡Tu próximo envío es GRATIS! 🎉'
-                        : `Te faltan ${enviosRestantes} envío${enviosRestantes > 1 ? 's' : ''} para el delivery gratis`}
-                    </p>
-                  </div>
-                  <CardContent className="p-6">
-                    {/* Stars / Crowns */}
-                    <div className="flex items-center justify-center gap-2 mb-6">
-                      {Array.from({ length: metaVip }).map((_, idx) => {
-                        const filled = idx < (cliente.puntos % metaVip);
-                        return (
-                          <div
-                            key={idx}
-                            className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center transition-all duration-500 ${
-                              filled
-                                ? isVip
-                                  ? 'bg-gradient-to-br from-amber-400 to-yellow-500 shadow-lg scale-105'
-                                  : 'bg-gradient-primary shadow-lg scale-105'
-                                : 'bg-gray-100 border-2 border-dashed border-gray-300'
-                            }`}
-                          >
-                            {isVip
-                              ? <Crown className={`w-6 h-6 ${filled ? 'text-white fill-white' : 'text-gray-400'}`} />
-                              : <Star className={`w-6 h-6 ${filled ? 'text-white fill-white' : 'text-gray-400'}`} />}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {/* Stats */}
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="bg-gray-50 rounded-xl p-4 text-center">
-                        <p className="text-2xl font-bold text-gray-900">{cliente.envios_totales}</p>
-                        <p className="text-xs text-gray-500">Envíos totales</p>
+                    <CardContent className="p-6">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-gray-50 rounded-xl p-4 text-center">
+                          <p className="text-2xl font-bold text-gray-900">{cliente.envios_totales}</p>
+                          <p className="text-xs text-gray-500">Envíos totales</p>
+                        </div>
+                        <div className="bg-amber-50 rounded-xl p-4 text-center">
+                          <p className="text-2xl font-bold text-amber-600">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
+                          <p className="text-xs text-gray-500">Saldo Disponible</p>
+                        </div>
                       </div>
-                      <div className="bg-orange-50 rounded-xl p-4 text-center">
-                        {/* Bug #1 fix: use metaVip instead of hardcoded 5 */}
-                        <p className="text-2xl font-bold text-orange-600">{cliente.puntos % metaVip}</p>
-                        <p className="text-xs text-gray-500">Puntos actuales</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="border-0 shadow-xl overflow-hidden">
+                    <div className="p-6 text-white bg-gradient-to-br from-orange-500 to-amber-500">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <p className="text-sm mb-1 text-orange-100">Tu Progreso</p>
+                          <p className="text-4xl font-bold">
+                            {cliente.puntos % metaVip} <span className="text-2xl text-orange-200">/ {metaVip}</span>
+                          </p>
+                        </div>
+                        <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
+                          <Gift className="w-8 h-8 text-white" />
+                        </div>
                       </div>
-                      <div className="bg-green-50 rounded-xl p-4 text-center">
-                        <p className="text-2xl font-bold text-green-600">{cliente.envios_gratis_disponibles}</p>
-                        <p className="text-xs text-gray-500">Gratis disponibles</p>
+                      <div className="bg-white/20 rounded-full h-4 overflow-hidden">
+                        <div
+                          className="bg-white h-full rounded-full transition-all duration-1000 ease-out"
+                          style={{ width: `${progreso}%` }}
+                        />
                       </div>
+                      <p className="text-center mt-3 text-orange-100">
+                        {enviosRestantes === 0
+                          ? '¡Tu próximo envío es GRATIS! 🎉'
+                          : `Te faltan ${enviosRestantes} envío${enviosRestantes > 1 ? 's' : ''} para el delivery gratis`}
+                      </p>
                     </div>
-                  </CardContent>
-                </Card>
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-center gap-2 mb-6">
+                        {Array.from({ length: metaVip }).map((_, idx) => {
+                          const filled = idx < (cliente.puntos % metaVip);
+                          return (
+                            <div
+                              key={idx}
+                              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center transition-all duration-500 ${
+                                filled
+                                  ? 'bg-gradient-primary shadow-lg scale-105'
+                                  : 'bg-gray-100 border-2 border-dashed border-gray-300'
+                              }`}
+                            >
+                              <Star className={`w-6 h-6 ${filled ? 'text-white fill-white' : 'text-gray-400'}`} />
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="bg-gray-50 rounded-xl p-4 text-center">
+                          <p className="text-2xl font-bold text-gray-900">{cliente.envios_totales}</p>
+                          <p className="text-xs text-gray-500">Envíos totales</p>
+                        </div>
+                        <div className="bg-orange-50 rounded-xl p-4 text-center">
+                          <p className="text-2xl font-bold text-orange-600">{cliente.puntos % metaVip}</p>
+                          <p className="text-xs text-gray-500">Puntos actuales</p>
+                        </div>
+                        <div className="bg-green-50 rounded-xl p-4 text-center">
+                          <p className="text-2xl font-bold text-green-600">{cliente.envios_gratis_disponibles}</p>
+                          <p className="text-xs text-gray-500">Gratis disponibles</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* Wrapped Stats */}
                 <ClientStats cliente={cliente} historial={historial} />
@@ -592,15 +611,22 @@ export function ClienteView() {
                         // Bug #10 fix: use fallback key if id is missing
                         <Card key={mov.id ?? `${mov.cliente_id}-${mov.created_at}`} className="border-0 shadow-sm bg-white overflow-hidden">
                           <CardContent className="p-4 flex items-center gap-4">
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${mov.tipo === 'acumulacion' ? 'bg-orange-100' : 'bg-emerald-100'}`}>
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${mov.tipo === 'acumulacion' ? (mov.monto_saldo ? 'bg-amber-100' : 'bg-orange-100') : 'bg-emerald-100'}`}>
                               {mov.tipo === 'acumulacion' 
-                                ? <Star className="w-6 h-6 text-orange-500 fill-orange-500" /> 
+                                ? (mov.monto_saldo ? <DollarSign className="w-6 h-6 text-amber-500" /> : <Star className="w-6 h-6 text-orange-500 fill-orange-500" />)
                                 : <Gift className="w-6 h-6 text-emerald-500 disabled" />}
                             </div>
                             <div className="flex-1">
-                              <p className="font-bold text-gray-900">{mov.tipo === 'acumulacion' ? '+1 Punto Acumulado' : 'Canje de Envío Gratis'}</p>
+                              <p className="font-bold text-gray-900">
+                                {mov.tipo === 'acumulacion' 
+                                  ? (mov.monto_saldo ? `Envío Registrado (+$${mov.monto_saldo.toFixed(2)} Cashback)` : '+1 Punto Acumulado')
+                                  : (mov.monto_saldo !== undefined && mov.monto_saldo < 0 ? `Uso de Billetera VIP` : 'Canje de Envío Gratis')}
+                              </p>
                               <p className="text-sm text-gray-500 mt-0.5">
                                 {new Date(mov.created_at).toLocaleDateString()} a las {new Date(mov.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                {mov.monto_saldo !== undefined && mov.monto_saldo < 0 && (
+                                  <span className="font-semibold text-rose-500 ml-2">(-${Math.abs(mov.monto_saldo).toFixed(2)})</span>
+                                )}
                               </p>
                             </div>
                           </CardContent>

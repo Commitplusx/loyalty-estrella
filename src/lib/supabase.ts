@@ -225,6 +225,30 @@ export async function canjearEnvioGratisRPC(
   }
 }
 
+export async function canjearSaldoBilleteraRPC(
+  clienteId: string,
+  adminId: string,
+  monto: number
+): Promise<{ success: boolean; message: string; saldo_billetera?: number }> {
+  try {
+    const { data, error } = await supabase.rpc('canjear_saldo', {
+      p_cliente_id: clienteId,
+      p_admin_id: adminId,
+      p_monto: monto
+    });
+
+    if (error) {
+      console.error('RPC Error:', error);
+      return { success: false, message: 'Error de servidor al canjear saldo de la Billetera' };
+    }
+
+    return data;
+  } catch (err) {
+    console.error('Error in canjearSaldoBilleteraRPC:', err);
+    return { success: false, message: 'Error al conectar con la base de datos' };
+  }
+}
+
 // ==================== CONFIGURACIÓN ====================
 
 export async function getAppConfig(): Promise<AppConfig | null> {

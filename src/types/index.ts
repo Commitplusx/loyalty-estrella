@@ -11,6 +11,7 @@ export interface Cliente {
   envios_totales: number;
   es_vip: boolean;          // VIP level status
   rango: 'bronce' | 'plata' | 'oro'; // League Rank
+  saldo_billetera: number;  // Digital Wallet VIP
   created_at: string;
   updated_at: string;
 }
@@ -20,6 +21,7 @@ export interface RegistroPunto {
   cliente_id: string;
   tipo: 'acumulacion' | 'canje';
   puntos: number;
+  monto_saldo?: number;
   descripcion: string;
   created_at: string;
   created_by: string;
@@ -78,6 +80,7 @@ export interface RegistroMovimiento {
   cliente_id: string;
   tipo: 'acumulacion' | 'canje';
   puntos: number;
+  monto_saldo?: number;
   descripcion: string;
   created_at: string;
   created_by?: string;
