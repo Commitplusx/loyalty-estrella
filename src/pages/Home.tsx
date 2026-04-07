@@ -32,7 +32,14 @@ export function Home() {
   const { storeState, horasFelices, formatTime, contacto } = useSchedule();
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] overflow-x-hidden text-white">
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.98, y: 10 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 1.02, y: -10 }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
+      style={{ willChange: "transform, opacity" }}
+      className="min-h-screen bg-[#0a0a0f] overflow-x-hidden text-white"
+    >
 
       {/* ══ HERO ═══════════════════════════════════════════════════════════ */}
       <section className="relative min-h-screen overflow-hidden flex flex-col">
@@ -41,16 +48,16 @@ export function Home() {
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute inset-0 bg-gradient-to-br from-[#0a0a0f] via-[#120e1e] to-[#0a0a0f]" />
           <motion.div
+            style={{ willChange: "transform, opacity", background: 'radial-gradient(circle, #ff6b35 0%, transparent 70%)' }}
             animate={{ scale: [1, 1.15, 1], opacity: [0.25, 0.45, 0.25] }}
             transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
             className="absolute -top-32 -right-32 w-[600px] h-[600px] rounded-full"
-            style={{ background: 'radial-gradient(circle, #ff6b35 0%, transparent 70%)' }}
           />
           <motion.div
+            style={{ willChange: "transform, opacity", background: 'radial-gradient(circle, #f59e0b 0%, transparent 70%)' }}
             animate={{ scale: [1, 1.2, 1], opacity: [0.15, 0.30, 0.15] }}
             transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
             className="absolute -bottom-32 -left-32 w-[500px] h-[500px] rounded-full"
-            style={{ background: 'radial-gradient(circle, #f59e0b 0%, transparent 70%)' }}
           />
           {/* Grid overlay */}
           <div
@@ -155,26 +162,30 @@ export function Home() {
                   transition={{ ...slowTransition, delay: 0.5 }}
                   className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-10"
                 >
-                  <Button
-                    onClick={() => navigate('/cliente')}
-                    size="lg"
-                    className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold px-8 py-6 text-lg shadow-xl shadow-orange-500/30 border-0 rounded-2xl"
-                  >
-                    Ver Mis Puntos
-                    <ArrowRight className="w-5 h-5 ml-2" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    onClick={() => {
-                      const cleanNumber = contacto.whatsapp.replace(/\D/g, '');
-                      window.open(`https://wa.me/${cleanNumber}`, '_blank', 'noopener,noreferrer');
-                    }}
-                    className="border border-white/20 text-white hover:bg-white/10 bg-transparent font-semibold px-8 py-6 text-lg rounded-2xl backdrop-blur-sm"
-                  >
-                    <Phone className="w-5 h-5 mr-2" />
-                    Pedir Ahora
-                  </Button>
+                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                    <Button
+                      onClick={() => navigate('/cliente')}
+                      size="lg"
+                      className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold px-8 py-6 text-lg shadow-xl shadow-orange-500/30 border-0 rounded-2xl w-full"
+                    >
+                      Ver Mis Puntos
+                      <ArrowRight className="w-5 h-5 ml-2" />
+                    </Button>
+                  </motion.div>
+                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={() => {
+                        const cleanNumber = contacto.whatsapp.replace(/\D/g, '');
+                        window.open(`https://wa.me/${cleanNumber}`, '_blank', 'noopener,noreferrer');
+                      }}
+                      className="border border-white/20 text-white hover:bg-white/10 bg-transparent font-semibold px-8 py-6 text-lg rounded-2xl backdrop-blur-sm w-full"
+                    >
+                      <Phone className="w-5 h-5 mr-2" />
+                      Pedir Ahora
+                    </Button>
+                  </motion.div>
                 </motion.div>
 
                 <motion.div
@@ -373,13 +384,13 @@ export function Home() {
                 viewport={{ once: true, amount: 0.2 }}
                 transition={{ ...slowTransition, delay: f.delay }}
               >
-                <div className="group bg-white/5 hover:bg-white/8 border border-white/10 hover:border-white/20 rounded-3xl p-6 h-full transition-all duration-500 hover:-translate-y-2 cursor-default">
+                <motion.div whileHover={{ scale: 1.05, y: -5 }} className="group bg-white/5 border border-white/10 hover:border-white/20 rounded-3xl p-6 h-full cursor-default" style={{ willChange: "transform" }}>
                   <div className={`w-14 h-14 bg-gradient-to-br ${f.from} ${f.to} rounded-2xl flex items-center justify-center mb-5 shadow-lg group-hover:scale-110 transition-transform duration-300`}>
                     <f.icon className="w-7 h-7 text-white" />
                   </div>
                   <h3 className="font-bold text-white mb-2 text-lg">{f.title}</h3>
                   <p className="text-gray-300 text-sm leading-relaxed">{f.desc}</p>
-                </div>
+                </motion.div>
               </motion.div>
             ))}
           </div>
@@ -441,13 +452,15 @@ export function Home() {
                 )}
               </div>
 
-              <Button
-                onClick={() => navigate('/cliente')}
-                className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold px-8 py-6 rounded-2xl shadow-xl shadow-amber-500/20 border-0"
-              >
-                Ver Mis Puntos
-                <ChevronRight className="w-5 h-5 ml-1" />
-              </Button>
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="inline-block mt-4">
+                <Button
+                  onClick={() => navigate('/cliente')}
+                  className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold px-8 py-6 rounded-2xl shadow-xl shadow-amber-500/20 border-0"
+                >
+                  Ver Mis Puntos
+                  <ChevronRight className="w-5 h-5 ml-1" />
+                </Button>
+              </motion.div>
             </motion.div>
 
             {/* Price card */}
@@ -691,6 +704,6 @@ export function Home() {
         </div>
       </footer>
 
-    </div>
+    </motion.div>
   );
 }

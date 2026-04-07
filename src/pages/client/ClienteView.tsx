@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -183,7 +183,14 @@ export function ClienteView() {
   }, [showQR, cliente?.qr_code]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-blue-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 transition-colors duration-300">
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.98, y: 10 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 1.02, y: -10 }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
+      style={{ willChange: "transform, opacity" }}
+      className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-blue-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 transition-colors duration-300"
+    >
       {/* Header */}
       <header className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm shadow-sm dark:shadow-gray-800 sticky top-0 z-50 border-b border-transparent dark:border-gray-800">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -321,7 +328,14 @@ export function ClienteView() {
 
         {/* ── SEARCH ── */}
         {viewState === 'search' && (
-          <div className="space-y-6">
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+            style={{ willChange: "transform, opacity" }}
+          >
             <AuthorityCounter />
 
             <div className="text-center">
@@ -358,14 +372,16 @@ export function ClienteView() {
                       />
                     </div>
                   </div>
-                  <Button
-                    type="submit"
-                    disabled={telefono.length < 7}
-                    className="w-full h-14 bg-gradient-primary hover:opacity-90 text-white font-semibold text-lg disabled:opacity-50"
-                  >
-                    <Search className="w-5 h-5 mr-2" />
-                    Consultar mis puntos
-                  </Button>
+                  <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                    <Button
+                      type="submit"
+                      disabled={telefono.length < 7}
+                      className="w-full h-14 bg-gradient-primary hover:opacity-90 text-white font-semibold text-lg disabled:opacity-50"
+                    >
+                      <Search className="w-5 h-5 mr-2" />
+                      Consultar mis puntos
+                    </Button>
+                  </motion.div>
                 </form>
               </CardContent>
             </Card>
@@ -427,13 +443,18 @@ export function ClienteView() {
                 )}
               </CardContent>
             </Card>
-          </div>
+          </motion.div>
         )}
 
         {/* ── RESULT ── */}
         {viewState === 'result' && cliente && (
-          <div className="space-y-6">
-            <Button variant="ghost" onClick={handleReset} className="text-gray-500">
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} 
+            transition={{ duration: 0.4 }}
+            className="space-y-6"
+            style={{ willChange: "transform, opacity" }}
+          >
+            <Button variant="ghost" onClick={handleReset} className="text-gray-500 hover:text-gray-800 dark:hover:text-white transition-colors">
               <ChevronLeft className="w-5 h-5 mr-1" /> Volver
             </Button>
 
@@ -452,22 +473,26 @@ export function ClienteView() {
 
             {/* Toggle */}
             <div className="flex justify-center gap-2">
-              <Button
-                variant={!showQR ? 'default' : 'outline'}
-                onClick={() => setShowQR(false)}
-                className={!showQR ? 'bg-gradient-primary text-white' : ''}
-              >
-                <TrendingUp className="w-4 h-4 mr-2" />
-                Mi Progreso
-              </Button>
-              <Button
-                variant={showQR ? 'default' : 'outline'}
-                onClick={() => setShowQR(true)}
-                className={showQR ? 'bg-gradient-primary text-white' : ''}
-              >
-                <QrCode className="w-4 h-4 mr-2" />
-                Mi Código QR
-              </Button>
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button
+                  variant={!showQR ? 'default' : 'outline'}
+                  onClick={() => setShowQR(false)}
+                  className={!showQR ? 'bg-gradient-primary text-white' : ''}
+                >
+                  <TrendingUp className="w-4 h-4 mr-2" />
+                  Mi Progreso
+                </Button>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button
+                  variant={showQR ? 'default' : 'outline'}
+                  onClick={() => setShowQR(true)}
+                  className={showQR ? 'bg-gradient-primary text-white' : ''}
+                >
+                  <QrCode className="w-4 h-4 mr-2" />
+                  Mi Código QR
+                </Button>
+              </motion.div>
             </div>
 
             {!showQR ? (
@@ -637,7 +662,7 @@ export function ClienteView() {
                 </div>
               </CardContent>
             </Card>
-          </div>
+          </motion.div>
         )}
       </main>
 
@@ -652,6 +677,6 @@ export function ClienteView() {
           />
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }
