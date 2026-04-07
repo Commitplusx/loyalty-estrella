@@ -1,17 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Cliente, RegistroPunto, AdminUser, AppConfig } from '@/types';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://jdrrkpvodnqoljycixbg.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkcnJrcHZvZG5xb2xqeWNpeGJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNDkyOTEsImV4cCI6MjA5MDYyNTI5MX0.WEKqdL2p99cy8XvyqY31EP8-KbdOnhx2-fx9qz_iQtQ';
 
 // Debugging for Vercel
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('[Estrella Delivery] CRITICAL: Supabase environment variables are missing!');
-  console.log('VITE_SUPABASE_URL defined:', !!supabaseUrl);
-  console.log('VITE_SUPABASE_ANON_KEY defined:', !!supabaseAnonKey);
+if (!import.meta.env.VITE_SUPABASE_URL) {
+  console.warn('[Estrella Delivery] Usando credenciales de respaldo (Vercel env vars no detectadas)');
 }
 
-export const supabase = createClient(supabaseUrl || 'https://placeholder-to-avoid-crash.supabase.co', supabaseAnonKey || 'placeholder');
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // ==================== CLIENTES ====================
 
