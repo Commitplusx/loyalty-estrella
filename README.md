@@ -152,4 +152,5 @@ npm run preview
 
 ## Licencia
 
-MIT - Libre para usar y modificar.
+---
+*Último despliegue: 2026-04-07*
