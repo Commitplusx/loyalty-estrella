@@ -7,7 +7,7 @@ Sistema profesional de puntos para delivery con QR, horarios de atención y hora
 - **Sistema de Puntos**: Por cada 5 envíos, el 6to es gratis
 - **Códigos QR**: Cada cliente tiene un QR único para escanear
 - **Panel de Administrador**: Solo tú puedes registrar clientes y sumar puntos
-- **Hora Feliz**: Martes y Viernes de 5-7pm, envíos a $35
+- **Hora Feliz**: Lunes, Miércoles y Sábado de 5-8pm, envíos a $35
 - **Horario de Atención**: Lunes a Domingo, 9am a 10pm
 - **Tiempo Real**: Actualización en tiempo real con Supabase
 - **100% Responsive**: Funciona perfecto en móvil, tablet y desktop
@@ -113,12 +113,12 @@ src/
 ## Precios
 
 - **Precio normal**: $50 por envío
-- **Hora feliz** (Martes y Viernes 5-7pm): $35 por envío
+- **Hora feliz** (Lunes, Miércoles y Sábado 5-8pm): $35 por envío
 
 ## Horarios
 
 - **Lunes a Domingo**: 9:00 AM - 10:00 PM
-- **Hora feliz**: Martes y Viernes, 5:00 PM - 7:00 PM
+- **Hora feliz**: Lunes, Miércoles y Sábado, 5:00 PM - 8:00 PM
 
 ## Scripts
 

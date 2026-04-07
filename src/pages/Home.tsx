@@ -419,8 +419,8 @@ export function Home() {
               <h2 className="text-3xl sm:text-4xl font-black text-white mb-4">¡Hora Feliz! 🎉</h2>
 
               <p className="text-lg text-gray-400 mb-8 leading-relaxed">
-                Martes y Viernes de{' '}
-                <strong className="text-amber-400">5:00 PM a 7:00 PM</strong>,
+                Lunes, Miércoles y Sábados de{' '}
+                <strong className="text-amber-400">5:00 PM a 8:00 PM</strong>,
                 todos los envíos cuestan solo{' '}
                 <strong className="text-5xl font-black bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">$35</strong>
               </p>

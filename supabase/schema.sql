@@ -173,8 +173,9 @@ VALUES (
         {"dia": 6, "nombre": "Sábado", "abierto": true, "hora_apertura": "09:00", "hora_cierre": "22:00"}
     ]'::jsonb,
     '[
-        {"dia": 2, "nombre": "Martes", "hora_inicio": "17:00", "hora_fin": "19:00", "precio_promocional": 35, "activo": true},
-        {"dia": 5, "nombre": "Viernes", "hora_inicio": "17:00", "hora_fin": "19:00", "precio_promocional": 35, "activo": true}
+        {"dia": 1, "nombre": "Lunes", "hora_inicio": "17:00", "hora_fin": "20:00", "precio_promocional": 35, "activo": true},
+        {"dia": 3, "nombre": "Miércoles", "hora_inicio": "17:00", "hora_fin": "20:00", "precio_promocional": 35, "activo": true},
+        {"dia": 6, "nombre": "Sábado", "hora_inicio": "17:00", "hora_fin": "20:00", "precio_promocional": 35, "activo": true}
     ]'::jsonb,
     '{"whatsapp": "1234567890", "telefono": "+1 234 567 890", "precio_normal": 50}'::jsonb
 ) ON CONFLICT (id) DO NOTHING;

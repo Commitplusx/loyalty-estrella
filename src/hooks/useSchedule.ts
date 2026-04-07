@@ -16,18 +16,26 @@ const HORARIOS_ATENCION: HorarioAtencion[] = [
 // Configuración de horas felices
 const HORAS_FELICES: HoraFeliz[] = [
   { 
-    dia: 2, // Martes
-    nombre: 'Martes', 
+    dia: 1, // Lunes
+    nombre: 'Lunes', 
     hora_inicio: '17:00', 
-    hora_fin: '19:00', 
+    hora_fin: '20:00', 
     precio_promocional: 35, 
     activo: true 
   },
   { 
-    dia: 5, // Viernes
-    nombre: 'Viernes', 
+    dia: 3, // Miércoles
+    nombre: 'Miércoles', 
     hora_inicio: '17:00', 
-    hora_fin: '19:00', 
+    hora_fin: '20:00', 
+    precio_promocional: 35, 
+    activo: true 
+  },
+  { 
+    dia: 6, // Sábado
+    nombre: 'Sábado', 
+    hora_inicio: '17:00', 
+    hora_fin: '20:00', 
     precio_promocional: 35, 
     activo: true 
   },

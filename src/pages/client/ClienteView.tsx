@@ -406,7 +406,7 @@ export function ClienteView() {
                   </div>
                   <div>
                     <p className="font-bold text-gray-900">Hora Feliz</p>
-                    <p className="text-sm text-gray-500">Martes y Viernes $35</p>
+                    <p className="text-sm text-gray-500">Lun, Mié y Sáb $35</p>
                   </div>
                 </CardContent>
               </Card>
