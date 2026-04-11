@@ -4,16 +4,25 @@
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS pedidos (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  cliente_tel   TEXT NOT NULL,          -- número 10 dígitos del cliente (sin prefijo)
-  repartidor_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  descripcion   TEXT NOT NULL,
-  direccion     TEXT,
-  estado        TEXT NOT NULL DEFAULT 'asignado'
-                  CHECK (estado IN ('asignado', 'recibido', 'en_camino', 'entregado')),
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  cliente_tel    TEXT NOT NULL,
+  cliente_nombre TEXT,                   -- nombre del cliente (opcional)
+  restaurante    TEXT,                   -- restaurante de donde viene el pedido
+  repartidor_id  UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  descripcion    TEXT NOT NULL,
+  direccion      TEXT,
+  estado         TEXT NOT NULL DEFAULT 'asignado'
+                   CHECK (estado IN ('asignado', 'recibido', 'en_camino', 'entregado')),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Migración para tablas existentes (sin error si ya existen)
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS cliente_nombre TEXT;
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS restaurante TEXT;
+ALTER TABLE pedidos DROP CONSTRAINT IF EXISTS pedidos_repartidor_id_fkey;
+ALTER TABLE pedidos ADD CONSTRAINT pedidos_repartidor_id_fkey
+  FOREIGN KEY (repartidor_id) REFERENCES auth.users(id) ON DELETE SET NULL;
 
 -- Índices de rendimiento
 CREATE INDEX IF NOT EXISTS pedidos_repartidor_idx ON pedidos(repartidor_id);

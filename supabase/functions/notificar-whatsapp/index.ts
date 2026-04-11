@@ -46,26 +46,35 @@ async function sendWhatsApp(to: string, body: string): Promise<void> {
 
 // ── Mensajes por estado ──────────────────────────────────────────────────────
 
-function mensajeCliente(estado: string, descripcion: string): string | null {
+function mensajeCliente(estado: string, descripcion: string, clienteNombre?: string): string | null {
+  const saludo = clienteNombre ? `Hola *${clienteNombre}* 👋` : 'Hola 👋'
   switch (estado) {
     case 'recibido':
-      return `🛵 *Estrella Delivery* — Tu pedido fue recibido por el repartidor.\n📦 *${descripcion}*\n\nEstamos en camino pronto.`
+      return `🛵 *Estrella Delivery*\n${saludo}, tu pedido fue recibido por el repartidor.\n📦 *${descripcion}*\n\nEn camino muy pronto.`
     case 'en_camino':
-      return `🚀 *Estrella Delivery* — ¡Tu pedido está en camino!\n📦 *${descripcion}*\n\nEspéralo muy pronto.`
+      return `🚀 *Estrella Delivery*\n${saludo}, ¡tu pedido está en camino!\n📦 *${descripcion}*\n\nEspéralo muy pronto.`
     case 'entregado':
-      return `✅ *Estrella Delivery* — ¡Tu pedido fue entregado!\n📦 *${descripcion}*\n\n¡Gracias por preferirnos! 🌟`
+      return `✅ *Estrella Delivery*\n${saludo}, ¡tu pedido fue entregado!\n📦 *${descripcion}*\n\n¡Gracias por preferirnos! 🌟`
     default:
       return null
   }
 }
 
-function mensajeRepartidor(pedidoId: string, descripcion: string, direccion: string | null): string {
+function mensajeRepartidor(
+  pedidoId: string,
+  descripcion: string,
+  direccion: string | null,
+  restaurante: string | null,
+  clienteNombre: string | null,
+): string {
   const link = `${BASE_LINK}/${pedidoId}`
   return [
     `📦 *Nuevo Pedido Asignado — Estrella Delivery*`,
     ``,
-    `*Pedido:* ${descripcion}`,
-    direccion ? `*Dirección:* ${direccion}` : null,
+    restaurante ? `🍽️ *Restaurante:* ${restaurante}` : null,
+    clienteNombre ? `👤 *Cliente:* ${clienteNombre}` : null,
+    `📝 *Pedido:* ${descripcion}`,
+    direccion ? `📍 *Dirección:* ${direccion}` : null,
     ``,
     `Toca el link para ver los detalles y actualizar el estado:`,
     link,
@@ -118,7 +127,13 @@ serve(async (req: Request) => {
         .maybeSingle()
 
       if (rep?.telefono) {
-        const msg = mensajeRepartidor(pedido_id, pedido.descripcion, pedido.direccion)
+        const msg = mensajeRepartidor(
+          pedido_id,
+          pedido.descripcion,
+          pedido.direccion ?? null,
+          pedido.restaurante ?? null,
+          pedido.cliente_nombre ?? null,
+        )
         await sendWhatsApp(formatTel(rep.telefono), msg)
         results.push(`✅ WhatsApp enviado al repartidor (${rep.telefono})`)
       } else {
@@ -126,7 +141,7 @@ serve(async (req: Request) => {
       }
     } else {
       // Notificar al cliente
-      const msg = mensajeCliente(tipo, pedido.descripcion)
+      const msg = mensajeCliente(tipo, pedido.descripcion, pedido.cliente_nombre ?? undefined)
       if (msg && pedido.cliente_tel) {
         await sendWhatsApp(formatTel(pedido.cliente_tel), msg)
         results.push(`✅ WhatsApp enviado al cliente (${pedido.cliente_tel})`)
