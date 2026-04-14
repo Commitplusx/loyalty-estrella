@@ -1,0 +1,130 @@
+// ══════════════════════════════════════════════════════════════════════════════
+// db.ts — Helpers reutilizables para queries a Supabase
+// ══════════════════════════════════════════════════════════════════════════════
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+type SupabaseClient = ReturnType<typeof createClient>
+
+export interface PedidoData {
+  clienteTel: string | null
+  clienteNombre: string | null
+  restaurante: string | null
+  descripcion: string
+  direccion: string | null
+  repartidorAlias: string | null
+  puntosASumar?: number
+  montoSaldo?: number
+}
+
+// ── Normalizar teléfono a 10 dígitos ─────────────────────────────────────────
+export function extract10Digits(phone: string): string {
+  return phone.replace(/\D/g, '').slice(-10)
+}
+
+// ── Buscar repartidor por alias o nombre ──────────────────────────────────────
+export async function buscarRepartidor(supabase: SupabaseClient, alias: string | null) {
+  if (!alias) return null
+  const cleanAlias = alias.trim().split(' ')[0]
+  const { data } = await supabase
+    .from('repartidores')
+    .select('id, user_id, telefono, nombre')
+    .or(`alias.ilike.%${cleanAlias}%,nombre.ilike.%${cleanAlias}%`)
+    .eq('activo', true)
+    .limit(1)
+    .maybeSingle()
+  return data
+}
+
+// ── Crear pedido en DB y lanzar notificaciones ────────────────────────────────
+export async function crearPedidoDesdeBot(
+  supabase: SupabaseClient,
+  datos: PedidoData,
+  lat?: number,
+  lng?: number,
+  messageId?: string,
+): Promise<{ ok: boolean; pedidoId?: string; error?: string; repartidorInfo?: string }> {
+  try {
+    const rep = await buscarRepartidor(supabase, datos.repartidorAlias)
+    
+    // BUG FIX: Si el admin especificó un nombre pero no se encontró, error. No crear "pendiente".
+    if (datos.repartidorAlias && !rep) {
+      return { ok: false, error: `Repartidor "${datos.repartidorAlias}" no encontrado en el equipo activo.` }
+    }
+
+    const repartidorInfo = rep ? datos.repartidorAlias! : ''
+
+    const insertData: Record<string, unknown> = {
+      cliente_tel: datos.clienteTel ?? '0000000000',
+      descripcion: datos.descripcion,
+    }
+    if (datos.clienteNombre) insertData.cliente_nombre = datos.clienteNombre
+    if (datos.restaurante)   insertData.restaurante = datos.restaurante
+    if (datos.direccion)     insertData.direccion = datos.direccion
+    if (lat !== undefined)   insertData.lat = lat
+    if (lng !== undefined)   insertData.lng = lng
+    if (messageId)           insertData.wb_message_id = messageId
+    if (rep?.user_id)        insertData.repartidor_id = rep.user_id
+
+    const { data: inserted, error } = await supabase
+      .from('pedidos')
+      .insert(insertData)
+      .select('id')
+      .single()
+
+    if (error) throw error
+
+    const pedidoId = inserted.id as string
+
+    if (rep?.telefono) {
+      const invokeRes = await supabase.functions.invoke('notificar-whatsapp', {
+        body: { pedido_id: pedidoId, tipo: 'asignacion', repartidor_tel: rep.telefono },
+      })
+      if (invokeRes.error) console.error('[NOTIFICACIÓN] Error:', invokeRes.error)
+    }
+
+    if (datos.clienteTel) {
+      await supabase.functions.invoke('notificar-whatsapp', {
+        body: { pedido_id: pedidoId, tipo: 'creado' },
+      })
+    }
+
+    return { ok: true, pedidoId, repartidorInfo }
+  } catch (e: any) {
+    const msg = e?.message || String(e)
+    console.error('Error en crearPedidoDesdeBot:', e)
+    if (msg.includes('unique') || msg.includes('duplicate')) return { ok: true }
+    return { ok: false, error: msg }
+  }
+}
+
+// ── Guardar / limpiar memoria conversacional ──────────────────────────────────
+export async function guardarMemoria(supabase: SupabaseClient, phone: string, history: any[]) {
+  try {
+    // GC (Garbage Collection): Mantener solo últimos 35 items para prevenir DB bloating + AI limits
+    const safeHistory = history.length > 35 ? history.slice(-35) : history
+    await supabase.from('bot_memory').upsert({
+      phone: extract10Digits(phone),
+      history: safeHistory,
+      updated_at: new Date().toISOString(),
+    })
+  } catch (e) {
+    console.warn('Fallo guardando memoria:', e)
+  }
+}
+
+export async function limpiarMemoria(supabase: SupabaseClient, phone: string) {
+  try {
+    await supabase.from('bot_memory').upsert({
+      phone: extract10Digits(phone),
+      history: [],
+      updated_at: new Date().toISOString(),
+    })
+  } catch (_) { /* silencioso */ }
+}
+
+// ── Barra ASCII para reportes ─────────────────────────────────────────────────
+export function barChart(label: string, value: number, max: number, width = 10): string {
+  const filled = max > 0 ? Math.round((value / max) * width) : 0
+  return `${label.padEnd(12)} |${'█'.repeat(filled)}${'░'.repeat(width - filled)}| ${value}`
+}

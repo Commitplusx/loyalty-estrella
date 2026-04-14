@@ -1,278 +1,148 @@
 // supabase/functions/whatsapp-bot/index.ts
-// WhatsApp AI Bot — Edge Function
-// Recibe mensajes del admin vía webhook de Meta,
-// usa Gemini para extraer datos del pedido,
-// crea el pedido en Supabase y notifica al repartidor.
-
+// WhatsApp AI Bot — Edge Function (Modular Architecture)
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { GoogleGenerativeAI } from 'https://esm.sh/@google/generative-ai@0.2.0'
 
-// ── Env vars ────────────────────────────────────────────────────────────────
-const WA_TOKEN       = Deno.env.get('WHATSAPP_TOKEN')!
-const WA_PHONE_ID    = Deno.env.get('WHATSAPP_PHONE_ID')!
-const WA_VERIFY_TOKEN = Deno.env.get('WA_VERIFY_TOKEN') ?? 'estrella_bot_secret'
-const SUPABASE_URL   = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')!
-// Número del admin en formato 52XXXXXXXXXX (sin +)
-// Si está vacío, acepta mensajes de cualquier número (solo para desarrollo)
-const ADMIN_PHONE    = Deno.env.get('ADMIN_PHONE') ?? ''
+import { sendWA, sendInteractiveButton } from './whatsapp.ts'
+import { extract10Digits } from './db.ts'
+import { handleRepButtons, handleRepMessage } from './rep-handler.ts'
+import { handleAdminGPS, handleAdminAssignRest, handleAdminMessage } from './admin-handler.ts'
+import { handleRestaurantPortal } from './restaurant-portal.ts'
 
-const BASE_LINK = 'https://www.app-estrella.shop/pedido'
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
+const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const ADMIN_PHONES_ENV = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHONE') ?? ''
 
-// ── Helper: enviar WhatsApp ──────────────────────────────────────────────────
-async function sendWA(to: string, body: string): Promise<void> {
-  const res = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${WA_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to,
-      type: 'text',
-      text: { preview_url: true, body },
-    }),
-  })
-  if (!res.ok) {
-    const err = await res.text()
-    console.error('WA Error:', err)
-  }
-}
-
-// ── Gemini: extrae JSON estructurado del texto ───────────────────────────────
-interface PedidoData {
-  clienteTel: string | null
-  clienteNombre: string | null
-  restaurante: string | null
-  descripcion: string
-  direccion: string | null
-  repartidorAlias: string | null
-}
-
-async function extraerConGemini(texto: string): Promise<PedidoData | null> {
-  try {
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
-
-    const prompt = `Eres un asistente de logística de la empresa Estrella Delivery. 
-Tu tarea es extraer información de pedidos de mensajes de WhatsApp enviados por un administrador.
-
-Lee el siguiente mensaje y devuelve ÚNICAMENTE un objeto JSON válido (sin markdown, sin explicaciones) con exactamente este formato:
-{
-  "clienteTel": "número de 10 dígitos del cliente, solo números, null si no se menciona",
-  "clienteNombre": "nombre completo del cliente, null si no se menciona",
-  "restaurante": "nombre del restaurante de donde proviene el pedido, null si no aplica",
-  "descripcion": "descripción breve de qué contiene el pedido o a dónde va",
-  "direccion": "dirección de entrega si se menciona, null si no",
-  "repartidorAlias": "nombre o alias del repartidor a quien se asigna, null si no se menciona"
-}
-
-Reglas:
-- "clienteTel" debe ser exactamente 10 dígitos sin espacios ni guiones
-- Si el mensaje es poco claro, deduce lo más probable
-- "descripcion" nunca debe ser null, usa un resumen del mensaje
-- Responde SOLO con el JSON, sin texto adicional
-
-Mensaje del administrador:
-"${texto.replace(/"/g, "'")}"
-`
-
-    const result = await model.generateContent(prompt)
-    const text = result.response.text().trim()
-
-    // Limpiar posible markdown ```json...```
-    const clean = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
-    return JSON.parse(clean) as PedidoData
-  } catch (e) {
-    console.error('Gemini error:', e)
-    return null
-  }
-}
-
-// ── Buscar repartidor por alias o nombre ─────────────────────────────────────
-async function buscarRepartidor(supabase: ReturnType<typeof createClient>, alias: string | null) {
-  if (!alias) return null
-  const { data } = await supabase
-    .from('repartidores')
-    .select('id, user_id, telefono')
-    .or(`alias.ilike.%${alias}%,nombre.ilike.%${alias}%`)
-    .eq('activo', true)
-    .limit(1)
-    .maybeSingle()
-  return data
-}
-
-// ── Crear pedido y notificar ──────────────────────────────────────────────────
-async function crearPedidoDesdeBot(
-  supabase: ReturnType<typeof createClient>,
-  datos: PedidoData,
-  lat?: number,
-  lng?: number,
-  messageId?: string,
-  fromPhone?: string,
-): Promise<{ ok: boolean; pedidoId?: string; error?: string }> {
-  try {
-    // Buscar repartidor
-    const rep = await buscarRepartidor(supabase, datos.repartidorAlias)
-
-    const insertData: Record<string, unknown> = {
-      cliente_tel: datos.clienteTel ?? '0000000000',
-      descripcion: datos.descripcion,
-    }
-    if (datos.clienteNombre) insertData.cliente_nombre = datos.clienteNombre
-    if (datos.restaurante) insertData.restaurante = datos.restaurante
-    if (datos.direccion) insertData.direccion = datos.direccion
-    if (lat !== undefined) insertData.lat = lat
-    if (lng !== undefined) insertData.lng = lng
-    if (messageId) insertData.wb_message_id = messageId
-    if (rep?.user_id) insertData.repartidor_id = rep.user_id
-
-    const { data: inserted, error } = await supabase
-      .from('pedidos')
-      .insert(insertData)
-      .select('id')
-      .single()
-
-    if (error) throw error
-
-    const pedidoId = inserted.id as string
-
-    // Notificar al repartidor si fue asignado
-    if (rep?.telefono) {
-      await supabase.functions.invoke('notificar-whatsapp', {
-        body: { pedido_id: pedidoId, tipo: 'asignacion' },
-      })
-    }
-
-    return { ok: true, pedidoId }
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    // Si es duplicado (wb_message_id ya existe), ignorar silenciosamente
-    if (msg.includes('unique') || msg.includes('duplicate')) {
-      return { ok: true, pedidoId: undefined }
-    }
-    return { ok: false, error: msg }
-  }
-}
-
-// ── Handler principal ────────────────────────────────────────────────────────
 serve(async (req: Request) => {
-  // ── GET: verificación del webhook por Meta ──────────────────────────────
   if (req.method === 'GET') {
     const url = new URL(req.url)
-    const mode      = url.searchParams.get('hub.mode')
-    const token     = url.searchParams.get('hub.verify_token')
-    const challenge = url.searchParams.get('hub.challenge')
-
-    if (mode === 'subscribe' && token === WA_VERIFY_TOKEN) {
-      return new Response(challenge, { status: 200 })
-    }
-    return new Response('Forbidden', { status: 403 })
+    return new Response(url.searchParams.get('hub.challenge') ?? 'Forbidden', { status: url.searchParams.has('hub.challenge') ? 200 : 403 })
   }
+  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
 
-  // ── POST: mensajes entrantes ────────────────────────────────────────────
-  if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 })
-  }
-
+  let errorNotifyPhone = ''
   try {
     const body = await req.json()
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+    const messages = body?.entry?.[0]?.changes?.[0]?.value?.messages
 
-    // Extraer el mensaje del payload de Meta
-    const entry = body?.entry?.[0]
-    const change = entry?.changes?.[0]
-    const value = change?.value
-    const messages = value?.messages
-
-    if (!messages || messages.length === 0) {
-      return new Response('No messages', { status: 200 })
-    }
+    if (!messages || messages.length === 0) return new Response('No messages', { status: 200 })
 
     const msg = messages[0]
-    const fromPhone = msg.from as string  // número del remitente (sin +)
+    const fromPhone = msg.from as string
+    errorNotifyPhone = fromPhone
     const messageId = msg.id as string
+    const msgType = msg.type as string
 
-    // Filtro de seguridad: solo procesar mensajes del admin
-    if (ADMIN_PHONE && !fromPhone.includes(ADMIN_PHONE.replace(/\D/g, ''))) {
-      console.log(`Mensaje ignorado de ${fromPhone} — no es el admin (${ADMIN_PHONE})`)
+    // ── IDEMPOTENCY: Evitar duplicados de Meta ──
+    const idempotencyKey = `processed_msg:${messageId}`
+    const { data: alreadyProcessed } = await supabase.from('bot_memory').select('phone').eq('phone', idempotencyKey).maybeSingle()
+    if (alreadyProcessed) {
+      console.log(`⚠️ Mensaje duplicado ignorado: ${messageId}`)
+      return new Response('OK', { status: 200 })
+    }
+    await supabase.from('bot_memory').upsert({ phone: idempotencyKey, history: [], updated_at: new Date().toISOString() })
+
+    // BUG FIX #7: Limpiar llaves de idempotencia viejas (mayores a 1 hora) para no saturar
+    const unaHoraAtras = new Date(Date.now() - 3600 * 1000).toISOString()
+    // Borrado silencioso y asíncrono
+    supabase.from('bot_memory').delete().ilike('phone', 'processed_msg:%').lt('updated_at', unaHoraAtras).then()
+
+    // ── COMANDO SECRETO SANEAMIENTO ──
+    if (msgType === 'text' && msg.text?.body === 'SANEAMIENTO_TOTAL') {
+      const cleanPhones = async (table: string) => {
+        const { data } = await supabase.from(table).select('id, telefono')
+        for (const r of data || []) {
+          if (r.telefono && r.telefono !== r.telefono.replace(/\D/g, '')) {
+            await supabase.from(table).update({ telefono: r.telefono.replace(/\D/g, '') }).eq('id', r.id)
+          }
+        }
+      }
+      await Promise.all([cleanPhones('repartidores'), cleanPhones('restaurantes'), cleanPhones('clientes')])
+      await sendWA(fromPhone, `✅ [SISTEMA] Base de datos saneada (espacios eliminados en teléfonos).`)
       return new Response('OK', { status: 200 })
     }
 
-    const msgType = msg.type as string
-    let pedidoData: PedidoData | null = null
-    let lat: number | undefined
-    let lng: number | undefined
+    // ── IDENTIFICACIÓN DE ROLES ──
+    const from10  = extract10Digits(fromPhone)
+    const ADMIN_PHONES_LIST = ADMIN_PHONES_ENV.split(',').map(s => extract10Digits(s)).filter(Boolean)
+    const esAdmin = ADMIN_PHONES_LIST.includes(from10)
+    const admin10 = esAdmin ? from10 : (ADMIN_PHONES_LIST[0] || '')
 
-    // ── Caso 1: Ubicación GPS de WhatsApp ────────────────────────────────
-    if (msgType === 'location') {
-      lat = msg.location.latitude as number
-      lng = msg.location.longitude as number
+    // ── INTERCEPTOR DE MULTIMEDIA Y FORMATOS NO SOPORTADOS ──
+    if (['audio', 'image', 'document', 'sticker', 'video', 'voice'].includes(msgType)) {
+      if (!esAdmin) {
+        await sendWA(fromPhone, `🤖 Por favor envíanos la información únicamente en *texto*. Aún no proceso notas de voz, fotos o documentos. ¡Gracias!`)
+      }
+      return new Response('OK', { status: 200 })
+    }
 
-      // Intentamos leer el texto de contexto en el mensaje de respuesta (si hay)
-      const contextText = msg.location.name ?? msg.location.address ?? ''
+    // 1. REP BOTONES INTERACTIVOS ──
+    if (msgType === 'interactive') {
+      const buttonId = msg.interactive?.button_reply?.id as string | undefined
+      if (buttonId) await handleRepButtons(supabase, fromPhone, buttonId)
+      return new Response('OK', { status: 200 })
+    }
 
-      pedidoData = {
-        clienteTel: null,
-        clienteNombre: null,
-        restaurante: null,
-        descripcion: contextText || `Entrega en coordenadas ${lat.toFixed(5)}, ${lng.toFixed(5)}`,
-        direccion: msg.location.address ?? null,
-        repartidorAlias: null,
+    // 2. ADMIN FLOW ──
+    if (esAdmin) {
+      // 2.A GPS Directo
+      if (msgType === 'location') {
+        return await handleAdminGPS(supabase, fromPhone, admin10, msg.location.latitude, msg.location.longitude, msg.location.name ?? msg.location.address ?? '', messageId)
+      }
+      if (msgType === 'text') {
+        const texto = msg.text.body as string
+        if (texto.toLowerCase() === 'debug_restaurantes') {
+           const { data } = await supabase.from('restaurantes').select('nombre, telefono, activo').limit(50)
+           if (data) await sendWA(fromPhone, `📍 *RESTAURANTES REGISTRADOS:*\n${data.map((r:any) => `- ${r.nombre}: ${r.telefono} [${r.activo?'✅':'❌'}]`).join('\n')}`)
+           return new Response('OK', { status: 200 })
+        }
+        
+        // Asignación rápida de restaurante
+        const { data: pendingMem } = await supabase.from('bot_memory').select('history').eq('phone', `admin_rest_pending_${admin10}`).maybeSingle()
+        if (pendingMem?.history?.[0]?.pedidos?.length > 0) {
+          const assignRes = await handleAdminAssignRest(supabase, fromPhone, admin10, texto, pendingMem.history[0])
+          if (assignRes) return assignRes
+        }
+
+        // Ejecutar agente DeepSeek Admin
+        return await handleAdminMessage(supabase, fromPhone, messageId, texto)
       }
     }
 
-    // ── Caso 2: Texto libre → Gemini ─────────────────────────────────────
-    else if (msgType === 'text') {
-      const texto = msg.text.body as string
-      pedidoData = await extraerConGemini(texto)
+    // 3. RESTAURANT PORTAL ──
+    if (!esAdmin) {
+      const portalResponse = await handleRestaurantPortal(supabase, fromPhone, from10, admin10, admin10, msgType, msg, sendWA, sendInteractiveButton)
+      if (portalResponse) return portalResponse
     }
 
-    // ── Caso 3: Imagen / audio / etc. → ignorar ──────────────────────────
-    else {
-      return new Response('OK — tipo de mensaje no soportado', { status: 200 })
+    // 4. REP FLOW O PUBLICO ──
+    if (!esAdmin && msgType === 'text') {
+      const { data: isRep } = await supabase.from('repartidores').select('id, user_id, nombre, alias').ilike('telefono', `%${from10}%`).maybeSingle()
+      if (isRep) return await handleRepMessage(supabase, fromPhone, from10, msg.text.body as string, isRep)
     }
 
-    if (!pedidoData) {
-      // Gemini falló, informar al admin
-      await sendWA(fromPhone, '❌ No pude entender el pedido. Por favor escribe los datos más claramente:\n- Nombre y teléfono del cliente\n- Restaurante (si aplica)\n- Descripción del pedido\n- Dirección de entrega\n- Nombre del repartidor')
-      return new Response('OK', { status: 200 })
-    }
-
-    // Crear el pedido
-    const result = await crearPedidoDesdeBot(supabase, pedidoData, lat, lng, messageId, fromPhone)
-
-    if (result.ok && result.pedidoId) {
-      const link = `${BASE_LINK}/${result.pedidoId}`
-      const hasGps = lat !== undefined ? `\n📍 GPS: https://maps.google.com/?q=${lat},${lng}` : ''
-      const repInfo = pedidoData.repartidorAlias ? `\n🚴 Asignado a: ${pedidoData.repartidorAlias}` : '\n⚠️ Sin repartidor asignado'
-
-      await sendWA(fromPhone,
-        `✅ *Pedido creado correctamente*${repInfo}\n` +
-        `📦 ${pedidoData.descripcion}` +
-        (pedidoData.clienteNombre ? `\n👤 ${pedidoData.clienteNombre}` : '') +
-        (pedidoData.clienteTel ? ` (${pedidoData.clienteTel})` : '') +
-        (pedidoData.restaurante ? `\n🍽️ ${pedidoData.restaurante}` : '') +
-        (pedidoData.direccion ? `\n📍 ${pedidoData.direccion}` : '') +
-        hasGps +
-        `\n\n🔗 ${link}`
-      )
-    } else if (!result.ok) {
-      await sendWA(fromPhone, `❌ Error al crear el pedido: ${result.error}`)
+    // 5. PUBLICO BIENVENIDA O REPARITDOR MULTIMEDIA ──
+    if (!esAdmin) {
+       const { data: isRep } = await supabase.from('repartidores').select('nombre').ilike('telefono', `%${from10}%`).maybeSingle()
+       if (isRep) {
+          await sendWA(fromPhone, `🤖 Hola ${isRep.nombre}.\nRecuerda usar los botones para avanzar pedidos o enviarme mensajes de texto sin emojis.`)
+       } else {
+          const profileName = body?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.profile?.name
+          await sendWA(fromPhone, `¡Hola *${profileName||''}*! 👋 Soy el asistente de Estrella Delivery.\n\nPara pedir un servicio, escríbele al administrador: wa.me/52${admin10}\n\n¡Gracias! ⭐`)
+       }
+       return new Response('OK', { status: 200 })
     }
 
     return new Response('OK', { status: 200 })
-
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    console.error('Error en whatsapp-bot:', msg)
-    return new Response(JSON.stringify({ error: msg }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    console.error('Error root:', e)
+    if (errorNotifyPhone) {
+      try {
+        await sendWA(errorNotifyPhone, `⚠️ *[SISTEMA]*: Hubo un fallo interno grave procesando esa solicitud. Detalle: ${e instanceof Error ? e.message : String(e)}`)
+      } catch (err2) { console.error('Fallback fail:', err2) }
+    }
+    // Siempre retornar 200 a Meta
+    return new Response('Error handled cleanly', { status: 200 })
   }
 })

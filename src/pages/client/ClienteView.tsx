@@ -60,6 +60,31 @@ export function ClienteView() {
     }
   }, [cliente]);
 
+  // DEEP LINKING: Detectar teléfono en la URL (?tel=9611234567)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const telParam = params.get('tel');
+    if (telParam && telParam.length >= 10) {
+      const cleanTel = telParam.replace(/\D/g, '').slice(-10);
+      setTelefono(cleanTel);
+      
+      // Ejecutar búsqueda automática
+      setViewState('loading');
+      getClienteByTelefono(cleanTel).then(async (data) => {
+        if (data && !('found' in data)) {
+          const histData = await getHistorialCliente(data.id);
+          setHistorial(histData);
+          setCliente(data);
+          setViewState('result');
+        } else if (data && 'found' in data) {
+          setViewState('error-not-found');
+        } else {
+          setViewState('error-generic');
+        }
+      });
+    }
+  }, []);
+
   // Suscripción en tiempo real
   const clienteId = cliente?.id;
   useEffect(() => {

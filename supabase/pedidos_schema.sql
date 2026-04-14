@@ -31,6 +31,19 @@ ALTER TABLE pedidos DROP CONSTRAINT IF EXISTS pedidos_repartidor_id_fkey;
 ALTER TABLE pedidos ADD CONSTRAINT pedidos_repartidor_id_fkey
   FOREIGN KEY (repartidor_id) REFERENCES auth.users(id) ON DELETE SET NULL;
 
+-- Memoria del bot de WhatsApp para contexto conversacional
+CREATE TABLE IF NOT EXISTS bot_memory (
+  phone TEXT PRIMARY KEY,
+  history JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Sistema de Puntos de Lealtad AI
+CREATE TABLE IF NOT EXISTS loyalty_points (
+  phone TEXT PRIMARY KEY,
+  puntos INT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 -- Índices de rendimiento
 CREATE INDEX IF NOT EXISTS pedidos_repartidor_idx ON pedidos(repartidor_id);
 CREATE INDEX IF NOT EXISTS pedidos_estado_idx ON pedidos(estado);
