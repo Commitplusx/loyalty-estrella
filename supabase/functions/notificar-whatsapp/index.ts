@@ -108,7 +108,7 @@ async function notificarCliente(estado: string, tel: string, desc: string, nombr
     case 'aceptado': {
       // Plantilla: ¡Hola {{1}}! 👋 Tu pedido de *{{2}}* ya fue asignado a nuestro repartidor: *{{3}}*. 🛵
       const components = [
-        { type: 'header', parameters: [{ type: 'image', image: { link: 'https://www.app-estrella.shop/logo.png' } }] },
+        { type: 'header', parameters: [{ type: 'image', image: { link: 'https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png' } }] },
         { type: 'body', parameters: [
           { type: 'text', text: nombreC }, // {{1}}
           { type: 'text', text: restC },   // {{2}}
