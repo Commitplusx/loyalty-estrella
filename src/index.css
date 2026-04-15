@@ -36,34 +36,34 @@
     --sidebar-ring: 25 95% 53%;
   }
 
-  /* Tokens para modo oscuro — mismos nombres, valores más profundos */
+  /* Tokens para modo oscuro — Rich Midnight Slate (matching Flutter) */
   .dark {
-    --background: 222 25% 10%;
-    --foreground: 210 20% 92%;
-    --card: 222 25% 13%;
-    --card-foreground: 210 20% 92%;
-    --popover: 222 25% 13%;
-    --popover-foreground: 210 20% 92%;
-    --primary: 25 95% 53%;
+    --background: 240 20% 5%;    /* #0A0A0F */
+    --foreground: 210 20% 95%;   
+    --card: 240 18% 9%;          /* #12121A */
+    --card-foreground: 210 20% 95%;
+    --popover: 240 18% 9%;
+    --popover-foreground: 210 20% 95%;
+    --primary: 25 95% 53%;       /* Orange 500 */
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 40% 30%;
-    --secondary-foreground: 210 20% 92%;
-    --muted: 222 25% 18%;
-    --muted-foreground: 220 10% 60%;
-    --accent: 45 90% 50%;
-    --accent-foreground: 222 25% 10%;
+    --secondary: 38 92% 50%;     /* Amber 500 */
+    --secondary-foreground: 240 20% 5%;
+    --muted: 240 19% 15%;        /* #1F1F2E */
+    --muted-foreground: 240 10% 70%;
+    --accent: 38 92% 50%;
+    --accent-foreground: 240 20% 5%;
     --destructive: 0 72% 50%;
     --destructive-foreground: 0 0% 98%;
-    --border: 222 25% 20%;
-    --input: 222 25% 20%;
+    --border: 240 19% 15%;       /* #1F1F2E */
+    --input: 240 19% 15%;
     --ring: 25 95% 53%;
-    --sidebar-background: 222 25% 8%;
-    --sidebar-foreground: 210 20% 85%;
+    --sidebar-background: 240 18% 9%;
+    --sidebar-foreground: 210 20% 95%;
     --sidebar-primary: 25 95% 53%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 25% 14%;
-    --sidebar-accent-foreground: 210 20% 92%;
-    --sidebar-border: 222 25% 18%;
+    --sidebar-accent: 240 19% 15%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 240 19% 15%;
     --sidebar-ring: 25 95% 53%;
   }
 }

@@ -19,9 +19,16 @@ function AnimatedRoutes() {
   );
 }
 
+import { useState } from 'react';
+import { SplashScreen } from '@/components/SplashScreen';
+
 function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
   return (
     <BrowserRouter>
+      {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
+      
       <FlashBanner />
       <AnimatedRoutes />
       <Toaster position="top-center" />

@@ -273,11 +273,10 @@ export function ClienteView() {
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 1.02, y: -10 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      style={{ willChange: "transform, opacity" }}
-      className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-blue-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 transition-colors duration-300"
+      className="min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-slate-100 dark:from-background dark:via-card dark:to-background transition-colors duration-300"
     >
       {/* Header */}
-      <header className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm shadow-sm dark:shadow-gray-800 sticky top-0 z-50 border-b border-transparent dark:border-gray-800">
+      <header className="bg-white/90 dark:bg-background/90 backdrop-blur-md shadow-sm dark:shadow-none sticky top-0 z-50 border-b border-transparent dark:border-border">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2">
@@ -303,7 +302,7 @@ export function ClienteView() {
             <button
               onClick={toggle}
               aria-label="Cambiar tema"
-              className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 hover:bg-orange-50 dark:hover:bg-gray-700 transition-colors"
+              className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-100 dark:bg-card hover:bg-orange-50 dark:hover:bg-muted transition-colors"
             >
               {isDark
                 ? <Sun className="w-4 h-4 text-amber-400" />
@@ -317,7 +316,7 @@ export function ClienteView() {
                 variant="ghost"
                 size="sm"
                 onClick={handleReset}
-                className="text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950 ml-1 text-xs gap-1"
+                className="text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-destructive/10 dark:hover:text-red-400 ml-1 text-xs gap-1"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
                 Cerrar sesión
@@ -425,10 +424,10 @@ export function ClienteView() {
               <AuthorityCounter />
 
               <div className="text-center lg:text-left">
-                <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+                <h1 className="text-3xl lg:text-4xl font-bold text-foreground mb-2">
                   Consulta tus <span className="text-gradient">puntos</span>
                 </h1>
-                <p className="text-gray-600 text-lg">Ingresa tu número para ver tu fidelidad</p>
+                <p className="text-muted-foreground text-lg">Ingresa tu número para ver tu fidelidad</p>
               </div>
 
               <PromosBanner />
@@ -437,9 +436,9 @@ export function ClienteView() {
               <CardContent className="p-6">
                 <form onSubmit={handleBuscar} className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">Número de teléfono</label>
+                    <label className="text-sm font-medium text-foreground">Número de teléfono</label>
                     <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                       <Input
                         ref={inputRef}
                         value={telefono}
@@ -484,8 +483,8 @@ export function ClienteView() {
                       <Gift className="w-6 h-6 text-orange-500" />
                     </div>
                     <div>
-                      <p className="font-bold text-gray-900">5 = 1 Gratis</p>
-                      <p className="text-sm text-gray-500">Por cada 5 envíos</p>
+                      <p className="font-bold text-foreground">5 = 1 Gratis</p>
+                      <p className="text-sm text-muted-foreground">Por cada 5 envíos</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -495,8 +494,8 @@ export function ClienteView() {
                       <Sparkles className="w-6 h-6 text-amber-500" />
                     </div>
                     <div>
-                      <p className="font-bold text-gray-900">Hora Feliz</p>
-                      <p className="text-sm text-gray-500">Lun, Mié y Sáb $35</p>
+                      <p className="font-bold text-foreground">Hora Feliz</p>
+                      <p className="text-sm text-muted-foreground">Lun, Mié y Sáb $35</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -507,22 +506,22 @@ export function ClienteView() {
                 <CardContent className="p-6">
                   <div className="flex items-center gap-2 mb-6">
                     <Clock className="w-6 h-6 text-orange-500" />
-                    <h3 className="font-bold text-xl text-gray-900">Horario de Atención</h3>
+                    <h3 className="font-bold text-xl text-foreground">Horario de Atención</h3>
                   </div>
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl mb-4">
-                    <span className="text-gray-700 font-medium">Lunes a Domingo</span>
-                    <span className="font-bold text-gray-900">9:00 AM - 10:00 PM</span>
+                  <div className="flex items-center justify-between p-4 bg-muted/30 dark:bg-muted/50 rounded-xl mb-4">
+                    <span className="text-muted-foreground font-medium">Lunes a Domingo</span>
+                    <span className="font-bold text-foreground">9:00 AM - 10:00 PM</span>
                   </div>
                   {horasFelices.filter(h => h.activo).length > 0 && (
                     <div className="p-5 bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl border border-orange-100/50">
                       <div className="flex items-center gap-2 mb-4">
                         <Sparkles className="w-5 h-5 text-amber-500" />
-                        <h4 className="font-bold text-lg text-gray-900">Horas Felices - Envío a $35</h4>
+                        <h4 className="font-bold text-lg text-foreground">Horas Felices - Envío a $35</h4>
                       </div>
                       <div className="grid sm:grid-cols-2 gap-3">
                         {horasFelices.filter(h => h.activo).map((hora) => (
-                          <div key={hora.dia} className="flex items-center justify-between p-3 bg-white rounded-xl shadow-sm">
-                            <span className="text-gray-700 font-medium">{hora.nombre}</span>
+                          <div key={hora.dia} className="flex items-center justify-between p-3 bg-card rounded-xl shadow-sm">
+                            <span className="text-muted-foreground font-medium">{hora.nombre}</span>
                             <span className="font-bold text-amber-600">
                               {formatTime(hora.hora_inicio)} - {formatTime(hora.hora_fin)}
                             </span>
