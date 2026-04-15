@@ -259,6 +259,8 @@ export async function handleAdminMessage(
       }
 
       // 1. Verificar si ya existe
+      // URL canónica que identifica al cliente en la Web y se almacena en DB
+      const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
       const { data: existente } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
       
       let clientId = existente?.id
@@ -266,17 +268,18 @@ export async function handleAdminMessage(
         await sendWA(fromPhone, `ℹ️ El cliente *${existente.nombre}* ya estaba registrado. Actualizando datos...`)
         await supabase.from('clientes').update({
           nombre: d.clienteNombre || existente.nombre,
-          colonia: d.colonia || undefined
+          colonia: d.colonia || undefined,
+          // Asegurar que el qr_code apunte a la URL canónica correcta
+          qr_code: loyaltyUrl
         }).eq('id', existente.id)
       } else {
-        // 2. Crear nuevo cliente
-        const qrContent = `https://www.app-estrella.shop/loyalty/${tel10}`
+        // 2. Crear nuevo cliente — qr_code = URL canónica que la Web renderiza
         const { data: nuevo, error } = await supabase.from('clientes').insert({
           nombre: d.clienteNombre || 'Cliente Nuevo',
           telefono: tel10,
           colonia: d.colonia || null,
           puntos: d.puntosASumar || 0,
-          qr_code: qrContent
+          qr_code: loyaltyUrl // <<< MISMO valor que usa QRGenerator.tsx
         }).select().single()
         
         if (error) {
@@ -286,17 +289,20 @@ export async function handleAdminMessage(
         clientId = nuevo.id
       }
 
-      // 3. Generar QR de Bienvenida (con autocompletado tel)
-      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https://www.app-estrella.shop/loyalty/?tel=${tel10}`
+      // 3. La imagen QR que va en el header de la plantilla:
+      //    Codificamos la URL canónica de lealtad en un QR visual via QR Server
+      //    Mismo contenido que la Web muestra al cliente en la App
+      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data=${encodeURIComponent(loyaltyUrl)}`
       
-      // 4. Enviar vía PLANTILLA META (Para abrir ventana de 24h)
-      // Plantilla: estrella_loyalty_welcome
-      // {{1}}: Teléfono, {{2}}: Puntos
+      // 4. Enviar vía PLANTILLA META (estrella_loyalty_welcome)
+      // Header: imagen QR ({{image}})
+      // Body {{1}}: Nombre del cliente
+      // Body {{2}}: Puntos iniciales
       await sendWATemplate(
         `52${tel10}`, 
         'estrella_loyalty_welcome', 
-        [tel10, (d.puntosASumar || 0).toString()],
-        qrUrl
+        [d.clienteNombre || 'Cliente', (d.puntosASumar || 0).toString()],
+        qrImageUrl
       )
 
       await sendWA(fromPhone, `✅ *Cliente Registrado: ${d.clienteNombre}*\n📱 ${tel10}\n🌟 Puntos: ${d.puntosASumar || 0}\n\nSe ha enviado el QR de bienvenida vía plantilla automática.`)
