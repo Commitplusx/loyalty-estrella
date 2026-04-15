@@ -589,11 +589,11 @@ export async function handleRestaurantPortal(
 
   if (sendInteractiveButton) {
     if (fullMsg.length <= WA_INTERACTIVE_LIMIT) {
-      await sendInteractiveButton(fromPhone, fullMsg, `CONFIRMAR_PEDIDOS_REST`, `✅ Solicitar Mensajero`)
+      await sendInteractiveButton(fromPhone, fullMsg, `CONFIRMAR_PEDIDOS_REST`, `✅ Solicitar`)
     } else {
       // Resumen demasiado largo: texto plano primero, luego botón con mensaje corto
       await sendWA(fromPhone, resumenMsg)
-      await sendInteractiveButton(fromPhone, `¿Confirmas el envío de los ${pedidosAcumulados.length} pedido(s) listados arriba?`, `CONFIRMAR_PEDIDOS_REST`, `✅ Solicitar Mensajero`)
+      await sendInteractiveButton(fromPhone, `¿Confirmas el envío de los ${pedidosAcumulados.length} pedido(s) listados arriba?`, `CONFIRMAR_PEDIDOS_REST`, `✅ Solicitar`)
     }
   } else {
     await sendWA(fromPhone, (resumenMsg + `\n🔹 Escribe *"confirmar"* para solicitar al mensajero, o *"cancelar"* para reiniciar.`).substring(0, 4096))

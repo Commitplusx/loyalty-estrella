@@ -21,8 +21,48 @@ serve(async (req: Request) => {
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
 
   let errorNotifyPhone = ''
+  
+  // ── PHASE 4: Meta Webhook Validation (X-Hub-Signature-256) ──
+  const appSecret = Deno.env.get('WHATSAPP_APP_SECRET')
+  let bodyText = ''
   try {
-    const body = await req.json()
+    bodyText = await req.text()
+  } catch (e) {
+    return new Response('Bad Request Body', { status: 400 })
+  }
+
+  if (appSecret) {
+    const signature = req.headers.get('x-hub-signature-256')
+    if (!signature) {
+      console.error('⚠️ Falla de seguridad: Falta X-Hub-Signature-256')
+      return new Response('Unauthorized', { status: 401 })
+    }
+    
+    // Verificación HMAC SHA256 usando Web Crypto API
+    const encoder = new TextEncoder()
+    const key = await crypto.subtle.importKey(
+      'raw', 
+      encoder.encode(appSecret), 
+      { name: 'HMAC', hash: 'SHA-256' }, 
+      false, 
+      ['verify']
+    )
+    
+    const expectedSigHex = signature.replace('sha256=', '')
+    const expectedSigBytes = new Uint8Array(expectedSigHex.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || [])
+    
+    const isValid = await crypto.subtle.verify('HMAC', key, expectedSigBytes, encoder.encode(bodyText))
+    
+    if (!isValid) {
+      console.error('⛔ ALERTA INTENTO DE SPOOFING: La firma HASH no coincide con el payload y el SECRET.')
+      return new Response('Unauthorized', { status: 401 })
+    }
+  } else {
+    console.warn('⚠️ [SISTEMA] Securiy Alert: WHATSAPP_APP_SECRET no está configurado. El Webhook opera SIN validación criptográfica (Suceptible a Spoofing).')
+  }
+
+  try {
+    const body = JSON.parse(bodyText)
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
     const messages = body?.entry?.[0]?.changes?.[0]?.value?.messages
 
@@ -45,8 +85,8 @@ serve(async (req: Request) => {
 
     // BUG FIX #7: Limpiar llaves de idempotencia viejas (mayores a 1 hora) para no saturar
     const unaHoraAtras = new Date(Date.now() - 3600 * 1000).toISOString()
-    // Borrado silencioso y asíncrono
-    supabase.from('bot_memory').delete().ilike('phone', 'processed_msg:%').lt('updated_at', unaHoraAtras).then()
+    // Borrado asíncrono convertido a síncrono para evitar leak en el Edge Runtime de Supabase
+    await supabase.from('bot_memory').delete().ilike('phone', 'processed_msg:%').lt('updated_at', unaHoraAtras)
 
     // ── COMANDO SECRETO SANEAMIENTO ──
     if (msgType === 'text' && msg.text?.body === 'SANEAMIENTO_TOTAL') {
@@ -118,13 +158,13 @@ serve(async (req: Request) => {
 
     // 4. REP FLOW O PUBLICO ──
     if (!esAdmin && msgType === 'text') {
-      const { data: isRep } = await supabase.from('repartidores').select('id, user_id, nombre, alias').ilike('telefono', `%${from10}%`).maybeSingle()
+      const { data: isRep } = await supabase.from('repartidores').select('id, user_id, nombre, alias').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
       if (isRep) return await handleRepMessage(supabase, fromPhone, from10, msg.text.body as string, isRep)
     }
 
     // 5. PUBLICO BIENVENIDA O REPARITDOR MULTIMEDIA ──
     if (!esAdmin) {
-       const { data: isRep } = await supabase.from('repartidores').select('nombre').ilike('telefono', `%${from10}%`).maybeSingle()
+       const { data: isRep } = await supabase.from('repartidores').select('nombre').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
        if (isRep) {
           await sendWA(fromPhone, `🤖 Hola ${isRep.nombre}.\nRecuerda usar los botones para avanzar pedidos o enviarme mensajes de texto sin emojis.`)
        } else {

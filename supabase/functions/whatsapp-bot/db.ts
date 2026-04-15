@@ -18,8 +18,8 @@ export interface PedidoData {
 }
 
 // ── Normalizar teléfono a 10 dígitos ─────────────────────────────────────────
-export function extract10Digits(phone: string): string {
-  return phone.replace(/\D/g, '').slice(-10)
+export function extract10Digits(phone: string | null | undefined): string {
+  return String(phone || '').replace(/\D/g, '').slice(-10)
 }
 
 // ── Buscar repartidor por alias o nombre ──────────────────────────────────────

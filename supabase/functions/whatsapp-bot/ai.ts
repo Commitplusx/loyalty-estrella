@@ -134,7 +134,8 @@ function enforcerValidator(respuesta: AIRespuesta): AIRespuesta {
   let blocked = false
   switch (respuesta.accion) {
     case 'CREAR_PEDIDO':
-      if (!d.descripcion?.trim()) { blocked = true; respuesta.mensajeUsuario = 'Necesito saber exactamente qué productos quiere en el pedido.' }
+      if (!d.clienteTel || d.clienteTel.length !== 10) { blocked = true; respuesta.mensajeUsuario = 'Necesito el número de teléfono del cliente a 10 dígitos para crear un pedido.' }
+      else if (!d.descripcion?.trim()) { blocked = true; respuesta.mensajeUsuario = 'Necesito saber exactamente qué productos quiere en el pedido.' }
       break
     case 'SUMAR_PUNTOS': case 'BUSCAR_CLIENTE': case 'VER_HISTORIAL_CLIENTE':
     case 'MARCAR_VIP': case 'CANCELAR_PEDIDO': case 'AGREGAR_NOTA_CLIENTE':

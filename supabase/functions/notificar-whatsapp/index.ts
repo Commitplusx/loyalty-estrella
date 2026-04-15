@@ -126,7 +126,7 @@ async function notificarCliente(estado: string, tel: string, desc: string, nombr
     case 'recibido': {
       // Plantilla: ¡Buenas noticias {{1}}! 🥡 Tu repartidor *{{2}}* ya recogió tu pedido en *{{3}}* y va directo a tu domicilio. 🏠
       const components = [
-        { type: 'header', parameters: [{ type: 'image', image: { link: 'https://app-estrella.shop/logo.png' } }] },
+        { type: 'header', parameters: [{ type: 'image', image: { link: 'https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png' } }] },
         { type: 'body', parameters: [
           { type: 'text', text: nombreC }, // {{1}}
           { type: 'text', text: repC },    // {{2}}
@@ -143,7 +143,7 @@ async function notificarCliente(estado: string, tel: string, desc: string, nombr
     case 'entregado': {
       // Plantilla: Hola {{1}} 👋, tu pedido de *{{2}}* Ha sido entregado...
       const components = [
-        { type: 'header', parameters: [{ type: 'image', image: { link: 'https://app-estrella.shop/logo.png' } }] },
+        { type: 'header', parameters: [{ type: 'image', image: { link: 'https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png' } }] },
         { type: 'body', parameters: [
           { type: 'text', text: nombreC }, // {{1}}
           { type: 'text', text: restC }    // {{2}}
@@ -222,6 +222,7 @@ serve(async (req: Request) => {
         .from('repartidores')
         .select('telefono, nombre')
         .or(`user_id.eq.${pedido.repartidor_id},telefono.ilike.%${extract10Digits(repTelefono || '')}%`)
+        .limit(1)
         .maybeSingle()
       
       if (rep) {
@@ -237,6 +238,7 @@ serve(async (req: Request) => {
           .select('direccion, lat, lng')
           .ilike('nombre', `%${pedido.restaurante}%`)
           .eq('activo', true)
+          .limit(1)
           .maybeSingle()
         
         if (rInfo) {
@@ -275,7 +277,7 @@ serve(async (req: Request) => {
       // Intentar obtener nombre del repartidor asignado para las plantillas v2
       let repNom = 'tu repartidor'
       if (pedido.repartidor_id) {
-        const { data: r } = await supabase.from('repartidores').select('nombre').eq('user_id', pedido.repartidor_id).maybeSingle()
+        const { data: r } = await supabase.from('repartidores').select('nombre').eq('user_id', pedido.repartidor_id).limit(1).maybeSingle()
         if (r?.nombre) repNom = r.nombre
       }
 

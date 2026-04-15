@@ -168,7 +168,7 @@ export async function handleAdminMessage(
     }
     case 'SUMAR_PUNTOS': {
       const tel10 = extract10Digits(d.clienteTel)
-      const { data: c } = await supabase.from('clientes').select('id, puntos').ilike('telefono', `%${tel10}%`).maybeSingle()
+      const { data: c } = await supabase.from('clientes').select('id, puntos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
       if (c) {
         const nr = (c.puntos || 0) + d.puntosASumar
         await supabase.from('clientes').update({ puntos: nr }).eq('id', c.id)
@@ -221,7 +221,7 @@ export async function handleAdminMessage(
       break
     }
     case 'BUSCAR_CLIENTE': {
-      const { data: c } = await supabase.from('clientes').select('*').ilike('telefono', `%${extract10Digits(d.clienteTel)}%`).maybeSingle()
+      const { data: c } = await supabase.from('clientes').select('*').ilike('telefono', `%${extract10Digits(d.clienteTel)}%`).limit(1).maybeSingle()
       if (c) {
         await sendWA(fromPhone, `🔍 *ENCONTRADO*\n👤 ${c.nombre}\n📱 ${c.telefono}\n⭐ Puntos: ${c.puntos}\nVIP: ${c.es_vip?'Sí':'No'}\n📝 ${c.notas_crm||'-'}`)
       } else { await sendWA(fromPhone, `🔍 No encontrado.`) }
@@ -259,7 +259,7 @@ export async function handleAdminMessage(
       }
 
       // 1. Verificar si ya existe
-      const { data: existente } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${tel10}%`).maybeSingle()
+      const { data: existente } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
       
       let clientId = existente?.id
       if (existente) {
@@ -333,7 +333,7 @@ export async function handleAdminMessage(
       break
     }
     case 'AGREGAR_NOTA_CLIENTE': {
-      const { data: cli } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${extract10Digits(d.clienteTel)}%`).maybeSingle()
+      const { data: cli } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${extract10Digits(d.clienteTel)}%`).limit(1).maybeSingle()
       if (cli) {
         await supabase.from('clientes').update({ notas_crm: d.descripcion }).eq('id', cli.id)
         await sendWA(fromPhone, `📝 *Nota a ${cli.nombre || d.clienteTel}*\n✅ Anotado.`)
@@ -341,7 +341,7 @@ export async function handleAdminMessage(
       break
     }
     case 'MARCAR_VIP': {
-      const { data: cli } = await supabase.from('clientes').select('id, nombre, es_vip').ilike('telefono', `%${extract10Digits(d.clienteTel)}%`).maybeSingle()
+      const { data: cli } = await supabase.from('clientes').select('id, nombre, es_vip').ilike('telefono', `%${extract10Digits(d.clienteTel)}%`).limit(1).maybeSingle()
       if (cli) {
         await supabase.from('clientes').update({ es_vip: !cli.es_vip }).eq('id', cli.id)
         await sendWA(fromPhone, `⭐ *VIP*\n${!cli.es_vip ? 'Es VIP' : 'Ya no es VIP'}`)
@@ -461,7 +461,7 @@ export async function handleAdminMessage(
     }
     case 'CARGAR_SALDO': {
       const tel10 = extract10Digits(d.clienteTel)
-      const { data: cli } = await supabase.from('clientes').select('id, nombre, saldo_billetera').ilike('telefono', `%${tel10}%`).maybeSingle()
+      const { data: cli } = await supabase.from('clientes').select('id, nombre, saldo_billetera').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
       if (cli) {
         const ns = (parseFloat(cli.saldo_billetera) || 0) + (d.montoSaldo || 0)
         await supabase.from('clientes').update({ saldo_billetera: ns }).eq('id', cli.id)

@@ -5,7 +5,8 @@ import { extract10Digits, guardarMemoria } from './db.ts'
 import { conversacionDeepSeek } from './ai.ts'
 
 type Supa = ReturnType<typeof createClient>
-const ADMIN_PHONE = Deno.env.get('ADMIN_PHONE') ?? ''
+const ADMIN_PHONES_ENV = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHONE') ?? ''
+const ADMIN_PHONE_MAIN = ADMIN_PHONES_ENV.split(',').map((s: string) => extract10Digits(s)).filter(Boolean)[0] ? `52${ADMIN_PHONES_ENV.split(',').map((s: string) => extract10Digits(s)).filter(Boolean)[0]}` : ''
 
 // ── Botones ciclo de vida del pedido ─────────────────────────────────────────
 export async function handleRepButtons(supabase: Supa, fromPhone: string, buttonId: string): Promise<boolean> {
@@ -38,7 +39,7 @@ export async function handleRepButtons(supabase: Supa, fromPhone: string, button
       // Notificación centralizada al cliente vía plantilla (tipo 'aceptado')
       await supabase.functions.invoke('notificar-whatsapp', { body: { pedido_id: pedidoId, tipo: 'aceptado' } })
 
-      if (ADMIN_PHONE) await sendWA(ADMIN_PHONE,
+      if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN,
         `👁️ [OP] Repartidor aceptó orden de *${p.cliente_nombre || 'cliente'}* (${p.descripcion}).`)
     }
     else if (tipo === 'RECOGER') {
@@ -48,7 +49,7 @@ export async function handleRepButtons(supabase: Supa, fromPhone: string, button
       // Notificación centralizada al cliente vía plantilla (tipo 'recibido')
       await supabase.functions.invoke('notificar-whatsapp', { body: { pedido_id: pedidoId, tipo: 'recibido' } })
 
-      if (ADMIN_PHONE) await sendWA(ADMIN_PHONE,
+      if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN,
         `👁️ [OP] Repartidor tiene en manos el pedido de *${p.cliente_nombre || 'cliente'}*.`)
       await sendInteractiveButton(fromPhone, `🏍️ Pedido marcado como *Recibido*. ¡Sal con cuidado!`,
         `BTN_ENCAMINO_${pedidoId}`, 'En Camino')
@@ -57,7 +58,7 @@ export async function handleRepButtons(supabase: Supa, fromPhone: string, button
       const { data: updated, error } = await supabase.from('pedidos').update({ estado: 'en_camino' }).eq('id', pedidoId).eq('estado', 'recibido').select()
       if (error || !updated?.length) { await sendWA(fromPhone, `⚠️ Error o ya marcado en camino.`); return true }
       await supabase.functions.invoke('notificar-whatsapp', { body: { pedido_id: pedidoId, tipo: 'en_camino' } })
-      if (ADMIN_PHONE) await sendWA(ADMIN_PHONE,
+      if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN,
         `👁️ [OP] Repartidor va en camino a *${p.cliente_nombre || 'cliente'}*.`)
       await sendInteractiveButton(fromPhone, `🚀 El cliente ya sabe que vas en camino.`,
         `BTN_ENTREGADO_${pedidoId}`, 'Entregado')
@@ -66,7 +67,7 @@ export async function handleRepButtons(supabase: Supa, fromPhone: string, button
       const { data: updated, error } = await supabase.from('pedidos').update({ estado: 'entregado' }).eq('id', pedidoId).eq('estado', 'en_camino').select()
       if (error || !updated?.length) { await sendWA(fromPhone, `⚠️ Error o ya entregado.`); return true }
       await supabase.functions.invoke('notificar-whatsapp', { body: { pedido_id: pedidoId, tipo: 'entregado' } })
-      if (ADMIN_PHONE) await sendWA(ADMIN_PHONE,
+      if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN,
         `✅ [OP] Orden entregada exitosamente.`)
       await sendWA(fromPhone, `✅ ¡Excelente trabajo! El pedido ha sido entregado. Quedas libre. 🌟`)
     }
@@ -90,7 +91,7 @@ export async function handleRepMessage(
   if (accion === 'ESTADO_REPARTIDOR') {
     // BUG FIX #6: seleccionar id y user_id correctamente
     const { data: rep } = await supabase.from('repartidores')
-      .select('id, user_id, nombre').ilike('telefono', `%${from10}%`).maybeSingle()
+      .select('id, user_id, nombre').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
     if (rep?.user_id) {
       const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
       const { data: peds } = await supabase.from('pedidos').select('estado')
@@ -103,18 +104,20 @@ export async function handleRepMessage(
     }
   } else if (accion === 'BUSCAR_CLIENTE' && d.clienteTel) {
     const { data: c } = await supabase.from('clientes').select('nombre, puntos, es_vip, notas_crm')
-      .ilike('telefono', `%${d.clienteTel}%`).maybeSingle()
+      .ilike('telefono', `%${d.clienteTel}%`).limit(1).maybeSingle()
     await sendWA(fromPhone, c
       ? `${usrMsg}\n\n🔍 *${c.nombre}* — ${c.puntos} pts — VIP: ${c.es_vip ? 'Sí ⭐' : 'No'}\n${c.notas_crm || ''}`
       : `${usrMsg}\n\n❌ Cliente no registrado.`)
   } else if (accion === 'SUMAR_PUNTOS' && d.clienteTel && d.puntosASumar) {
     const { data: c } = await supabase.from('clientes').select('id, puntos')
-      .ilike('telefono', `%${d.clienteTel}%`).maybeSingle()
+      .ilike('telefono', `%${d.clienteTel}%`).limit(1).maybeSingle()
     if (c) {
       const nuevo = c.puntos + Number(d.puntosASumar)
       await supabase.from('clientes').update({ puntos: nuevo, updated_at: new Date().toISOString() }).eq('id', c.id)
-      await supabase.from('registros_puntos').insert({ cliente_id: c.id, puntos_sumados: d.puntosASumar,
-        motivo: d.descripcion || 'Repartidor (bot)' })
+      await supabase.from('registros_puntos').insert({
+        cliente_id: c.id, tipo: 'acumulacion', puntos: d.puntosASumar, monto_saldo: 0,
+        descripcion: d.descripcion || 'Repartidor (bot)'
+      })
       await sendWA(fromPhone, `✅ *${d.puntosASumar} pts* sumados. Total: *${nuevo}* pts.`)
     } else {
       await sendWA(fromPhone, `❌ No encontré ese cliente. Pídele que use la Web App primero.`)
@@ -122,8 +125,8 @@ export async function handleRepMessage(
   } else {
     await sendWA(fromPhone, usrMsg)
     // BUG FIX #1: Reenviar al administrador la respuesta del repartidor si este contesta libre
-    if (accion === 'RESPONDER' && ADMIN_PHONE && from10 !== extract10Digits(ADMIN_PHONE)) {
-      await sendWA(ADMIN_PHONE, `💬 *[Menaje de ${isRep.nombre}]*:\n${msgText}`)
+    if (accion === 'RESPONDER' && ADMIN_PHONE_MAIN && from10 !== extract10Digits(ADMIN_PHONE_MAIN)) {
+      await sendWA(ADMIN_PHONE_MAIN, `💬 *[Mensaje de ${isRep.nombre}]*:\n${msgText}`)
     }
   }
 
