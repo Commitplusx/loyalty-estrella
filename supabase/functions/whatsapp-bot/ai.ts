@@ -36,61 +36,44 @@ const VALID_ACTIONS: AIRespuesta['accion'][] = [
 // ── System prompts ────────────────────────────────────────────────────────────
 function buildAdminPrompt(): string {
   return `Eres el "Asistente Virtual de Estrella Delivery". Tu usuario es el Administrador de la plataforma.
-Eres una Inteligencia Artificial profesional, proactiva y altamente eficiente diseñada para asistir en la gestión logística y administrativa de la empresa, no uses las palabras comandantes, ni ese tipo de cosas, eres un asistente.
+Eres una Inteligencia Artificial profesional, proactiva y altamente eficiente diseñada para asistir en la gestión logística y administrativa de la empresa.
 
-REGLAS DE ORO DEL ASISTENTE:
-1. PROACTIVIDAD Y CORTESÍA: Ejecuta lo que se te pide de forma directa y profesional. Usa confirmaciones muy concisas pero amables (ej. "Entendido." o "Listo."). Usa listas viñeteadas y saltos de línea para facilitar la lectura. No uses el término "Comandante" ni asumas jergas militares.
-2. TELÉFONO OBLIGATORIO (CRÍTICO): NUNCA ejecutes la acción CREAR_PEDIDO o SUMAR_PUNTOS si no tienes el número de teléfono del cliente (10 dígitos). Si falta el teléfono, responde amablemente pidiéndolo.
-3. STAFF vs CLIENTE: Distingue claramente entre clientes registrados y el equipo de repartidores.
-4. PROHIBICIÓN DE ALUCINACIÓN (CRÍTICO): NUNCA inventes nombres de repartidores, clientes o restaurantes en campos como 'mensajeUsuario' si estás ejecutando una acción que consulta la base de datos (ej. VER_REPARTIDORES, VER_RESTAURANTES, BUSCAR_CLIENTE). El sistema (handler) se encargará de dar los nombres reales.
-5. MODO SIMULACIÓN: Si el administrador simula ser un restaurante dictando un pedido, extrae los datos y ejecuta CREAR_PEDIDO, pero NUNCA olvides pedir el teléfono del cliente final si no lo incluye.
-5. FORMULARIO DE REGISTRO: Si te piden "agregar cliente", "registrar" o "formato de lealtad" sin dar datos, devuelve EXACTAMENTE este bloque para que lo copien:
-📝 *NUEVO CLIENTE / LEALTAD*
-👤 Nombre: 
-📞 Teléfono: 
-📍 Colonia: 
-🌟 Puntos: 0
+⚠️ REGLA ABSOLUTA — FORMATO DE SALIDA:
+Tu respuesta COMPLETA debe ser ÚNICAMENTE un objeto JSON válido. Sin texto antes ni después. Sin bloques de código markdown. Sin explicaciones fuera del JSON.
+Si necesitas pedir aclaración, usa accion "RESPONDER" y escribe tu pregunta en "mensajeUsuario". NUNCA respondas en texto plano.
 
-REGLAS DE ORO ANTIGRAVEDAD (PARA EL ADMINISTRADOR):
-- REGLA DE EXISTENCIA: En acciones como asignación de pedidos, reasignaciones o recordatorios, si se menciona un REPARTIDOR o LOCAL por nombre, y NO tienes la certeza absoluta de que existe (o el handler devuelve error), informa al usuario que no fue encontrado. NUNCA inventes nombres ni asumas que alguien existe solo por su alias.
-- REGLA DE DATOS CRÍTICOS: Si faltan datos vitales (descripción del pedido o teléfono del cliente) y no puedes deducirlos, solicita la información faltante antes de proceder a "CREAR_PEDIDO".
-- PROHIBIDO ALUCINAR: Si no encuentras un dato en la base de datos, admite que no está. No inventes teléfonos ni estados de pedidos.
+REGLAS DEL ASISTENTE:
+1. CORTESÍA: Respuestas directas y profesionales. No uses "Comandante" ni jergas militares.
+2. TELÉFONO OBLIGATORIO: NUNCA ejecutes CREAR_PEDIDO o SUMAR_PUNTOS sin teléfono del cliente (10 dígitos). Si falta, usa RESPONDER para pedirlo.
+3. STAFF vs CLIENTE: Distingue entre clientes y repartidores.
+4. NO ALUCINES: NUNCA inventes nombres, teléfonos o estados. El handler consulta la BD real.
+5. FORMULARIO DE REGISTRO: Si piden "agregar cliente" sin datos, usa RESPONDER con mensajeUsuario:
+"📝 *NUEVO CLIENTE / LEALTAD*\n👤 Nombre: \n📞 Teléfono: \n🌟 Puntos: 0"
 
-HERRAMIENTAS ADMINISTRATIVAS DISPONIBLES:
-- CREAR_PEDIDO: (Requiere: Restaurante, TeléfonoCliente, Descripción). 
-- SUMAR_PUNTOS: (Requiere: TeléfonoCliente, Puntos).
-- BUSCAR_CLIENTE: (Requiere: Teléfono). Busca el estado VIP o puntos de alguien.
-- CANCELAR_PEDIDO: (Requiere: Teléfono). Cancela un envío activo.
-- RECORDATORIO_REPARTIDOR: (Requiere: repartidorAlias y descripcion). Enviar un mensaje directo / orden particular a un repartidor.
-- ESTADO_REPARTIDOR: (Requiere: repartidorAlias). Muestra qué pedidos y cuántas entregas lleva hoy un repartidor específico.
-- AGREGAR_REPARTIDOR / ELIMINAR_REPARTIDOR: Altas y bajas del staff (Requiere nombre completo/teléfono o alias).
-- AGREGAR_CLIENTE: Registrar un nuevo cliente para lealtad (Requiere: clienteNombre, clienteTel. Opcional: colonia).
-- CARGAR_SALDO: Cargar dinero de billetera a un cliente (Requiere: Tel, montoSaldo).
-- UBICACION_RESTAURANTE: Buscar coordenadas o link de mapa de un local.
-- ANUNCIO_REPARTIDORES: Enviar un mensaje masivo al personal.
-- REVISAR_ENTREGADOS: OBTENER SERVICIOS TOTALES DE ENTREGAS. (¡SÍ TIENES ACCESO AL HISTORIAL COMPLETO DE DÍAS ANTERIORES!). Hoy por defecto (0), o extrae el número de días exacto para "ayer" (1), o "hace 5 días" (5) y mapealo en diasAtras.
-- VER_RESTAURANTES: Listado de locales asociados actuales.
-- ENTREGAR_TODOS / CANCELAR_TODOS: Actualización masiva de estado.
-- ENVIAR_QR: Mandar tarjeta de lealtad vía Whatsapp al cliente.
-- RESPONDER: Acción por defecto para charlar, confirmar recepción, analizar info, o pedir los datos faltantes.
+HERRAMIENTAS DISPONIBLES:
+- CREAR_PEDIDO: Requiere restaurante, clienteTel, descripcion.
+- SUMAR_PUNTOS: Requiere clienteTel, puntosASumar.
+- BUSCAR_CLIENTE: Requiere clienteTel.
+- CANCELAR_PEDIDO: Requiere clienteTel.
+- RECORDATORIO_REPARTIDOR: Requiere repartidorAlias, descripcion.
+- ESTADO_REPARTIDOR: Requiere repartidorAlias.
+- AGREGAR_REPARTIDOR / ELIMINAR_REPARTIDOR: Requiere nombre/teléfono o alias.
+- AGREGAR_CLIENTE: Requiere clienteNombre, clienteTel.
+- CARGAR_SALDO: Requiere clienteTel, montoSaldo.
+- UBICACION_RESTAURANTE: Requiere restaurante.
+- ANUNCIO_REPARTIDORES: Requiere descripcion.
+- REVISAR_ENTREGADOS: diasAtras (0=hoy, 1=ayer, N=hace N días).
+- VER_RESTAURANTES, VER_REPARTIDORES, VER_VIPS, VER_PEDIDOS, ESTADISTICAS, REPORTE_SEMANAL, VER_ATRASOS.
+- ENTREGAR_TODOS / CANCELAR_TODOS.
+- ENVIAR_QR: Requiere clienteTel. Manda tarjeta de lealtad al cliente.
+- REASIGNAR_PEDIDO: Requiere clienteTel, repartidorAlias.
+- AGREGAR_NOTA_CLIENTE: Requiere clienteTel, descripcion.
+- MARCAR_VIP: Requiere clienteTel.
+- VER_HISTORIAL_CLIENTE: Requiere clienteTel.
+- RESPONDER: Para charlar, confirmar, o pedir datos faltantes.
 
-ORDEN EN RESPUESTAS: JAMÁS envíes bloques de texto gigantes. Separa con viñetas claras y precisas, negritas y emojis profesionales si chateas por RESPONDER.
-
-SALIDA ESTRICTA EN FORMATO JSON:
-{
-  "accion": "UNA_ACCION_LISTADA",
-  "mensajeUsuario": "Texto de confirmación directo y profesional con viñetas si aplica.",
-  "datosAExtraer": {
-    "clienteTel": "10 dígitos numéricos consecutivos o null",
-    "puntosASumar": número o null,
-    "diasAtras": número (ej: 0=hoy, 1=ayer) o null,
-    "clienteNombre": "Comprador o null",
-    "restaurante": "Localizador de origen o null",
-    "descripcion": "Descripción detallada del asunto or productos",
-    "direccion": "Dirección de destino o null",
-    "repartidorAlias": "Nombre clave del repartidor"
-  }
-}`
+FORMATO JSON DE SALIDA (responde SOLO con esto, sin nada más):
+{"accion":"UNA_ACCION_LISTADA","mensajeUsuario":"Texto breve y profesional.","datosAExtraer":{"clienteTel":"10 dígitos o null","puntosASumar":null,"diasAtras":null,"clienteNombre":null,"restaurante":null,"descripcion":null,"direccion":null,"repartidorAlias":null,"montoSaldo":null}}`
 }
 
 function buildRepartidorPrompt(repartidorInfo: any): string {
@@ -192,19 +175,32 @@ export async function conversacionDeepSeek(
     const messages = [
       { role: 'system', content: systemInstruction },
       ...formattedHistory,
-      { role: 'user', content: String(nuevoTexto).substring(0, 1000) },
+      { role: 'user', content: String(nuevoTexto).substring(0, 500) },
     ]
 
-    const API_KEY = Deno.env.get('DEEPSEEK_API_KEY')!
+    const API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!
 
-    const callDeepSeek = async (): Promise<Response> => {
+    // Separar system del historial (Claude usa system como parámetro top-level)
+    const systemMsg = messages.find((m: any) => m.role === 'system')?.content || ''
+    const chatMessages = messages.filter((m: any) => m.role !== 'system')
+
+    const callClaude = async (): Promise<Response> => {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 25000)
       try {
-        return await fetch('https://api.deepseek.com/chat/completions', {
+        return await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
-          body: JSON.stringify({ model: 'deepseek-reasoner', messages }),
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': API_KEY,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 512,
+            system: systemMsg,
+            messages: chatMessages,
+          }),
           signal: controller.signal,
         })
       } finally {
@@ -214,32 +210,28 @@ export async function conversacionDeepSeek(
 
     let res: Response
     try {
-      res = await callDeepSeek()
+      res = await callClaude()
       if (res.status >= 500 && res.status < 600) {
-        console.warn(`⚠️ DeepSeek ${res.status}, reintentando en 2s...`)
+        console.warn(`⚠️ Claude API ${res.status}, reintentando en 2s...`)
         await new Promise(r => setTimeout(r, 2000))
-        res = await callDeepSeek()
+        res = await callClaude()
       }
     } catch (fetchErr: any) {
       const isTimeout = fetchErr?.name === 'AbortError'
       console.error(isTimeout ? '⏱️ Timeout 25s alcanzado' : '🌐 Fetch error:', String(fetchErr))
-      return { errorObj: isTimeout ? 'DeepSeek no respondió en 25s. Intente de nuevo.' : String(fetchErr) }
+      return { errorObj: isTimeout ? 'Claude no respondió en 25s. Intente de nuevo.' : String(fetchErr) }
     }
 
     if (!res.ok) {
       const errText = await res.text()
-      console.error('DeepSeek Error:', errText)
+      console.error('Claude API Error:', errText)
       return { errorObj: `HTTP ${res.status} - ${errText}` }
     }
 
     const data = await res.json()
+    console.log(`🤖 [Claude] Tokens usados — input: ${data.usage?.input_tokens} | output: ${data.usage?.output_tokens}`)
 
-    const reasoning = data.choices[0]?.message?.reasoning_content
-    if (reasoning) console.log('🧠 R1 THINKING:', reasoning.slice(0, 1500))
-
-    let rawContent = (data.choices[0]?.message?.content || '{}').trim()
-    rawContent = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
-    rawContent = rawContent.replace(/<\/?(think|reasoning)[^>]*>/gi, '').trim()
+    let rawContent = (data.content?.[0]?.text || '{}').trim()
 
     let cleanJSON = rawContent.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
     const fb = cleanJSON.indexOf('{'), lb = cleanJSON.lastIndexOf('}')
@@ -272,9 +264,9 @@ export async function conversacionDeepSeek(
     respuesta = enforcerValidator(respuesta)
 
     const nuevoHistorial = [
-      ...historia.slice(-14),
-      { role: 'user', content: nuevoTexto },
-      ...(respuesta.mensajeUsuario?.trim() ? [{ role: 'model', content: respuesta.mensajeUsuario.trim() }] : []),
+      ...historia.slice(-6),
+      { role: 'user', content: String(nuevoTexto).substring(0, 300) },
+      ...(respuesta.mensajeUsuario?.trim() ? [{ role: 'model', content: respuesta.mensajeUsuario.trim().substring(0, 300) }] : []),
     ]
 
     return { respuesta, nuevoHistorial }
