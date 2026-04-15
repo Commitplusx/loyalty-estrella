@@ -38,20 +38,62 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
                 transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
                 className="absolute inset-0 bg-amber-500 blur-2xl rounded-full"
               />
-              <div className="relative w-28 h-28 rounded-[2rem] bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-2xl shadow-orange-500/50 border border-orange-400/30">
+              <div className="relative w-32 h-32 rounded-[2.5rem] bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-2xl shadow-orange-500/50 border border-orange-400/30 overflow-visible">
+                
+                {/* Reverse spinning ghostly star */}
                 <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+                  className="absolute flex items-center justify-center"
+                  animate={{ rotate: -360, scale: [0.9, 1.2, 0.9] }}
+                  transition={{ 
+                    rotate: { duration: 8, repeat: Infinity, ease: "linear" },
+                    scale: { duration: 2, repeat: Infinity, ease: "easeInOut" }
+                  }}
                 >
-                  <Star className="w-14 h-14 text-white fill-white" />
+                  <Star className="w-20 h-20 text-white/40 fill-white/20 blur-[2px]" />
                 </motion.div>
-                {/* Mini sparkling star */}
+
+                {/* Main bouncing and spinning star */}
                 <motion.div
-                  animate={{ scale: [1, 1.5, 1], opacity: [0, 1, 0] }}
-                  transition={{ duration: 1.5, repeat: Infinity, delay: 0.5 }}
-                  className="absolute -top-2 -right-2"
+                  className="absolute flex items-center justify-center"
+                  animate={{ 
+                    rotate: 360,
+                    scale: [1, 1.15, 1],
+                    y: [0, -8, 0]
+                  }}
+                  transition={{ 
+                    rotate: { duration: 6, repeat: Infinity, ease: "linear" },
+                    scale: { duration: 1, repeat: Infinity, ease: "easeInOut" },
+                    y: { duration: 0.6, repeat: Infinity, ease: "easeInOut" }
+                  }}
                 >
-                  <Star className="w-6 h-6 text-yellow-200 fill-yellow-200" />
+                  <Star className="w-16 h-16 text-white fill-white drop-shadow-md" />
+                </motion.div>
+
+                {/* Sparkle 1 */}
+                <motion.div
+                  animate={{ scale: [1, 1.8, 1], opacity: [0, 1, 0], rotate: 180 }}
+                  transition={{ duration: 1.5, repeat: Infinity, delay: 0.2 }}
+                  className="absolute -top-3 -right-2"
+                >
+                  <Star className="w-6 h-6 text-yellow-200 fill-yellow-200 drop-shadow-lg" />
+                </motion.div>
+                
+                {/* Sparkle 2 */}
+                <motion.div
+                  animate={{ scale: [0.5, 1.5, 0.5], opacity: [0, 1, 0], rotate: -90 }}
+                  transition={{ duration: 2, repeat: Infinity, delay: 0.8 }}
+                  className="absolute -bottom-2 -left-3"
+                >
+                  <Star className="w-5 h-5 text-white fill-white drop-shadow-lg" />
+                </motion.div>
+
+                {/* Sparkle 3 */}
+                <motion.div
+                  animate={{ scale: [0.8, 1.3, 0.8], opacity: [0, 0.8, 0], rotate: 45 }}
+                  transition={{ duration: 1.2, repeat: Infinity, delay: 1.5 }}
+                  className="absolute top-4 -left-4"
+                >
+                  <Star className="w-4 h-4 text-orange-200 fill-orange-200 drop-shadow-md" />
                 </motion.div>
               </div>
             </div>
