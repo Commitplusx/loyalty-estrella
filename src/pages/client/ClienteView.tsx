@@ -480,25 +480,27 @@ export function ClienteView() {
 
               {/* Info cards (Mobile only or stacked) */}
               <div className="grid sm:grid-cols-2 gap-4 lg:hidden">
-                <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
-                  <CardContent className="p-4 flex items-center gap-4">
-                    <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
-                      <Gift className="w-6 h-6 text-orange-500" />
+                <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                  <CardContent className="p-4 flex items-center gap-4 relative z-10">
+                    <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-orange-200 dark:from-orange-500/20 dark:to-orange-500/10 rounded-xl flex items-center justify-center shrink-0 border border-orange-200 dark:border-orange-500/30">
+                      <Gift className="w-6 h-6 text-orange-600 dark:text-orange-400" />
                     </div>
                     <div>
-                      <p className="font-bold text-foreground">5 = 1 Gratis</p>
-                      <p className="text-sm text-muted-foreground">Por cada 5 envíos</p>
+                      <p className="font-extrabold text-foreground tracking-tight">5 = 1 Gratis</p>
+                      <p className="text-sm font-medium text-orange-600/70 dark:text-orange-400/70">Mucha más fidelidad</p>
                     </div>
                   </CardContent>
                 </Card>
-                <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
-                  <CardContent className="p-4 flex items-center gap-4">
-                    <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center shrink-0">
-                      <Sparkles className="w-6 h-6 text-amber-500" />
+                <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-orange-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                  <CardContent className="p-4 flex items-center gap-4 relative z-10">
+                    <div className="w-12 h-12 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center shrink-0 shadow-inner shadow-orange-500/50">
+                      <Sparkles className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <p className="font-bold text-foreground">Hora Feliz</p>
-                      <p className="text-sm text-muted-foreground">Lun, Mié y Sáb $35</p>
+                      <p className="font-extrabold text-foreground tracking-tight">Hora Feliz</p>
+                      <p className="text-sm font-medium text-amber-600/70 dark:text-amber-500/70">Tus envíos a $35</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -508,25 +510,27 @@ export function ClienteView() {
             {/* Right Column (PC): Info cards PC & Horarios */}
             <div className="space-y-6 order-3 lg:order-3 pt-2 lg:pt-0">
               <div className="space-y-4 hidden lg:block">
-                <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
-                  <CardContent className="p-4 flex items-center gap-4">
-                    <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
-                      <Gift className="w-6 h-6 text-orange-500" />
+                <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                  <CardContent className="p-4 flex items-center gap-4 relative z-10">
+                    <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-orange-200 dark:from-orange-500/20 dark:to-orange-500/10 rounded-xl flex items-center justify-center shrink-0 border border-orange-200 dark:border-orange-500/30">
+                      <Gift className="w-6 h-6 text-orange-600 dark:text-orange-400" />
                     </div>
                     <div>
-                      <p className="font-bold text-foreground">5 = 1 Gratis</p>
-                      <p className="text-sm text-muted-foreground">Por cada 5 envíos</p>
+                      <p className="font-extrabold text-foreground tracking-tight">5 = 1 Gratis</p>
+                      <p className="text-sm font-medium text-orange-600/70 dark:text-orange-400/70">Mucha más fidelidad</p>
                     </div>
                   </CardContent>
                 </Card>
-                <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
-                  <CardContent className="p-4 flex items-center gap-4">
-                    <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center shrink-0">
-                      <Sparkles className="w-6 h-6 text-amber-500" />
+                <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-orange-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                  <CardContent className="p-4 flex items-center gap-4 relative z-10">
+                    <div className="w-12 h-12 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center shrink-0 shadow-inner shadow-orange-500/50">
+                      <Sparkles className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <p className="font-bold text-foreground">Hora Feliz</p>
-                      <p className="text-sm text-muted-foreground">Lun, Mié y Sáb $35</p>
+                      <p className="font-extrabold text-foreground tracking-tight">Hora Feliz</p>
+                      <p className="text-sm font-medium text-amber-600/70 dark:text-amber-500/70">Tus envíos a $35</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -544,16 +548,29 @@ export function ClienteView() {
                     <span className="font-bold text-foreground">9:00 AM - 10:00 PM</span>
                   </div>
                   {horasFelices.filter(h => h.activo).length > 0 && (
-                    <div className="p-4 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 rounded-xl border border-orange-100/50 dark:border-orange-900/30">
-                      <div className="flex items-center gap-2 mb-4">
-                        <Sparkles className="w-5 h-5 text-amber-500" />
-                        <h4 className="font-bold text-base lg:text-lg text-foreground">Horas Felices - Envío a $35</h4>
+                    <div className="relative overflow-hidden p-5 bg-gradient-to-br from-amber-500 to-orange-500 text-white rounded-2xl shadow-lg shadow-orange-500/20 mt-2">
+                      {/* Artistic glows */}
+                      <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white/20 rounded-full blur-3xl pointer-events-none"></div>
+                      <div className="absolute bottom-0 left-0 -mb-4 -ml-4 w-24 h-24 bg-black/10 rounded-full blur-2xl pointer-events-none"></div>
+                      
+                      <div className="relative z-10 flex items-center gap-3 mb-5">
+                        <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm shadow-inner">
+                          <Sparkles className="w-6 h-6 text-yellow-100" />
+                        </div>
+                        <div>
+                          <h4 className="font-extrabold text-xl lg:text-xl text-white tracking-tight leading-tight drop-shadow-sm">Horas Felices</h4>
+                          <p className="text-orange-100 text-xs font-semibold uppercase tracking-wider">Envíos a solo $35</p>
+                        </div>
                       </div>
-                      <div className="grid gap-2">
+                      
+                      <div className="relative z-10 grid gap-2.5">
                         {horasFelices.filter(h => h.activo).map((hora) => (
-                          <div key={hora.dia} className="flex items-center justify-between p-2 lg:p-3 bg-card rounded-lg shadow-sm">
-                            <span className="text-muted-foreground font-medium text-sm lg:text-base">{hora.nombre}</span>
-                            <span className="font-bold text-amber-600 text-sm lg:text-base">
+                          <div key={hora.dia} className="flex items-center justify-between px-3 py-3 sm:px-4 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 shadow-sm transition-all hover:bg-white/20">
+                            <span className="text-white font-medium flex items-center gap-2 text-sm lg:text-base drop-shadow-sm">
+                              <span className="w-2 h-2 bg-yellow-300 rounded-full animate-pulse shadow-[0_0_8px_rgba(253,224,71,0.8)]"></span>
+                              {hora.nombre}
+                            </span>
+                            <span className="font-bold text-yellow-100 tracking-wide bg-black/20 px-2 py-1 sm:px-3 sm:py-1 rounded-lg text-xs sm:text-sm lg:text-base backdrop-blur-sm shadow-inner">
                               {formatTime(hora.hora_inicio)} - {formatTime(hora.hora_fin)}
                             </span>
                           </div>
