@@ -6,11 +6,11 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
   const [show, setShow] = useState(true);
 
   useEffect(() => {
-    // Keep splash on screen for 1.8 seconds before fading out
+    // Keep splash on screen for 4.8 segundos before fading out (1800 + 3000)
     const timer = setTimeout(() => {
       setShow(false);
       setTimeout(onComplete, 500); // 500ms for exit animation
-    }, 1800);
+    }, 4800);
     return () => clearTimeout(timer);
   }, [onComplete]);
 
