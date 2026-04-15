@@ -26,7 +26,7 @@ export async function getClienteByTelefono(telefono: string): Promise<Cliente | 
 
 export async function getOrCreateClienteByTelefono(telefono: string): Promise<Cliente | null> {
   const { data, error } = await supabase.rpc('get_or_create_cliente', { p_telefono: telefono });
-  
+
   if (error) {
     console.error('Error fetching or creating cliente:', error);
     return null;
@@ -40,7 +40,7 @@ export async function getClienteByQR(qrCode: string): Promise<Cliente | null> {
     .select('*')
     .eq('qr_code', qrCode)
     .single();
-  
+
   if (error) return null;
   return data;
 }
@@ -51,14 +51,14 @@ export async function getClienteById(id: string): Promise<Cliente | null> {
     .select('*')
     .eq('id', id)
     .single();
-  
+
   if (error) return null;
   return data;
 }
 
 export async function createCliente(
-  nombre: string, 
-  telefono: string, 
+  nombre: string,
+  telefono: string,
   qrCode: string
 ): Promise<Cliente | null> {
   const { data, error } = await supabase
@@ -73,7 +73,7 @@ export async function createCliente(
     }])
     .select()
     .single();
-  
+
   if (error) {
     console.error('Error creating cliente:', error);
     return null;
@@ -82,7 +82,7 @@ export async function createCliente(
 }
 
 export async function updateClientePuntos(
-  clienteId: string, 
+  clienteId: string,
   nuevosPuntos: number,
   enviosGratis: number,
   enviosTotales: number
@@ -96,7 +96,7 @@ export async function updateClientePuntos(
       updated_at: new Date().toISOString(),
     })
     .eq('id', clienteId);
-  
+
   if (error) {
     console.error('Error updating cliente:', error);
     return false;
@@ -109,7 +109,7 @@ export async function getAllClientes(): Promise<Cliente[]> {
     .from('clientes')
     .select('*')
     .order('created_at', { ascending: false });
-  
+
   if (error) {
     console.error('Error fetching clientes:', error);
     return [];
@@ -135,7 +135,7 @@ export async function createRegistroPunto(
       descripcion,
       created_by: adminId,
     }]);
-  
+
   if (error) {
     console.error('Error creating registro:', error);
     return false;
@@ -149,7 +149,7 @@ export async function getRegistrosByCliente(clienteId: string): Promise<Registro
     .select('*')
     .eq('cliente_id', clienteId)
     .order('created_at', { ascending: false });
-  
+
   if (error) {
     console.error('Error fetching registros:', error);
     return [];
@@ -215,7 +215,7 @@ export async function canjearEnvioGratisRPC(
 
     if (error) {
       console.error('RPC Error:', error);
-      return { success: false, message: 'Error de servidor al canjear envío gratis' };
+      return { success: false, message: 'Error al canjear envío gratis, por favor, contacte al admin' };
     }
 
     return data;
@@ -257,18 +257,18 @@ export async function getAppConfig(): Promise<AppConfig | null> {
     .select('*')
     .eq('id', 'default')
     .single();
-    
+
   if (error || !data) {
     console.error('Error fetching app config:', error);
     return null;
   }
-  
+
   return {
     horarios: data.horarios,
     horas_felices: data.horas_felices,
     contacto: data.contacto,
     // Add default values since they are hardcoded in schema defaults
-    puntos_por_envio: 1, 
+    puntos_por_envio: 1,
     envios_para_gratis: 5
   } as AppConfig;
 }
@@ -280,11 +280,11 @@ export async function signInAdmin(email: string, password: string) {
     email,
     password,
   });
-  
+
   if (error) {
     return { success: false, error: error.message };
   }
-  
+
   return { success: true, data };
 }
 
@@ -307,7 +307,7 @@ export async function getAdminProfile(userId: string): Promise<AdminUser | null>
     .select('*')
     .eq('id', userId)
     .single();
-  
+
   if (error) return null;
   return data;
 }
