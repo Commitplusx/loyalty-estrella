@@ -598,209 +598,208 @@ export function ClienteView() {
                     {/* Progress card */}
                     {isVip ? (
                       <>
-                        <Card className="border-0 shadow-xl overflow-hidden ring-2 ring-amber-400">
-                          <div className="p-6 text-white bg-gradient-to-br from-amber-400 via-yellow-400 to-amber-600">
-                            <div className="flex items-center gap-2 mb-3 justify-center">
-                              <Crown className="w-5 h-5 text-white fill-white" />
-                              <span className="font-bold text-white tracking-widest text-sm uppercase">Mi Billetera VIP</span>
-                              <Crown className="w-5 h-5 text-white fill-white" />
-                            </div>
-                            <div className="flex items-center justify-between mb-4">
-                              <div>
-                                <p className="text-sm mb-1 text-amber-100">Saldo a Favor</p>
-                                <p className="text-5xl font-black">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
+                        {!showWalletModal ? (
+                          <Card className="border-0 shadow-xl overflow-hidden ring-2 ring-amber-400">
+                            <div className="p-6 text-white bg-gradient-to-br from-amber-400 via-yellow-400 to-amber-600">
+                              <div className="flex items-center gap-2 mb-3 justify-center">
+                                <Crown className="w-5 h-5 text-white fill-white" />
+                                <span className="font-bold text-white tracking-widest text-sm uppercase">Mi Billetera VIP</span>
+                                <Crown className="w-5 h-5 text-white fill-white" />
                               </div>
-                              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
-                                <DollarSign className="w-8 h-8 text-white" />
-                              </div>
-                            </div>
-                            {/* Botón Canjear */}
-                            {(cliente.saldo_billetera || 0) > 0 ? (
-                              <button
-                                onClick={() => { setShowWalletModal(true); setWalletMode('select'); }}
-                                className="w-full mt-2 py-3 rounded-xl bg-white text-amber-600 font-bold text-base flex items-center justify-center gap-2 hover:bg-amber-50 transition-colors shadow-md"
-                              >
-                                <Wallet className="w-5 h-5" />
-                                Canjear Saldo
-                              </button>
-                            ) : (
-                              <p className="text-center mt-3 text-amber-100 font-medium text-sm">
-                                Acumula saldo realizando envíos
-                              </p>
-                            )}
-                          </div>
-                          <CardContent className="p-6">
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 text-center">
-                                <p className="text-2xl font-bold text-gray-900 dark:text-white">{cliente.envios_totales}</p>
-                                <p className="text-xs text-gray-500">Envíos totales</p>
-                              </div>
-                              <div className="bg-amber-50 dark:bg-amber-900/30 rounded-xl p-4 text-center">
-                                <p className="text-2xl font-bold text-amber-600">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
-                                <p className="text-xs text-gray-500">Saldo Disponible</p>
-                              </div>
-                            </div>
-                            <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-xs text-amber-700 dark:text-amber-300 text-center">
-                              💡 Canjea por <strong>descuento en comida</strong> o por <strong>envío gratis</strong> (hasta $45)
-                            </div>
-                          </CardContent>
-                        </Card>
-
-                        {showWalletModal && (
-                          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={resetWalletModal}>
-                            <motion.div
-                              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                              animate={{ opacity: 1, scale: 1, y: 0 }}
-                              className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-3xl shadow-2xl overflow-hidden"
-                              onClick={e => e.stopPropagation()}
-                            >
-                              {/* Modal Header */}
-                              <div className="bg-gradient-to-r from-amber-400 to-yellow-500 p-6 text-white relative">
-                                <button onClick={resetWalletModal} className="absolute top-4 right-4 w-8 h-8 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30">
-                                  <X className="w-4 h-4" />
-                                </button>
-                                <div className="flex items-center gap-3 mb-1">
-                                  <Wallet className="w-6 h-6" />
-                                  <h2 className="font-bold text-xl">Canjear Billetera VIP</h2>
+                              <div className="flex items-center justify-between mb-4">
+                                <div>
+                                  <p className="text-sm mb-1 text-amber-100">Saldo a Favor</p>
+                                  <p className="text-5xl font-black">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
                                 </div>
-                                <p className="text-amber-100 text-sm">Saldo disponible: <strong className="text-white">${(cliente.saldo_billetera || 0).toFixed(2)}</strong></p>
+                                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
+                                  <DollarSign className="w-8 h-8 text-white" />
+                                </div>
                               </div>
+                              {/* Botón Canjear */}
+                              {(cliente.saldo_billetera || 0) > 0 ? (
+                                <button
+                                  onClick={() => { setShowWalletModal(true); setWalletMode('select'); }}
+                                  className="w-full mt-2 py-3 rounded-xl bg-white text-amber-600 font-bold text-base flex items-center justify-center gap-2 hover:bg-amber-50 transition-colors shadow-md"
+                                >
+                                  <Wallet className="w-5 h-5" />
+                                  Canjear Saldo
+                                </button>
+                              ) : (
+                                <p className="text-center mt-3 text-amber-100 font-medium text-sm">
+                                  Acumula saldo realizando envíos
+                                </p>
+                              )}
+                            </div>
+                            <CardContent className="p-6">
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 text-center">
+                                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{cliente.envios_totales}</p>
+                                  <p className="text-xs text-gray-500">Envíos totales</p>
+                                </div>
+                                <div className="bg-amber-50 dark:bg-amber-900/30 rounded-xl p-4 text-center">
+                                  <p className="text-2xl font-bold text-amber-600">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
+                                  <p className="text-xs text-gray-500">Saldo Disponible</p>
+                                </div>
+                              </div>
+                              <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-xs text-amber-700 dark:text-amber-300 text-center">
+                                💡 Canjea por <strong>descuento en comida</strong> o por <strong>envío gratis</strong> (hasta $45)
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ) : (
+                          <Card className="border-0 shadow-2xl overflow-hidden ring-2 ring-amber-400 bg-white dark:bg-gray-900">
+                            {/* Header del interface de canje */}
+                            <div className="bg-gradient-to-r from-amber-400 to-yellow-500 p-6 text-white relative">
+                              <button onClick={resetWalletModal} className="absolute top-4 right-4 w-8 h-8 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30">
+                                <X className="w-4 h-4" />
+                              </button>
+                              <div className="flex items-center gap-3 mb-1">
+                                <Wallet className="w-6 h-6" />
+                                <h2 className="font-bold text-xl">Canjear Billetera</h2>
+                              </div>
+                              <p className="text-amber-100 text-sm">Disponible: <strong className="text-white">${(cliente.saldo_billetera || 0).toFixed(2)}</strong></p>
+                            </div>
 
-                              <div className="p-6 space-y-4">
-                                {walletMode === 'select' && (
-                                  <>
-                                    <p className="text-gray-600 dark:text-gray-400 text-sm text-center">¿Cómo quieres usar tu saldo?</p>
-                                    {/* Opción 1: Descuento en comida */}
-                                    <button
-                                      onClick={() => setWalletMode('food')}
-                                      className="w-full p-4 rounded-2xl border-2 border-orange-200 hover:border-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all text-left group"
-                                    >
-                                      <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 rounded-xl bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center group-hover:bg-orange-200 transition-colors">
-                                          <Utensils className="w-6 h-6 text-orange-500" />
-                                        </div>
-                                        <div>
-                                          <p className="font-bold text-gray-900 dark:text-white">Descuento en Comida</p>
-                                          <p className="text-xs text-gray-500">Descuenta cualquier monto de tu pedido</p>
-                                        </div>
+                            <div className="p-6 space-y-4">
+                              {walletMode === 'select' && (
+                                <div className="space-y-4">
+                                  <p className="text-gray-600 dark:text-gray-400 text-sm text-center">¿Cómo quieres usar tu saldo?</p>
+                                  {/* Opción 1: Descuento en comida */}
+                                  <button
+                                    onClick={() => setWalletMode('food')}
+                                    className="w-full p-4 rounded-2xl border-2 border-orange-200 hover:border-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all text-left group"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-12 h-12 rounded-xl bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center group-hover:bg-orange-200 transition-colors">
+                                        <Utensils className="w-6 h-6 text-orange-500" />
                                       </div>
-                                    </button>
-                                    {/* Opción 2: Envío gratis */}
-                                    <button
-                                      onClick={() => setWalletMode('delivery')}
-                                      className="w-full p-4 rounded-2xl border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-left group"
-                                    >
-                                      <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                                          <Truck className="w-6 h-6 text-blue-500" />
-                                        </div>
-                                        <div>
-                                          <p className="font-bold text-gray-900 dark:text-white">Envío Gratis</p>
-                                          <p className="text-xs text-gray-500">Cubre hasta $45 de costo de entrega</p>
-                                        </div>
+                                      <div>
+                                        <p className="font-bold text-gray-900 dark:text-white">Descuento en Comida</p>
+                                        <p className="text-xs text-gray-500">Descuenta cualquier monto de tu pedido</p>
                                       </div>
-                                    </button>
-                                  </>
-                                )}
+                                    </div>
+                                  </button>
+                                  {/* Opción 2: Envío gratis */}
+                                  <button
+                                    onClick={() => setWalletMode('delivery')}
+                                    className="w-full p-4 rounded-2xl border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-left group"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                                        <Truck className="w-6 h-6 text-blue-500" />
+                                      </div>
+                                      <div>
+                                        <p className="font-bold text-gray-900 dark:text-white">Envío Gratis</p>
+                                        <p className="text-xs text-gray-500">Cubre hasta $45 de costo de entrega</p>
+                                      </div>
+                                    </div>
+                                  </button>
+                                  <button
+                                    onClick={resetWalletModal}
+                                    className="w-full py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                                  >
+                                    Cancelar y volver
+                                  </button>
+                                </div>
+                              )}
 
-                                {walletMode === 'food' && (
-                                  <>
-                                    <button onClick={() => setWalletMode('select')} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-2">
-                                      <ChevronLeft className="w-4 h-4" /> Volver
-                                    </button>
-                                    <div className="bg-orange-50 dark:bg-orange-900/10 rounded-2xl p-4">
-                                      <p className="font-semibold text-gray-800 dark:text-white mb-1 flex items-center gap-2"><Utensils className="w-4 h-4 text-orange-500" /> Descuento en Comida</p>
-                                      <p className="text-xs text-gray-500 mb-3">Indica el monto que quieres descontar de tu saldo</p>
-                                      <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
-                                        <input
-                                          type="number"
-                                          min="1"
-                                          max={cliente.saldo_billetera || 0}
-                                          step="0.01"
-                                          value={foodAmount}
-                                          onChange={e => setFoodAmount(e.target.value)}
-                                          placeholder="0.00"
-                                          className="w-full pl-8 pr-4 py-3 border-2 border-orange-200 rounded-xl text-lg font-bold text-gray-900 dark:text-white dark:bg-gray-800 focus:outline-none focus:border-orange-400"
-                                        />
-                                      </div>
-                                      {walletMsg && <p className="mt-2 text-xs text-red-500">{walletMsg}</p>}
+                              {walletMode === 'food' && (
+                                <>
+                                  <button onClick={() => setWalletMode('select')} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-2">
+                                    <ChevronLeft className="w-4 h-4" /> Volver
+                                  </button>
+                                  <div className="bg-orange-50 dark:bg-orange-900/10 rounded-2xl p-4">
+                                    <p className="font-semibold text-gray-800 dark:text-white mb-1 flex items-center gap-2"><Utensils className="w-4 h-4 text-orange-500" /> Descuento en Comida</p>
+                                    <p className="text-xs text-gray-500 mb-3">Indica el monto que quieres descontar de tu saldo</p>
+                                    <div className="relative">
+                                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        max={cliente.saldo_billetera || 0}
+                                        step="0.01"
+                                        value={foodAmount}
+                                        onChange={e => setFoodAmount(e.target.value)}
+                                        placeholder="0.00"
+                                        className="w-full pl-8 pr-4 py-3 border-2 border-orange-200 rounded-xl text-lg font-bold text-gray-900 dark:text-white dark:bg-gray-800 focus:outline-none focus:border-orange-400"
+                                      />
                                     </div>
-                                    <button
-                                      disabled={walletLoading || !foodAmount || parseFloat(foodAmount) <= 0 || parseFloat(foodAmount) > (cliente.saldo_billetera || 0)}
-                                      onClick={handleCanjeComida}
-                                      className="w-full py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:from-orange-600 hover:to-amber-600 transition-all"
-                                    >
-                                      {walletLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
-                                      Confirmar Descuento
-                                    </button>
-                                  </>
-                                )}
-
-                                {walletMode === 'delivery' && (
-                                  <>
-                                    <button onClick={() => setWalletMode('select')} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-2">
-                                      <ChevronLeft className="w-4 h-4" /> Volver
-                                    </button>
-                                    <div className="bg-blue-50 dark:bg-blue-900/10 rounded-2xl p-4 space-y-3">
-                                      <p className="font-semibold text-gray-800 dark:text-white flex items-center gap-2"><Truck className="w-4 h-4 text-blue-500" /> Canje por Envío</p>
-                                      <div className="text-xs text-gray-500 bg-white dark:bg-gray-800 rounded-xl p-3 space-y-1">
-                                        <p>• Cobertura máxima: <strong className="text-blue-600">${MAX_ENVIO_GRATIS}.00</strong></p>
-                                        <p>• Si tu envío cuesta más, pagas la diferencia</p>
-                                      </div>
-                                      <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Costo real de tu envío (opcional)</label>
-                                      <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          step="1"
-                                          value={deliveryCost}
-                                          onChange={e => setDeliveryCost(e.target.value)}
-                                          placeholder={`${MAX_ENVIO_GRATIS}.00`}
-                                          className="w-full pl-8 pr-4 py-3 border-2 border-blue-200 rounded-xl text-lg font-bold text-gray-900 dark:text-white dark:bg-gray-800 focus:outline-none focus:border-blue-400"
-                                        />
-                                      </div>
-                                      {deliveryCost && parseFloat(deliveryCost) > MAX_ENVIO_GRATIS && (
-                                        <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
-                                          ⚠️ Tu billetera cubre <strong>${MAX_ENVIO_GRATIS}</strong><br/>
-                                          Diferencia a pagar: <strong>${(parseFloat(deliveryCost) - MAX_ENVIO_GRATIS).toFixed(2)}</strong>
-                                        </div>
-                                      )}
-                                      {walletMsg && <p className="text-xs text-red-500">{walletMsg}</p>}
-                                    </div>
-                                    <button
-                                      disabled={walletLoading || (cliente.saldo_billetera || 0) < Math.min(parseFloat(deliveryCost) || MAX_ENVIO_GRATIS, MAX_ENVIO_GRATIS)}
-                                      onClick={handleCanjeEnvio}
-                                      className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-600 hover:to-indigo-600 transition-all"
-                                    >
-                                      {walletLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Truck className="w-5 h-5" />}
-                                      Aplicar Canje de Envío
-                                    </button>
-                                  </>
-                                )}
-
-                                {walletMode === 'success' && (
-                                  <div className="text-center py-4 space-y-4">
-                                    <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-                                      <CheckCircle2 className="w-10 h-10 text-green-500" />
-                                    </div>
-                                    <div>
-                                      <p className="font-bold text-gray-900 dark:text-white text-lg">¡Canje Exitoso!</p>
-                                      <p className="text-gray-500 text-sm mt-1 whitespace-pre-line">{walletMsg}</p>
-                                    </div>
-                                    <p className="text-xs text-gray-400">Muestra esta pantalla al repartidor</p>
-                                    <button
-                                      onClick={resetWalletModal}
-                                      className="w-full py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold hover:from-green-600 hover:to-emerald-600 transition-all"
-                                    >
-                                      Cerrar
-                                    </button>
+                                    {walletMsg && <p className="mt-2 text-xs text-red-500">{walletMsg}</p>}
                                   </div>
-                                )}
-                              </div>
-                            </motion.div>
-                          </div>
+                                  <button
+                                    disabled={walletLoading || !foodAmount || parseFloat(foodAmount) <= 0 || parseFloat(foodAmount) > (cliente.saldo_billetera || 0)}
+                                    onClick={handleCanjeComida}
+                                    className="w-full py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:from-orange-600 hover:to-amber-600 transition-all shadow-lg"
+                                  >
+                                    {walletLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
+                                    Confirmar Descuento
+                                  </button>
+                                </>
+                              )}
+
+                              {walletMode === 'delivery' && (
+                                <>
+                                  <button onClick={() => setWalletMode('select')} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-2">
+                                    <ChevronLeft className="w-4 h-4" /> Volver
+                                  </button>
+                                  <div className="bg-blue-50 dark:bg-blue-900/10 rounded-2xl p-4 space-y-3">
+                                    <p className="font-semibold text-gray-800 dark:text-white flex items-center gap-2"><Truck className="w-4 h-4 text-blue-500" /> Canje por Envío</p>
+                                    <div className="text-xs text-gray-500 bg-white dark:bg-gray-800 rounded-xl p-3 space-y-1">
+                                      <p>• Cobertura máxima: <strong className="text-blue-600">${MAX_ENVIO_GRATIS}.00</strong></p>
+                                      <p>• Si tu envío cuesta más, pagas la diferencia</p>
+                                    </div>
+                                    <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Costo real de tu envío (opcional)</label>
+                                    <div className="relative">
+                                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        value={deliveryCost}
+                                        onChange={e => setDeliveryCost(e.target.value)}
+                                        placeholder={`${MAX_ENVIO_GRATIS}.00`}
+                                        className="w-full pl-8 pr-4 py-3 border-2 border-blue-200 rounded-xl text-lg font-bold text-gray-900 dark:text-white dark:bg-gray-800 focus:outline-none focus:border-blue-400"
+                                      />
+                                    </div>
+                                    {deliveryCost && parseFloat(deliveryCost) > MAX_ENVIO_GRATIS && (
+                                      <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
+                                        ⚠️ Tu billetera cubre <strong>${MAX_ENVIO_GRATIS}</strong><br/>
+                                        Diferencia a pagar: <strong>${(parseFloat(deliveryCost) - MAX_ENVIO_GRATIS).toFixed(2)}</strong>
+                                      </div>
+                                    )}
+                                    {walletMsg && <p className="text-xs text-red-500">{walletMsg}</p>}
+                                  </div>
+                                  <button
+                                    disabled={walletLoading || (cliente.saldo_billetera || 0) < Math.min(parseFloat(deliveryCost) || MAX_ENVIO_GRATIS, MAX_ENVIO_GRATIS)}
+                                    onClick={handleCanjeEnvio}
+                                    className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-600 hover:to-indigo-600 transition-all shadow-lg"
+                                  >
+                                    {walletLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Truck className="w-5 h-5" />}
+                                    Aplicar Canje
+                                  </button>
+                                </>
+                              )}
+
+                              {walletMode === 'success' && (
+                                <div className="text-center py-4 space-y-4">
+                                  <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                                    <CheckCircle2 className="w-10 h-10 text-green-500" />
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-gray-900 dark:text-white text-lg">¡Canje Exitoso!</p>
+                                    <p className="text-gray-500 text-sm mt-1 whitespace-pre-line">{walletMsg}</p>
+                                  </div>
+                                  <p className="text-xs text-gray-400 italic">Muestra esta pantalla al repartidor</p>
+                                  <button
+                                    onClick={resetWalletModal}
+                                    className="w-full py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold hover:from-green-600 hover:to-emerald-600 transition-all shadow-md"
+                                  >
+                                    Volver a mi perfil
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </Card>
                         )}
                       </>
                     ) : (
