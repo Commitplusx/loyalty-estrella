@@ -278,7 +278,7 @@ export function ClienteView() {
     >
       {/* Header */}
       <header className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm shadow-sm dark:shadow-gray-800 sticky top-0 z-50 border-b border-transparent dark:border-gray-800">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2">
               <div className="relative mr-2">
@@ -327,7 +327,7 @@ export function ClienteView() {
         </div>
       </header>
 
-      <main className={`mx-auto px-4 sm:px-6 lg:px-8 py-8 transition-all duration-500 ease-in-out ${viewState === 'search' ? 'max-w-5xl lg:max-w-6xl' : 'max-w-3xl'}`}>
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* ── LOADING ── */}
         {viewState === 'loading' && (
@@ -546,31 +546,30 @@ export function ClienteView() {
             style={{ willChange: "transform, opacity" }}
           >
             {/* Back button */}
-            <div className="mb-6">
+            <div className="mb-6 flex items-center gap-4">
               <Button variant="ghost" onClick={handleReset} className="text-gray-500 hover:text-gray-800 transition-colors">
                 <ChevronLeft className="w-5 h-5 mr-1" /> Volver
               </Button>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  {isVip && <Crown className="w-5 h-5 text-amber-500 fill-amber-400" />}
+                  ¡Hola, {cliente.nombre}!
+                  {isVip && <Crown className="w-5 h-5 text-amber-500 fill-amber-400" />}
+                </h1>
+                {isVip
+                  ? <p className="text-amber-600 text-xs font-semibold">✨ Cliente VIP — Meta de {metaVip} envíos</p>
+                  : <p className="text-gray-500 text-xs">Progreso de fidelización · {cliente.telefono}</p>
+                }
+              </div>
             </div>
 
-            <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-start">
+            {/* PC: 3 columns | Mobile: single column */}
+            <div className="grid lg:grid-cols-[1fr_auto_1fr] gap-6 lg:gap-8 items-start">
 
-              {/* ── LEFT COLUMN: Card + Toggle + QR ── */}
+              {/* ── LEFT COLUMN: Progress card ── */}
               <div className="space-y-6">
-                <div className="text-center lg:text-left">
-                  <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 flex items-center justify-center lg:justify-start gap-2">
-                    {isVip && <Crown className="w-7 h-7 text-amber-500 fill-amber-400" />}
-                    ¡Hola, {cliente.nombre}!
-                    {isVip && <Crown className="w-7 h-7 text-amber-500 fill-amber-400" />}
-                  </h1>
-                  {isVip ? (
-                    <p className="text-amber-600 font-semibold text-sm mt-1">✨ Cliente VIP — Meta exclusiva de {metaVip} envíos</p>
-                  ) : (
-                    <p className="text-gray-600">Este es tu progreso de fidelización</p>
-                  )}
-                </div>
-
-                {/* Toggle */}
-                <div className="flex justify-center lg:justify-start gap-2">
+                {/* Mobile toggle — hidden on desktop */}
+                <div className="flex lg:hidden justify-center gap-2">
                   <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                     <Button
                       variant={!showQR ? 'default' : 'outline'}
@@ -588,7 +587,7 @@ export function ClienteView() {
                       className={showQR ? 'bg-gradient-primary text-white' : ''}
                     >
                       <QrCode className="w-4 h-4 mr-2" />
-                      Mi Código QR
+                      Mi QR
                     </Button>
                   </motion.div>
                 </div>
@@ -865,12 +864,11 @@ export function ClienteView() {
                     )}
                   </>
                 ) : (
-                  // QR View
-                  <Card className="border-0 shadow-xl">
+                  // QR View — mobile only (on desktop it's in the center column)
+                  <Card className="border-0 shadow-xl lg:hidden">
                     <CardContent className="p-6 flex flex-col items-center text-center gap-4">
                       <h2 className="text-lg font-bold text-gray-800">Tu Código QR Personal</h2>
-                      <p className="text-sm text-gray-500">Muéstraselo al repartidor para registrar tu envío</p>
-
+                      <p className="text-sm text-gray-500">Muéstraselo al repartidor</p>
                       {qrDataUrl ? (
                         <div className="p-4 bg-white rounded-2xl shadow-inner border border-gray-100">
                           <img src={qrDataUrl} alt="Tu QR" className="w-56 h-56 rounded-xl" />
@@ -880,34 +878,42 @@ export function ClienteView() {
                           <QrCode className="w-16 h-16 text-gray-300" />
                         </div>
                       )}
-
-                      <div className="w-full p-3 bg-orange-50 rounded-xl">
-                        <p className="text-xs font-mono text-orange-600 break-all">{cliente.qr_code}</p>
-                      </div>
-
                       <p className="text-xs text-gray-400">{cliente.telefono} · {cliente.nombre}</p>
                     </CardContent>
                   </Card>
                 )}
+              </div>
 
-                {/* Cobertura */}
-                <Card className="border-0 shadow-lg">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <MapPin className="w-5 h-5 text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-gray-900">Cobertura Total</p>
-                        <p className="text-sm text-gray-500">Servicio en toda la ciudad</p>
-                      </div>
+              {/* ── CENTER COLUMN: QR (desktop only) ── */}
+              <div className="hidden lg:flex flex-col items-center gap-4">
+                <div className="flex items-center gap-2 text-gray-500 text-sm font-medium mb-1">
+                  <QrCode className="w-4 h-4 text-orange-500" />
+                  Tu Código QR Personal
+                </div>
+                <div className="p-5 bg-white rounded-3xl shadow-xl border border-gray-100 dark:bg-white">
+                  {qrDataUrl ? (
+                    <img src={qrDataUrl} alt="Tu QR" className="w-48 h-48 rounded-xl" />
+                  ) : (
+                    <div className="w-48 h-48 bg-gray-100 rounded-2xl flex items-center justify-center animate-pulse">
+                      <QrCode className="w-16 h-16 text-gray-300" />
                     </div>
-                  </CardContent>
-                </Card>
+                  )}
+                </div>
+                <p className="text-xs text-center text-gray-400 max-w-[180px]">
+                  Muéstraselo al repartidor para registrar tu envío
+                </p>
+                <div className="w-full p-2 bg-orange-50 dark:bg-orange-900/20 rounded-xl text-center">
+                  <p className="text-xs font-mono text-orange-500 break-all">{cliente.nombre}</p>
+                  <p className="text-[10px] text-gray-400">{cliente.telefono}</p>
+                </div>
+                <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl w-full">
+                  <MapPin className="w-4 h-4 text-blue-500 shrink-0" />
+                  <p className="text-xs text-blue-700 dark:text-blue-300">Cobertura en toda la ciudad</p>
+                </div>
               </div>
 
               {/* ── RIGHT COLUMN: Stats + History + Free alert ── */}
-              <div className="space-y-6">
+              <div className="space-y-5">
                 {/* Wrapped Stats */}
                 <ClientStats cliente={cliente} historial={historial} />
 
@@ -968,7 +974,7 @@ export function ClienteView() {
         )}
       </main>
 
-      <footer className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center">
+      <footer className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center">
         <p className="text-gray-500 text-sm">Estrella Delivery — Tu delivery de confianza</p>
       </footer>
       <AnimatePresence>
