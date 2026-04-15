@@ -543,9 +543,9 @@ export function ClienteView() {
                     <Clock className="w-6 h-6 text-orange-500" />
                     <h3 className="font-bold text-xl text-foreground">Horario de Atención</h3>
                   </div>
-                  <div className="flex items-center justify-between p-4 bg-muted/30 dark:bg-muted/50 rounded-xl mb-4">
-                    <span className="text-muted-foreground font-medium">Lunes a Domingo</span>
-                    <span className="font-bold text-foreground">9:00 AM - 10:00 PM</span>
+                  <div className="flex flex-col xl:flex-row xl:items-center justify-between p-4 bg-muted/30 dark:bg-muted/50 rounded-xl mb-4 gap-2">
+                    <span className="text-muted-foreground font-medium text-sm lg:text-base">Lunes a Domingo</span>
+                    <span className="font-bold text-foreground text-sm lg:text-base">9:00 AM - 10:00 PM</span>
                   </div>
                   {horasFelices.filter(h => h.activo).length > 0 && (
                     <div className="relative overflow-hidden p-5 bg-gradient-to-br from-amber-500 to-orange-500 text-white rounded-2xl shadow-lg shadow-orange-500/20 mt-2">
@@ -565,12 +565,12 @@ export function ClienteView() {
                       
                       <div className="relative z-10 grid gap-2.5">
                         {horasFelices.filter(h => h.activo).map((hora) => (
-                          <div key={hora.dia} className="flex items-center justify-between px-3 py-3 sm:px-4 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 shadow-sm transition-all hover:bg-white/20">
+                          <div key={hora.dia} className="flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-3 px-3 py-3 sm:px-4 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 shadow-sm transition-all hover:bg-white/20">
                             <span className="text-white font-medium flex items-center gap-2 text-sm lg:text-base drop-shadow-sm">
-                              <span className="w-2 h-2 bg-yellow-300 rounded-full animate-pulse shadow-[0_0_8px_rgba(253,224,71,0.8)]"></span>
-                              {hora.nombre}
+                              <span className="w-2 h-2 bg-yellow-300 rounded-full animate-pulse shadow-[0_0_8px_rgba(253,224,71,0.8)] shrink-0"></span>
+                              <span className="truncate">{hora.nombre}</span>
                             </span>
-                            <span className="font-bold text-yellow-100 tracking-wide bg-black/20 px-2 py-1 sm:px-3 sm:py-1 rounded-lg text-xs sm:text-sm lg:text-base backdrop-blur-sm shadow-inner">
+                            <span className="font-bold text-yellow-100 tracking-wide bg-black/20 px-2 py-1 sm:px-3 sm:py-1 rounded-lg text-xs sm:text-sm backdrop-blur-sm shadow-inner w-fit">
                               {formatTime(hora.hora_inicio)} - {formatTime(hora.hora_fin)}
                             </span>
                           </div>
