@@ -416,67 +416,98 @@ export function ClienteView() {
             animate={{ opacity: 1, y: 0 }} 
             exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.3 }}
-            className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-start"
+            className="grid lg:grid-cols-[1fr_minmax(auto,450px)_1fr] gap-6 lg:gap-8 items-start"
             style={{ willChange: "transform, opacity" }}
           >
-            {/* Left Column: Acciones principales */}
-            <div className="space-y-6">
-              <AuthorityCounter />
+            {/* Left Column (PC) / Bottom (Mobile): Authority Counter y Promos */}
+            <div className="space-y-6 order-2 lg:order-1 pt-2 lg:pt-0">
+              <div className="hidden lg:block">
+                <AuthorityCounter />
+              </div>
+              <PromosBanner />
+            </div>
 
-              <div className="text-center lg:text-left">
+            {/* Center Column: El Formulario Principal */}
+            <div className="space-y-6 order-1 lg:order-2">
+              <div className="block lg:hidden">
+                <AuthorityCounter />
+              </div>
+
+              <div className="text-center">
                 <h1 className="text-3xl lg:text-4xl font-bold text-foreground mb-2">
                   Consulta tus <span className="text-gradient">puntos</span>
                 </h1>
-                <p className="text-muted-foreground text-lg">Ingresa tu número para ver tu fidelidad</p>
+                <p className="text-muted-foreground text-lg mb-4">Ingresa tu número para ver tu fidelidad</p>
               </div>
 
-              <PromosBanner />
-
-            <Card className="border-0 shadow-xl">
-              <CardContent className="p-6">
-                <form onSubmit={handleBuscar} className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Número de teléfono</label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                      <Input
-                        ref={inputRef}
-                        value={telefono}
-                        onChange={(e) => {
-                          // Bug #8 fix: sanitize input to only allow digits
-                          const onlyDigits = e.target.value.replace(/\D/g, '');
-                          setTelefono(onlyDigits);
-                        }}
-                        placeholder="Ej: 0999123456"
-                        className="pl-10 h-14 text-lg"
-                        type="tel"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        maxLength={15}
-                        required
-                      />
+              <Card className="border-0 shadow-xl ring-1 ring-orange-100 dark:ring-orange-900/30">
+                <CardContent className="p-6">
+                  <form onSubmit={handleBuscar} className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Número de teléfono</label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                        <Input
+                          ref={inputRef}
+                          value={telefono}
+                          onChange={(e) => {
+                            const onlyDigits = e.target.value.replace(/\D/g, '');
+                            setTelefono(onlyDigits);
+                          }}
+                          placeholder="Ej: 0999123456"
+                          className="pl-10 h-14 text-lg"
+                          type="tel"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={15}
+                          required
+                        />
+                      </div>
                     </div>
-                  </div>
-                  <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                    <Button
-                      type="submit"
-                      disabled={telefono.length < 7}
-                      className="w-full h-14 bg-gradient-primary hover:opacity-90 text-white font-semibold text-lg disabled:opacity-50"
-                    >
-                      <Search className="w-5 h-5 mr-2" />
-                      Consultar mis puntos
-                    </Button>
-                  </motion.div>
-                </form>
-              </CardContent>
-            </Card>
+                    <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                      <Button
+                        type="submit"
+                        disabled={telefono.length < 7}
+                        className="w-full h-14 bg-gradient-primary hover:opacity-90 text-white font-semibold text-lg disabled:opacity-50"
+                      >
+                        <Search className="w-5 h-5 mr-2" />
+                        Consultar mis puntos
+                      </Button>
+                    </motion.div>
+                  </form>
+                </CardContent>
+              </Card>
 
+              {/* Info cards (Mobile only or stacked) */}
+              <div className="grid sm:grid-cols-2 gap-4 lg:hidden">
+                <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
+                  <CardContent className="p-4 flex items-center gap-4">
+                    <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
+                      <Gift className="w-6 h-6 text-orange-500" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-foreground">5 = 1 Gratis</p>
+                      <p className="text-sm text-muted-foreground">Por cada 5 envíos</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
+                  <CardContent className="p-4 flex items-center gap-4">
+                    <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center shrink-0">
+                      <Sparkles className="w-6 h-6 text-amber-500" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-foreground">Hora Feliz</p>
+                      <p className="text-sm text-muted-foreground">Lun, Mié y Sáb $35</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
             
-            {/* Right Column: Info & Horarios */}
-            <div className="space-y-6 pt-2 lg:pt-8">
-              {/* Info cards */}
-              <div className="grid sm:grid-cols-2 gap-4">
+            {/* Right Column (PC): Info cards PC & Horarios */}
+            <div className="space-y-6 order-3 lg:order-3 pt-2 lg:pt-0">
+              <div className="space-y-4 hidden lg:block">
                 <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
                   <CardContent className="p-4 flex items-center gap-4">
                     <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
@@ -513,16 +544,16 @@ export function ClienteView() {
                     <span className="font-bold text-foreground">9:00 AM - 10:00 PM</span>
                   </div>
                   {horasFelices.filter(h => h.activo).length > 0 && (
-                    <div className="p-5 bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl border border-orange-100/50">
+                    <div className="p-4 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 rounded-xl border border-orange-100/50 dark:border-orange-900/30">
                       <div className="flex items-center gap-2 mb-4">
                         <Sparkles className="w-5 h-5 text-amber-500" />
-                        <h4 className="font-bold text-lg text-foreground">Horas Felices - Envío a $35</h4>
+                        <h4 className="font-bold text-base lg:text-lg text-foreground">Horas Felices - Envío a $35</h4>
                       </div>
-                      <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="grid gap-2">
                         {horasFelices.filter(h => h.activo).map((hora) => (
-                          <div key={hora.dia} className="flex items-center justify-between p-3 bg-card rounded-xl shadow-sm">
-                            <span className="text-muted-foreground font-medium">{hora.nombre}</span>
-                            <span className="font-bold text-amber-600">
+                          <div key={hora.dia} className="flex items-center justify-between p-2 lg:p-3 bg-card rounded-lg shadow-sm">
+                            <span className="text-muted-foreground font-medium text-sm lg:text-base">{hora.nombre}</span>
+                            <span className="font-bold text-amber-600 text-sm lg:text-base">
                               {formatTime(hora.hora_inicio)} - {formatTime(hora.hora_fin)}
                             </span>
                           </div>
@@ -823,7 +854,7 @@ export function ClienteView() {
                           <p className="text-center mt-3 text-orange-100">
                             {enviosRestantes === 0
                               ? '¡Tu próximo envío es GRATIS! 🎉'
-                              : `Te faltan ${enviosRestantes} envío${enviosRestantes > 1 ? 's' : ''} para el delivery gratis`}
+                              : `Te faltan ${enviosRestantes} envío${enviosRestantes > 1 ? 's' : ''} para tu envío gratis`}
                           </p>
                         </div>
                         <CardContent className="p-6">
@@ -974,7 +1005,7 @@ export function ClienteView() {
       </main>
 
       <footer className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center">
-        <p className="text-gray-500 text-sm">Estrella Delivery — Tu delivery de confianza</p>
+        <p className="text-muted-foreground text-sm">Estrella Delivery — Tu servicio de envíos de confianza</p>
       </footer>
       <AnimatePresence>
         {showRating && activeRegistroId && (
