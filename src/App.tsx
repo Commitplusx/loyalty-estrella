@@ -6,6 +6,8 @@ import { FlashBanner } from '@/components/FlashBanner';
 import { AnimatePresence } from 'framer-motion';
 import './App.css';
 
+import { PedidoView } from '@/pages/PedidoView';
+
 function AnimatedRoutes() {
   const location = useLocation();
   return (
@@ -13,6 +15,7 @@ function AnimatedRoutes() {
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Home />} />
         <Route path="/cliente" element={<ClienteView />} />
+        <Route path="/pedido/:id" element={<PedidoView />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>
