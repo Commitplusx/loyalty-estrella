@@ -19,6 +19,13 @@ function extract10Digits(phone: string): string {
   return phone.replace(/\D/g, '').slice(-10)
 }
 
+// ── Genera número de orden legible: EST-00123 ─────────────────────────────────
+function generarNumeroOrden(pedidoId: string): string {
+  // Usa los últimos 5 caracteres del UUID para crear un número corto y único
+  const shortId = pedidoId.replace(/-/g, '').slice(-5).toUpperCase()
+  return `EST-${shortId}`
+}
+
 async function sendWhatsAppTemplate(
   to: string,
   templateName: string,
@@ -84,11 +91,15 @@ async function sendInteractiveButton(to: string, text: string, buttonId: string,
   if (!res.ok) throw new Error(`WhatsApp Interactive API error: ${textBody}`)
 }
 
-async function notificarCliente(estado: string, tel: string, desc: string, nombre?: string, direccion?: string, restaurante?: string, repartidorNombre?: string, supabase?: any): Promise<string> {
+async function notificarCliente(
+  estado: string, tel: string, desc: string, pedidoId: string,
+  nombre?: string, direccion?: string, restaurante?: string, repartidorNombre?: string, supabase?: any
+): Promise<string> {
   const telFormateado = formatTel(tel)
   const nombreC = nombre || 'Cliente'
   const restC = restaurante || 'Restaurante'
   const repC = repartidorNombre || 'tu repartidor'
+  const numeroOrden = generarNumeroOrden(pedidoId)
   
   switch (estado) {
     case 'creado': {
@@ -99,14 +110,13 @@ async function notificarCliente(estado: string, tel: string, desc: string, nombr
           recipient_type: 'individual',
           to: telFormateado,
           type: 'text',
-          text: { body: `⭐ *Confirmación de Pedido — Estrella Delivery*\n\n¡Hola ${nombreC}! 👋\nRecibimos exitosamente tu orden de *${restC}*.\n\nTe avisaremos en cuanto el repartidor acepte tu servicio. 🛵💨` }
+          text: { body: `⭐ *Confirmación de Pedido — Estrella Delivery*\n\n¡Hola ${nombreC}! 👋\nRecibimos exitosamente tu orden #${numeroOrden} de *${restC}*.\n\nTe avisaremos en cuanto el repartidor acepte tu servicio. 🛵💨` }
         })
       })
       if (!res0.ok) console.error(`Error enviando text 'creado':`, await res0.text())
       return `✅ Mensaje de confirmación 'creado' enviado al cliente`
     }
     case 'aceptado': {
-      // Plantilla: ¡Hola {{1}}! 👋 Tu pedido de *{{2}}* ya fue asignado a nuestro repartidor: *{{3}}*. 🛵
       const components = [
         { type: 'header', parameters: [{ type: 'image', image: { link: 'https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png' } }] },
         { type: 'body', parameters: [
@@ -124,7 +134,6 @@ async function notificarCliente(estado: string, tel: string, desc: string, nombr
     }
     case 'en_camino':
     case 'recibido': {
-      // Plantilla: ¡Buenas noticias {{1}}! 🥡 Tu repartidor *{{2}}* ya recogió tu pedido en *{{3}}* y va directo a tu domicilio. 🏠
       const components = [
         { type: 'header', parameters: [{ type: 'image', image: { link: 'https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png' } }] },
         { type: 'body', parameters: [
@@ -141,7 +150,6 @@ async function notificarCliente(estado: string, tel: string, desc: string, nombr
       return `✅ Plantilla 'pedido_en_camino_v2' enviada`
     }
     case 'entregado': {
-      // Plantilla: Hola {{1}} 👋, tu pedido de *{{2}}* Ha sido entregado...
       const components = [
         { type: 'header', parameters: [{ type: 'image', image: { link: 'https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png' } }] },
         { type: 'body', parameters: [
@@ -161,7 +169,6 @@ async function notificarCliente(estado: string, tel: string, desc: string, nombr
       if (adminPhone && tel10Client) {
         // Guardar calificación pendiente en DB
         await supabase?.from('calificaciones_pendientes').upsert({
-          pedido_id: undefined,  // Se llenará si se pasa el ID
           cliente_tel: tel10Client,
           cliente_nombre: nombreC,
           restaurante: restC,
@@ -169,8 +176,9 @@ async function notificarCliente(estado: string, tel: string, desc: string, nombr
           created_at: new Date().toISOString()
         }).select().catch((e: any) => console.error('[BURÓ] Error guardando calificación pendiente:', e))
 
-        // Enviar botones al admin
-        const msgCal = `📦 *Entregado:* ${descC || 'Paquete'}\n👤 *Cliente:* ${nombreC} · 📞 ${tel10Client}\n🍽️ *Restaurante:* ${restC}\n\n¿Cómo estuvo este cliente?`
+        // BUG FIX: usar `desc` en lugar de la variable inexistente `descC`
+        // También incluimos el número de orden para que el admin sepa de qué pedido se trata
+        const msgCal = `📦 *${numeroOrden}* entregado\n👤 *Cliente:* ${nombreC} · 📞 ${tel10Client}\n🍽️ *Restaurante:* ${restC}\n📝 *Pedido:* ${desc || 'Paquete'}\n\n¿Cómo estuvo este cliente?`
         const btnUrl = `https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`
         const btnBody = JSON.stringify({
           messaging_product: 'whatsapp', recipient_type: 'individual',
@@ -201,8 +209,10 @@ async function notificarCliente(estado: string, tel: string, desc: string, nombr
 function buildRepartidorAsignacionText(
   pedidoId: string, descripcion: string, direccion: string | null, restaurante: string | null, clienteNombre: string | null,
 ): string {
+  const numeroOrden = generarNumeroOrden(pedidoId)
   return [
     `📦 *Nuevo Pedido Asignado — Estrella Delivery*`,
+    `🔢 *Orden:* ${numeroOrden}`,
     ``,
     restaurante ? `🍽️ *Restaurante:* ${restaurante}` : null,
     clienteNombre ? `👤 *Cliente:* ${clienteNombre}` : null,
@@ -247,14 +257,15 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: 'Pedido no encontrado' }), { status: 404 })
     }
 
-    console.log("PEDIDO FOUND:", pedido.id, "ESTADO:", pedido.estado, "TIPO_NOTIFICACION:", tipo)
+    const numeroOrden = generarNumeroOrden(pedido_id)
+    console.log("PEDIDO FOUND:", pedido.id, "ORDEN:", numeroOrden, "ESTADO:", pedido.estado, "TIPO_NOTIFICACION:", tipo)
 
     const results: string[] = []
 
     // ── ZOMBIE WATCHDOG (INTERVENCIÓN DEL ADMIN) ──
     if (tipo === 'alerta_zombie') {
-      const adminPhone = Deno.env.get('ADMIN_PHONE') || '529631550244' // Si no existe env, asume el número base de pruebas/admin
-      const msgZ = `🚨 *ALERTA CRÍTICA: PEDIDO ZOMBIE* 🚨\n\n⚠️ El siguiente pedido se ha atascado en el sistema:\n\n📦 *${descripcion || pedido.descripcion}*\n\n⏱️ *Tiempo total desde creación:* ${minutos_total} min\n⏳ *Sin moverse desde hace:* ${minutos_estancado} min\n\n👉 Por favor, revisa la consola o reasigna el pedido a otro repartidor.`
+      const adminPhone = Deno.env.get('ADMIN_PHONE') || '529631550244'
+      const msgZ = `🚨 *ALERTA CRÍTICA: PEDIDO ZOMBIE* 🚨\n\n⚠️ El siguiente pedido se ha atascado:\n\n🔢 *Orden:* ${numeroOrden}\n📦 *${descripcion || pedido.descripcion}*\n\n⏱️ *Tiempo total:* ${minutos_total} min\n⏳ *Sin moverse:* ${minutos_estancado} min\n\n👉 Por favor, revisa o reasigna el pedido.`
       
       const resZ = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
@@ -303,7 +314,6 @@ serve(async (req: Request) => {
       }
 
       if (repTelefono) {
-        // Buscar la fachada del cliente si existe
         let clienteFachada = ''
         if (pedido.cliente_tel) {
           const { data: cInfo } = await supabase.from('clientes').select('foto_fachada_url').eq('telefono', extract10Digits(pedido.cliente_tel)).maybeSingle()
@@ -312,19 +322,15 @@ serve(async (req: Request) => {
           }
         }
 
-        // Enviar plantilla de NUEVA ORDEN al Repartidor
-        // Header ({{1}}): Hola {{1}}, tienes un servicio asignado: 📦
-        // Body ({{1}}, {{2}}): *Pedido:* {{1}} 📍 *Referencia:* {{2}}
         const rawDesc = pedido.descripcion || 'Paquete'
         const descT = pedido.restaurante ? `🍽️ ${pedido.restaurante} - ${rawDesc}` : rawDesc
-        // Combinamos dirección de entrega con ubicación del restaurante y la fachada
         const dirT = (pedido.direccion || 'Revisar detalles') + restLoc + clienteFachada
         
         await sendWhatsAppTemplate(
           formatTel(repTelefono), 
           'estrella_delivery__nueva_orden', 
-          [descT.substring(0, 1024), dirT.substring(0, 1024)], // Limitar para evitar errores de API
-          [repNombre]    // Header Param {{1}}
+          [descT.substring(0, 1024), dirT.substring(0, 1024)],
+          [repNombre]
         )
         
         const msg = buildRepartidorAsignacionText(pedido.id, descT, dirT, pedido.restaurante, pedido.cliente_nombre)
@@ -336,9 +342,8 @@ serve(async (req: Request) => {
         results.push('⚠️ Repartidor sin teléfono o no encontrado')
       }
     } else {
-    // B. Notificar al Cliente (Si no es una asignación directa al repartidor)
+    // B. Notificar al Cliente
     if (tipo !== 'asignacion' && pedido.cliente_tel) {
-      // Intentar obtener nombre del repartidor asignado para las plantillas v2
       let repNom = 'tu repartidor'
       if (pedido.repartidor_id) {
         const { data: r } = await supabase.from('repartidores').select('nombre').eq('user_id', pedido.repartidor_id).limit(1).maybeSingle()
@@ -348,7 +353,8 @@ serve(async (req: Request) => {
       const resCli = await notificarCliente(
         tipo, 
         pedido.cliente_tel, 
-        pedido.descripcion, 
+        pedido.descripcion,
+        pedido.id,
         pedido.cliente_nombre ?? undefined, 
         pedido.direccion ?? undefined,
         pedido.restaurante ?? undefined,
