@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Truck, Shield, Scale, Info, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Truck, Shield, Scale, Info, ArrowLeft, CheckCircle2, Users, Lock, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 
