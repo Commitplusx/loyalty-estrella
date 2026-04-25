@@ -1,3 +1,4 @@
+// Página de Términos y Condiciones - Actualizada con iconos corregidos
 import { motion } from 'framer-motion';
 import { Truck, Shield, Scale, Info, ArrowLeft, CheckCircle2, Users, Lock, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
