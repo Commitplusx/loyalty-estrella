@@ -118,7 +118,8 @@ export function ClienteView() {
       )
       .subscribe();
 
-    // Canal para el modal de calificación (ya existía antes)
+    // Canal para el modal de calificación — solo se activa en acumulaciones,
+    // NO en canjes de billetera ni envíos gratis (Bug #3 fix)
     const channelName = `realtime_ratings_${clienteId}`;
     const channel = supabase
       .channel(channelName)
@@ -130,9 +131,12 @@ export function ClienteView() {
           table: 'registros_puntos',
           filter: `cliente_id=eq.${clienteId}`,
         },
-        (payload: { new: { id: string } }) => {
-          setActiveRegistroId(payload.new.id);
-          setShowRating(true);
+        (payload: { new: { id: string; tipo: string } }) => {
+          // Solo mostrar el modal cuando es una acumulación de punto real
+          if (payload.new.tipo === 'acumulacion') {
+            setActiveRegistroId(payload.new.id);
+            setShowRating(true);
+          }
         }
       )
       .subscribe();
@@ -196,9 +200,18 @@ export function ClienteView() {
   };
 
   const isVip = cliente?.es_vip === true;
-  const metaVip = cliente ? (cliente.rango === 'oro' ? 3 : (cliente.rango === 'plata' || isVip ? 4 : 5)) : 5;
-  const progreso = cliente ? ((cliente.puntos % metaVip) / metaVip) * 100 : 0;
-  const enviosRestantes = cliente ? (metaVip - (cliente.puntos % metaVip)) % metaVip : metaVip;
+  // Meta de envíos por rango (3 para oro, 4 para plata/VIP, 5 para bronce)
+  const metaVip = cliente
+    ? (cliente.rango === 'oro' ? 3 : (cliente.rango === 'plata' || isVip ? 4 : 5))
+    : 5;
+  // Bug #5 fix: un cliente nuevo con 0 puntos no debe mostrar "¡Gratis!"
+  const puntosEnCiclo = cliente ? cliente.puntos % metaVip : 0;
+  const progreso = cliente ? (puntosEnCiclo / metaVip) * 100 : 0;
+  const enviosRestantes = cliente
+    ? (puntosEnCiclo === 0 && cliente.envios_totales === 0
+        ? metaVip                        // cliente nuevo: aún le faltan todos
+        : metaVip - puntosEnCiclo)       // en ciclo activo o inicio de nuevo ciclo
+    : metaVip;
   const MAX_ENVIO_GRATIS = 45; // Tope máximo de cobertura por envío gratis
 
   // ── Canjeadores de billetera ──────────────────────────────────────────────
@@ -206,7 +219,8 @@ export function ClienteView() {
     const monto = parseFloat(foodAmount);
     if (!cliente || isNaN(monto) || monto <= 0 || monto > (cliente.saldo_billetera || 0)) return;
     setWalletLoading(true);
-    const res = await canjearSaldoBilleteraRPC(cliente.id, 'cliente', monto);
+    // Bug #2 fix: se pasa cliente.id como autor del canje (no el string literal 'cliente')
+    const res = await canjearSaldoBilleteraRPC(cliente.id, cliente.id, monto);
     setWalletLoading(false);
     if (res.success) {
       setWalletMsg(`✅ Se descontaron $${monto.toFixed(2)} de tu billetera VIP`);

@@ -73,14 +73,14 @@ export function ClientStats({ cliente, historial }: ClientStatsProps) {
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
               <span className="text-2xl">
-                {cliente.rango === 'oro' ? '👑' : cliente.rango === 'plata' ? '🥈' : '🥉'}
+                {(cliente.rango ?? 'bronce') === 'oro' ? '👑' : (cliente.rango ?? 'bronce') === 'plata' ? '🥈' : '🥉'}
               </span>
             </div>
             <div>
               <p className="text-sm text-rose-100 font-medium mb-1">Nivel Actual</p>
               <h4 className="text-3xl font-black uppercase tracking-wider">{cliente.rango}</h4>
               <p className="text-xs text-rose-200 mt-1">
-                {cliente.rango === 'oro' ? '¡Disfrutas de la meta mínima de envíos!' : `Lleva tus pedidos al Nivel ${cliente.rango === 'bronce' ? 'Plata' : 'Oro'}`}
+                {(cliente.rango ?? 'bronce') === 'oro' ? '¡Disfrutas de la meta mínima de envíos!' : `Lleva tus pedidos al Nivel ${(cliente.rango ?? 'bronce') === 'bronce' ? 'Plata' : 'Oro'}`}
               </p>
             </div>
           </div>

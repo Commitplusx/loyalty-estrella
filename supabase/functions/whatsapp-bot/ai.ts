@@ -178,28 +178,25 @@ export async function conversacionDeepSeek(
       { role: 'user', content: String(nuevoTexto).substring(0, 500) },
     ]
 
-    const API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!
+    const API_KEY = Deno.env.get('DEEPSEEK_API_KEY')!
 
-    // Separar system del historial (Claude usa system como parámetro top-level)
-    const systemMsg = messages.find((m: any) => m.role === 'system')?.content || ''
-    const chatMessages = messages.filter((m: any) => m.role !== 'system')
-
-    const callClaude = async (): Promise<Response> => {
+    const callDeepSeek = async (): Promise<Response> => {
       const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 25000)
+      // 12s timeout — la idempotencia en index.ts bloquea reintentos duplicados de Meta.
+      const timeout = setTimeout(() => controller.abort(), 12000)
       try {
-        return await fetch('https://api.anthropic.com/v1/messages', {
+        return await fetch('https://api.deepseek.com/chat/completions', {
           method: 'POST',
           headers: {
+            'Authorization': `Bearer ${API_KEY}`,
             'Content-Type': 'application/json',
-            'x-api-key': API_KEY,
-            'anthropic-version': '2023-06-01',
           },
           body: JSON.stringify({
-            model: 'claude-sonnet-4-6',
+            model: 'deepseek-chat',
+            response_format: { type: 'json_object' },
+            messages,
             max_tokens: 512,
-            system: systemMsg,
-            messages: chatMessages,
+            temperature: 0.0,
           }),
           signal: controller.signal,
         })
@@ -210,28 +207,34 @@ export async function conversacionDeepSeek(
 
     let res: Response
     try {
-      res = await callClaude()
+      res = await callDeepSeek()
       if (res.status >= 500 && res.status < 600) {
-        console.warn(`⚠️ Claude API ${res.status}, reintentando en 2s...`)
-        await new Promise(r => setTimeout(r, 2000))
-        res = await callClaude()
+        console.warn(`⚠️ DeepSeek API ${res.status}, reintentando inmediatamente...`)
+        res = await callDeepSeek()
       }
     } catch (fetchErr: any) {
       const isTimeout = fetchErr?.name === 'AbortError'
-      console.error(isTimeout ? '⏱️ Timeout 25s alcanzado' : '🌐 Fetch error:', String(fetchErr))
-      return { errorObj: isTimeout ? 'Claude no respondió en 25s. Intente de nuevo.' : String(fetchErr) }
+      console.error(isTimeout ? '⏱️ Timeout 12s alcanzado, usando fallback' : '🌐 Fetch error:', String(fetchErr))
+      return { errorObj: isTimeout ? 'DeepSeek no respondió a tiempo. Intente de nuevo.' : String(fetchErr) }
     }
 
     if (!res.ok) {
       const errText = await res.text()
-      console.error('Claude API Error:', errText)
+      console.error('DeepSeek API Error:', errText)
       return { errorObj: `HTTP ${res.status} - ${errText}` }
     }
 
     const data = await res.json()
-    console.log(`🤖 [Claude] Tokens usados — input: ${data.usage?.input_tokens} | output: ${data.usage?.output_tokens}`)
+    console.log(`🤖 [DeepSeek] Tokens usados — input: ${data.usage?.prompt_tokens} | output: ${data.usage?.completion_tokens}`)
 
-    let rawContent = (data.content?.[0]?.text || '{}').trim()
+    // Formato OpenAI-compatible: choices[0].message.content
+    let rawContent = (data.choices?.[0]?.message?.content || '').trim()
+
+    // Respuesta vacía de DeepSeek — ocurre en picos de carga
+    if (!rawContent || rawContent.length < 5) {
+      console.error('❌ DeepSeek devolvió contenido vacío. Finish reason:', data.choices?.[0]?.finish_reason)
+      return { errorObj: 'Respuesta vacía de DeepSeek.' }
+    }
 
     let cleanJSON = rawContent.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
     const fb = cleanJSON.indexOf('{'), lb = cleanJSON.lastIndexOf('}')

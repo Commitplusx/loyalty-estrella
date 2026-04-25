@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Home } from '@/pages/Home';
 import { ClienteView } from '@/pages/client/ClienteView';
+import { Terminos } from '@/pages/Terminos';
 import { Toaster } from '@/components/ui/sonner';
 import { FlashBanner } from '@/components/FlashBanner';
 import { AnimatePresence } from 'framer-motion';
@@ -16,6 +17,7 @@ function AnimatedRoutes() {
         <Route path="/" element={<Home />} />
         <Route path="/cliente" element={<ClienteView />} />
         <Route path="/pedido/:id" element={<PedidoView />} />
+        <Route path="/terminos" element={<Terminos />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>

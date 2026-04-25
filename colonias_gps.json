@@ -1,0 +1,541 @@
+[
+  {
+    "nombre": "CENTRO",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "SAN SEBASTIAN",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.238708,
+    "lng": -92.116513
+  },
+  {
+    "nombre": "SAN AGUSTIN",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.238185,
+    "lng": -92.153874
+  },
+  {
+    "nombre": "PUENTE HIDALGO",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.228838,
+    "lng": -92.133455
+  },
+  {
+    "nombre": "BELISARIO",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "BARRIO EL 25",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250113,
+    "lng": -92.121589
+  },
+  {
+    "nombre": "PILA",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "PILITA",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "SAN JOSE",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.236856,
+    "lng": -92.133143
+  },
+  {
+    "nombre": "JESUSITO",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.23215,
+    "lng": -92.122437
+  },
+  {
+    "nombre": "CANDELARIA",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.24819,
+    "lng": -92.144353
+  },
+  {
+    "nombre": "INFONAVIT",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "GUADALUPE",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.233687,
+    "lng": -92.142222
+  },
+  {
+    "nombre": "FRACC LAS FLORES",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.239708,
+    "lng": -92.149686
+  },
+  {
+    "nombre": "FOVISSTE",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "SANTA ANA",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "FRACC 28 DE AGOSTO",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.239756,
+    "lng": -92.159441
+  },
+  {
+    "nombre": "LA POPULAR",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "MONTE VERDE",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.229668,
+    "lng": -92.145081
+  },
+  {
+    "nombre": "MICROONDAS",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.246638,
+    "lng": -92.127125
+  },
+  {
+    "nombre": "LA PILETA",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.244952,
+    "lng": -92.132921
+  },
+  {
+    "nombre": "MAGUEYES",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.23215,
+    "lng": -92.122437
+  },
+  {
+    "nombre": "YALCHIVOL",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.235321,
+    "lng": -92.156889
+  },
+  {
+    "nombre": "FRACC MAYA",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "FRACC LOS PINOS",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.240762,
+    "lng": -92.131008
+  },
+  {
+    "nombre": "ARENAL",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "FRACC TERRAZAS",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "EL ROSARIO",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.243085,
+    "lng": -92.118968
+  },
+  {
+    "nombre": "1RO DE MAYO",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.232353,
+    "lng": -92.125961
+  },
+  {
+    "nombre": "LATINO AMERICANA",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "ORQUIDEAS",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "EL HERRAJE",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "COL ESMERALDA",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.264458,
+    "lng": -92.136522
+  },
+  {
+    "nombre": "COL LUIS DONALDO COLOSIO",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "BELLAVISTA",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "SIETE ESQUINAS",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "NICALOKOCK",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "FRACC LOS LAGOS",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "FRACC 9 ESTRELLAS",
+    "zona": "verde",
+    "precio": 45,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "CRUZ GRANDE",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.238557,
+    "lng": -92.116389
+  },
+  {
+    "nombre": "SANTA CECILIA",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.233244,
+    "lng": -92.142012
+  },
+  {
+    "nombre": "LA CUEVA",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "ARBOLEDAS",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "BOSQUES",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "SAN MARTIN",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.244917,
+    "lng": -92.154127
+  },
+  {
+    "nombre": "BETHEL",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "COMITLAN",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.22165,
+    "lng": -92.1333
+  },
+  {
+    "nombre": "MARIANO N RUIZ",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.231497,
+    "lng": -92.131146
+  },
+  {
+    "nombre": "LOS SABINOS",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.221755,
+    "lng": -92.101984
+  },
+  {
+    "nombre": "FRACC PRADO",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "FRACC TUCANES",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "ROSARIO",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "CHICHIMA GUADALUPE",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.233687,
+    "lng": -92.142222
+  },
+  {
+    "nombre": "CHILCAS",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "BONAMPAK",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "MIRAMAR",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "CERRITO",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "CEDRO",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.224982,
+    "lng": -92.132526
+  },
+  {
+    "nombre": "JERUSALEN",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.243338,
+    "lng": -92.113501
+  },
+  {
+    "nombre": "SAN ANTONIO",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.260538,
+    "lng": -92.130616
+  },
+  {
+    "nombre": "JORDAN",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "SAN MIGUEL",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.264376,
+    "lng": -92.137236
+  },
+  {
+    "nombre": "LA REPRESA",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "PASHTON",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "TENAM",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.236481,
+    "lng": -92.15369
+  },
+  {
+    "nombre": "COMITAN COLONIAL",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.22165,
+    "lng": -92.1333
+  },
+  {
+    "nombre": "LINDA VISTA",
+    "zona": "azul",
+    "precio": 50,
+    "lat": 16.257038,
+    "lng": -92.126191
+  },
+  {
+    "nombre": "TINAJAS",
+    "zona": "amarilla",
+    "precio": 55,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "DESAMPARADOS",
+    "zona": "amarilla",
+    "precio": 55,
+    "lat": 16.23215,
+    "lng": -92.122437
+  },
+  {
+    "nombre": "27 DE JUNIO",
+    "zona": "amarilla",
+    "precio": 55,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "PASHTON ACAPULCO",
+    "zona": "amarilla",
+    "precio": 55,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "20 DE NOVIEMBRE",
+    "zona": "amarilla",
+    "precio": 55,
+    "lat": 16.234575,
+    "lng": -92.141283
+  },
+  {
+    "nombre": "CHICHIMA ACAPETAHUA",
+    "zona": "amarilla",
+    "precio": 55,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "PLAZA LAS FLORES",
+    "zona": "amarilla",
+    "precio": 55,
+    "lat": 16.239708,
+    "lng": -92.149686
+  },
+  {
+    "nombre": "ENTRONQUE CHICHIMA",
+    "zona": "roja",
+    "precio": 70,
+    "lat": 16.250578,
+    "lng": -92.13736
+  },
+  {
+    "nombre": "LA COCA",
+    "zona": "roja",
+    "precio": 70,
+    "lat": 16.263052,
+    "lng": -92.133932
+  },
+  {
+    "nombre": "GAS VILLATORO",
+    "zona": "roja",
+    "precio": 70,
+    "lat": 16.250578,
+    "lng": -92.13736
+  }
+]

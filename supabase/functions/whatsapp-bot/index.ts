@@ -21,7 +21,7 @@ serve(async (req: Request) => {
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
 
   let errorNotifyPhone = ''
-  
+
   // ── PHASE 4: Meta Webhook Validation (X-Hub-Signature-256) ──
   const appSecret = Deno.env.get('WHATSAPP_APP_SECRET')
   let bodyText = ''
@@ -37,22 +37,22 @@ serve(async (req: Request) => {
       console.error('⚠️ Falla de seguridad: Falta X-Hub-Signature-256')
       return new Response('Unauthorized', { status: 401 })
     }
-    
+
     // Verificación HMAC SHA256 usando Web Crypto API
     const encoder = new TextEncoder()
     const key = await crypto.subtle.importKey(
-      'raw', 
-      encoder.encode(appSecret), 
-      { name: 'HMAC', hash: 'SHA-256' }, 
-      false, 
+      'raw',
+      encoder.encode(appSecret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
       ['verify']
     )
-    
+
     const expectedSigHex = signature.replace('sha256=', '')
     const expectedSigBytes = new Uint8Array(expectedSigHex.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || [])
-    
+
     const isValid = await crypto.subtle.verify('HMAC', key, expectedSigBytes, encoder.encode(bodyText))
-    
+
     if (!isValid) {
       console.error('⛔ ALERTA INTENTO DE SPOOFING: La firma HASH no coincide con el payload y el SECRET.')
       return new Response('Unauthorized', { status: 401 })
@@ -74,22 +74,58 @@ serve(async (req: Request) => {
     const messageId = msg.id as string
     const msgType = msg.type as string
 
-    // ── IDEMPOTENCY: Evitar duplicados de Meta ──
+    // ── IDEMPOTENCY: Evitar duplicados de Meta (Optimistic Insert) ──
     const idempotencyKey = `processed_msg:${messageId}`
-    const { data: alreadyProcessed } = await supabase.from('bot_memory').select('phone').eq('phone', idempotencyKey).maybeSingle()
-    if (alreadyProcessed) {
-      console.log(`⚠️ Mensaje duplicado ignorado: ${messageId}`)
+    const { error: idempError } = await supabase.from('bot_memory').insert({ phone: idempotencyKey, history: [], updated_at: new Date().toISOString() })
+    if (idempError) {
+      if (idempError.code === '23505' || idempError.message.includes('duplicate key')) {
+        console.log(`⚠️ Mensaje duplicado ignorado (Optimistic): ${messageId}`)
+        return new Response('OK', { status: 200 })
+      }
+      console.error(`[IDEMPOTENCY DB ERROR]`, idempError)
+    }
+
+    // ── RATE LIMITING ANTI-SPAM (Protección de Costos API y Base de Datos) ──
+    // Evita ataques DoS o que un usuario rompa la IA enviando 50 mensajes de golpe.
+    const rateLimitKey = `rate_limit_${fromPhone}`
+    const { data: rlData } = await supabase.from('bot_memory').select('history').eq('phone', rateLimitKey).maybeSingle()
+    let timestamps = (rlData?.history as number[]) || []
+    const ventanaTiempo = Date.now() - 60000 // 1 minuto
+    
+    // Filtrar marcas de tiempo más viejas de 1 min
+    timestamps = timestamps.filter(t => t > ventanaTiempo)
+    
+    if (timestamps.length >= 12) {
+      console.warn(`[RATE LIMIT] Bloqueo activo para ${fromPhone}. (${timestamps.length} msgs/min)`)
+      // Solo avisamos 1 vez cuando cruza exactamente el límite para no gastar API respondiendo el spam
+      if (timestamps.length === 12) {
+         await sendWA(fromPhone, `⚠️ *[SISTEMA]*: Estás enviando demasiados mensajes muy rápido. Por protección del sistema, espera 1 minuto antes de continuar.`)
+      }
+      timestamps.push(Date.now())
+      await supabase.from('bot_memory').upsert({ phone: rateLimitKey, history: timestamps, updated_at: new Date().toISOString() })
       return new Response('OK', { status: 200 })
     }
-    await supabase.from('bot_memory').upsert({ phone: idempotencyKey, history: [], updated_at: new Date().toISOString() })
+    
+    timestamps.push(Date.now())
+    await supabase.from('bot_memory').upsert({ phone: rateLimitKey, history: timestamps, updated_at: new Date().toISOString() })
 
-    // BUG FIX #7: Limpiar llaves de idempotencia viejas (mayores a 1 hora) para no saturar
-    const unaHoraAtras = new Date(Date.now() - 3600 * 1000).toISOString()
-    // Borrado asíncrono convertido a síncrono para evitar leak en el Edge Runtime de Supabase
-    await supabase.from('bot_memory').delete().ilike('phone', 'processed_msg:%').lt('updated_at', unaHoraAtras)
 
-    // ── COMANDO SECRETO SANEAMIENTO ──
+    // BUG FIX #7: Limpiar llaves de idempotencia y RateLimits viejos (mayores a 1 hora) de forma probabilística (5%)
+    // Esto salva a la base de datos de hacer un DELETE con patrón LIKE miles de veces por hora.
+    if (Math.random() < 0.05) {
+      const unaHoraAtras = new Date(Date.now() - 3600 * 1000).toISOString()
+      await supabase.from('bot_memory').delete().like('phone', 'processed_msg:%').lt('updated_at', unaHoraAtras)
+    }
+
+    // ── IDENTIFICACIÓN DE ROLES ── (DEBE IR ANTES de cualquier uso de esAdmin)
+    const from10 = extract10Digits(fromPhone)
+    const ADMIN_PHONES_LIST = ADMIN_PHONES_ENV.split(',').map(s => extract10Digits(s)).filter(Boolean)
+    const esAdmin = ADMIN_PHONES_LIST.includes(from10)
+    const admin10 = esAdmin ? from10 : (ADMIN_PHONES_LIST[0] || '')
+
+    // ── COMANDO SECRETO SANEAMIENTO (ahora sí después de esAdmin) ──
     if (msgType === 'text' && msg.text?.body === 'SANEAMIENTO_TOTAL') {
+      if (!esAdmin) return new Response('Unauthorized', { status: 401 })
       const cleanPhones = async (table: string) => {
         const { data } = await supabase.from(table).select('id, telefono')
         for (const r of data || []) {
@@ -103,12 +139,6 @@ serve(async (req: Request) => {
       return new Response('OK', { status: 200 })
     }
 
-    // ── IDENTIFICACIÓN DE ROLES ──
-    const from10  = extract10Digits(fromPhone)
-    const ADMIN_PHONES_LIST = ADMIN_PHONES_ENV.split(',').map(s => extract10Digits(s)).filter(Boolean)
-    const esAdmin = ADMIN_PHONES_LIST.includes(from10)
-    const admin10 = esAdmin ? from10 : (ADMIN_PHONES_LIST[0] || '')
-
     // ── INTERCEPTOR DE MULTIMEDIA Y FORMATOS NO SOPORTADOS ──
     if (['audio', 'image', 'document', 'sticker', 'video', 'voice'].includes(msgType)) {
       if (!esAdmin) {
@@ -117,15 +147,64 @@ serve(async (req: Request) => {
       return new Response('OK', { status: 200 })
     }
 
-    // 1. REP BOTONES INTERACTIVOS ──
+    // 1. BOTONES INTERACTIVOS ──
     if (msgType === 'interactive') {
       const buttonId = msg.interactive?.button_reply?.id as string | undefined
-      if (buttonId) await handleRepButtons(supabase, fromPhone, buttonId)
+      if (buttonId) {
+        // Botones de calificación de clientes
+        if (buttonId.startsWith('RATE_') || buttonId.startsWith('TAG_') || buttonId.startsWith('VETAR_')) {
+          const { handleCalificacion } = await import('./admin-handler.ts')
+          return await handleCalificacion(supabase, fromPhone, buttonId)
+        }
+        // Botones de Términos y Condiciones
+        const upId = buttonId.toUpperCase()
+        if (upId === 'ACEPTAR_TERMINOS' || upId === 'RECHAZAR_TERMINOS' || upId === 'ACEPTAR' || upId === 'RECHAZAR') {
+          const { handleTerminos } = await import('./admin-handler.ts')
+          return await handleTerminos(supabase, fromPhone, buttonId)
+        }
+        await handleRepButtons(supabase, fromPhone, buttonId)
+      }
       return new Response('OK', { status: 200 })
     }
 
-    // 2. ADMIN FLOW ──
+    // ── SLASH COMMANDS (Admin Dual Mode) ─────────────────────────────────────
+    // Deben ir ANTES del flujo admin normal para no pasar por la IA
+    if (esAdmin && msgType === 'text') {
+      const slashText = (msg.text?.body as string || '').trim().toLowerCase()
+      if (slashText === '/repartidor') {
+        await supabase.from('bot_memory').upsert({
+          phone: `admin_mode_${from10}`,
+          history: [{ mode: 'repartidor', activado: Date.now() }],
+          updated_at: new Date().toISOString()
+        })
+        await sendWA(fromPhone, `🛵 *Modo Repartidor activado.*\nAhora recibirás pedidos como mensajero y puedes aceptarlos con el botón.\n\nEscribe */admin* para regresar a modo administrador.`)
+        return new Response('OK', { status: 200 })
+      }
+      if (slashText === '/admin') {
+        await supabase.from('bot_memory').delete().eq('phone', `admin_mode_${from10}`)
+        await sendWA(fromPhone, `👔 *Modo Admin activado.*\nYa tienes acceso completo al panel de administración.`)
+        return new Response('OK', { status: 200 })
+      }
+    }
+
+    // ── VERIFICAR MODO REPARTIDOR DEL ADMIN ──────────────────────────────────
+    let adminEnModoRepartidor = false
     if (esAdmin) {
+      const { data: modeData } = await supabase.from('bot_memory').select('history').eq('phone', `admin_mode_${from10}`).maybeSingle()
+      if (modeData?.history?.[0]?.mode === 'repartidor') {
+        const horasActivo = (Date.now() - (modeData.history[0].activado || 0)) / 3600000
+        if (horasActivo < 8) {
+          adminEnModoRepartidor = true
+        } else {
+          // Auto-regreso a admin después de 8 horas
+          await supabase.from('bot_memory').delete().eq('phone', `admin_mode_${from10}`)
+          await sendWA(fromPhone, `⏰ *Modo Admin restaurado automáticamente* (8h sin cambio).\nEscribe */repartidor* si deseas volver a modo mensajero.`)
+        }
+      }
+    }
+
+    // 2. ADMIN FLOW ──
+    if (esAdmin && !adminEnModoRepartidor) {
       // 2.A GPS Directo
       if (msgType === 'location') {
         return await handleAdminGPS(supabase, fromPhone, admin10, msg.location.latitude, msg.location.longitude, msg.location.name ?? msg.location.address ?? '', messageId)
@@ -133,11 +212,11 @@ serve(async (req: Request) => {
       if (msgType === 'text') {
         const texto = msg.text.body as string
         if (texto.toLowerCase() === 'debug_restaurantes') {
-           const { data } = await supabase.from('restaurantes').select('nombre, telefono, activo').limit(50)
-           if (data) await sendWA(fromPhone, `📍 *RESTAURANTES REGISTRADOS:*\n${data.map((r:any) => `- ${r.nombre}: ${r.telefono} [${r.activo?'✅':'❌'}]`).join('\n')}`)
-           return new Response('OK', { status: 200 })
+          const { data } = await supabase.from('restaurantes').select('nombre, telefono, activo').limit(50)
+          if (data) await sendWA(fromPhone, `📍 *RESTAURANTES REGISTRADOS:*\n${data.map((r: any) => `- ${r.nombre}: ${r.telefono} [${r.activo ? '✅' : '❌'}]`).join('\n')}`)
+          return new Response('OK', { status: 200 })
         }
-        
+
         // Asignación rápida de restaurante
         const { data: pendingMem } = await supabase.from('bot_memory').select('history').eq('phone', `admin_rest_pending_${admin10}`).maybeSingle()
         if (pendingMem?.history?.[0]?.pedidos?.length > 0) {
@@ -145,33 +224,43 @@ serve(async (req: Request) => {
           if (assignRes) return assignRes
         }
 
-        // Ejecutar agente DeepSeek Admin
+        // Ejecutar agente Claude Admin
         return await handleAdminMessage(supabase, fromPhone, messageId, texto)
       }
     }
 
     // 3. RESTAURANT PORTAL ──
-    if (!esAdmin) {
-      const portalResponse = await handleRestaurantPortal(supabase, fromPhone, from10, admin10, admin10, msgType, msg, sendWA, sendInteractiveButton)
+    if (!esAdmin || adminEnModoRepartidor) {
+      // Si el admin está en modo repartidor, tratarlo como repartidor
+      if (adminEnModoRepartidor) {
+        const { data: adminAsRep } = await supabase.from('repartidores').select('id, user_id, nombre, alias').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
+        if (adminAsRep && msgType === 'text') return await handleRepMessage(supabase, fromPhone, from10, msg.text.body as string, adminAsRep)
+        if (adminAsRep) {
+          await sendWA(fromPhone, `🛵 Hola ${adminAsRep.nombre}. Usa los botones para avanzar pedidos o envíame texto.`)
+          return new Response('OK', { status: 200 })
+        }
+      }
+
+      const portalResponse = await handleRestaurantPortal(supabase, fromPhone, from10, admin10, `52${admin10}`, msgType, msg, sendWA, sendInteractiveButton)
       if (portalResponse) return portalResponse
     }
 
     // 4. REP FLOW O PUBLICO ──
-    if (!esAdmin && msgType === 'text') {
+    if ((!esAdmin || adminEnModoRepartidor) && msgType === 'text') {
       const { data: isRep } = await supabase.from('repartidores').select('id, user_id, nombre, alias').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
       if (isRep) return await handleRepMessage(supabase, fromPhone, from10, msg.text.body as string, isRep)
     }
 
-    // 5. PUBLICO BIENVENIDA O REPARITDOR MULTIMEDIA ──
-    if (!esAdmin) {
-       const { data: isRep } = await supabase.from('repartidores').select('nombre').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
-       if (isRep) {
-          await sendWA(fromPhone, `🤖 Hola ${isRep.nombre}.\nRecuerda usar los botones para avanzar pedidos o enviarme mensajes de texto sin emojis.`)
-       } else {
-          const profileName = body?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.profile?.name
-          await sendWA(fromPhone, `¡Hola *${profileName||''}*! 👋 Soy el asistente de Estrella Delivery.\n\nPara pedir un servicio, escríbele al administrador: wa.me/52${admin10}\n\n¡Gracias! ⭐`)
-       }
-       return new Response('OK', { status: 200 })
+    // 5. PUBLICO BIENVENIDA O REPARTIDOR MULTIMEDIA ──
+    if (!esAdmin || adminEnModoRepartidor) {
+      const { data: isRep } = await supabase.from('repartidores').select('nombre').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
+      if (isRep) {
+        await sendWA(fromPhone, `🤖 Hola ${isRep.nombre}.\nRecuerda usar los botones para avanzar pedidos o enviarme mensajes de texto sin emojis.`)
+      } else {
+        const profileName = body?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.profile?.name
+        await sendWA(fromPhone, `¡Hola *${profileName || ''}*! 👋 Soy el asistente de Estrella Delivery.\n\nPara pedir un servicio, escríbele al administrador: wa.me/52${admin10}\n\n¡Gracias! ⭐`)
+      }
+      return new Response('OK', { status: 200 })
     }
 
     return new Response('OK', { status: 200 })
@@ -179,10 +268,21 @@ serve(async (req: Request) => {
     console.error('Error root:', e)
     if (errorNotifyPhone) {
       try {
-        await sendWA(errorNotifyPhone, `⚠️ *[SISTEMA]*: Hubo un fallo interno grave procesando esa solicitud. Detalle: ${e instanceof Error ? e.message : String(e)}`)
-      } catch (err2) { console.error('Fallback fail:', err2) }
+        // Mensaje suave para el usuario/restaurante
+        await sendWA(errorNotifyPhone, `⚠️ *[SISTEMA]*: Tuvimos un problema técnico procesando tu mensaje. El administrador ha sido notificado y lo revisará de inmediato.`)
+        
+        // Notificación DLQ (Dead Letter Queue) para el Administrador
+        const mainAdmin10 = ADMIN_PHONES_ENV.split(',')[0]?.replace(/\D/g, '').slice(-10)
+        if (mainAdmin10) {
+          const truncBody = bodyText.substring(0, 800)
+          const errorMsg = `🚨 *CRITICAL ERROR (DLQ)* 🚨\n\n*De:* ${errorNotifyPhone}\n*Error:* ${e instanceof Error ? e.message : String(e)}\n\n*Payload:*\n\`\`\`${truncBody}\`\`\``
+          await sendWA(`52${mainAdmin10}`, errorMsg)
+        }
+      } catch (err2) { 
+        console.error('Fallback fail:', err2) 
+      }
     }
-    // Siempre retornar 200 a Meta
+    // Siempre retornar 200 a Meta para evitar reintentos masivos
     return new Response('Error handled cleanly', { status: 200 })
   }
 })

@@ -1,0 +1,357 @@
+🚀 Iniciando geocodificación con Google Maps API...
+📍 Ciudad objetivo: Comitán de Domínguez, Chiapas, México
+
+📋 Total de colonias a procesar: 169
+
+❌ [1/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [2/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [3/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [4/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [5/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [6/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [7/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [8/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [9/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [10/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [11/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [12/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [13/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [14/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [15/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [16/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [17/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [18/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [19/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [20/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [21/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [22/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [23/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [24/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [25/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [26/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [27/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [28/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [29/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [30/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [31/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [32/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [33/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [34/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [35/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [36/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [37/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [38/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [39/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [40/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [41/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [42/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [43/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [44/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [45/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [46/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [47/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [48/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [49/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [50/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [51/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [52/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [53/169] Barrio → No localizada (REQUEST_DENIED)
+❌ [54/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [55/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [56/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [57/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [58/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [59/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [60/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [61/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [62/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [63/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [64/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [65/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [66/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [67/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [68/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [69/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [70/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [71/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [72/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [73/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [74/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [75/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [76/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [77/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [78/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [79/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [80/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [81/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [82/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [83/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [84/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [85/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [86/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [87/169] Colonia → No localizada (REQUEST_DENIED)
+❌ [88/169] Ejido → No localizada (REQUEST_DENIED)
+❌ [89/169] Ejido → No localizada (REQUEST_DENIED)
+❌ [90/169] Ejido → No localizada (REQUEST_DENIED)
+❌ [91/169] Ejido → No localizada (REQUEST_DENIED)
+❌ [92/169] Ejido → No localizada (REQUEST_DENIED)
+❌ [93/169] Ejido → No localizada (REQUEST_DENIED)
+❌ [94/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [95/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [96/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [97/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [98/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [99/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [100/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [101/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [102/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [103/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [104/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [105/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [106/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [107/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [108/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [109/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [110/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [111/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [112/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [113/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [114/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [115/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [116/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [117/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [118/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [119/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [120/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [121/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [122/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [123/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [124/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [125/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [126/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [127/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [128/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [129/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [130/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [131/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [132/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [133/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [134/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [135/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [136/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [137/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [138/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [139/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [140/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [141/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [142/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [143/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [144/169] Fraccionamiento → No localizada (REQUEST_DENIED)
+❌ [145/169] Pueblo → No localizada (REQUEST_DENIED)
+❌ [146/169] Pueblo → No localizada (REQUEST_DENIED)
+❌ [147/169] Pueblo → No localizada (REQUEST_DENIED)
+❌ [148/169] Pueblo → No localizada (REQUEST_DENIED)
+❌ [149/169] Pueblo → No localizada (REQUEST_DENIED)
+❌ [150/169] Pueblo → No localizada (REQUEST_DENIED)
+❌ [151/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [152/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [153/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [154/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [155/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [156/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [157/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [158/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [159/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [160/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [161/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [162/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [163/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [164/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [165/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [166/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [167/169] Ranchería → No localizada (REQUEST_DENIED)
+❌ [168/169] Unidad habitacional → No localizada (REQUEST_DENIED)
+❌ [169/169] Zona federal → No localizada (REQUEST_DENIED)
+
+📁 CSV guardado: colonias_con_gps.csv (0 colonias con GPS)
+📄 SQL guardado: update_gps_google.sql
+
+==================================================
+🎉 RESUMEN FINAL
+   ✅ Con GPS:       0/169
+   ❌ Sin GPS:       169/169
+
+   Colonias sin localizar:
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Barrio
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Colonia
+     - Ejido
+     - Ejido
+     - Ejido
+     - Ejido
+     - Ejido
+     - Ejido
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Fraccionamiento
+     - Pueblo
+     - Pueblo
+     - Pueblo
+     - Pueblo
+     - Pueblo
+     - Pueblo
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Ranchería
+     - Unidad habitacional
+     - Zona federal
+==================================================
+
+🔜 Siguiente paso: Ejecuta el SQL en Supabase con:
+   python3 apply_sql.py

@@ -10,8 +10,10 @@ export interface Cliente {
   envios_gratis_disponibles: number;
   envios_totales: number;
   es_vip: boolean;          // VIP level status
-  rango: 'bronce' | 'plata' | 'oro'; // League Rank
+  rango: 'bronce' | 'plata' | 'oro'; // Rango de fidelidad (columna agregada a BD)
   saldo_billetera: number;  // Digital Wallet VIP
+  costo_envio?: number;     // Costo personalizado de envío
+  notas_crm?: string;
   created_at: string;
   updated_at: string;
 }

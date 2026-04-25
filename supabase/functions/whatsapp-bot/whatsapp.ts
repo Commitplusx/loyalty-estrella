@@ -67,7 +67,7 @@ export async function sendWAImage(to: string, url: string, caption?: string): Pr
         recipient_type: 'individual',
         to,
         type: 'image',
-        image: { url, caption: caption?.substring(0, 1000) },
+        image: { link: url, caption: caption?.substring(0, 1000) },
       }),
     })
     if (!res.ok) console.error('WA Image Error:', await res.text())
@@ -129,13 +129,47 @@ export async function sendInteractiveButton(
     console.error('WA Fatal Net Error (Interactive):', e)
   }
 }
+
+// ── Múltiples botones interactivos (hasta 3) ──────────────────────────────────
+export async function sendInteractiveButtons(
+  to: string,
+  text: string,
+  buttons: { id: string; title: string }[],
+): Promise<void> {
+  try {
+    const btns = buttons.slice(0, 3).map(b => ({
+      type: 'reply',
+      reply: { id: b.id.substring(0, 256), title: b.title.substring(0, 20) }
+    }))
+    const res = await fetchConReintento(WA_BASE, {
+      method: 'POST',
+      headers: WA_HEADERS(),
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { text: text.substring(0, 1024) },
+          action: { buttons: btns },
+        },
+      }),
+    })
+    if (!res.ok) console.error('WA InteractiveButtons Error:', await res.text())
+  } catch (e) {
+    console.error('WA Fatal Net Error (InteractiveButtons):', e)
+  }
+}
+
 // ── Plantilla Meta (WhatsApp Template) ────────────────────────────────────────
 export async function sendWATemplate(
   to: string,
   templateName: string,
   params: string[],
-  mediaUrl?: string
-): Promise<void> {
+  mediaUrl?: string,
+  buttonParam?: string
+): Promise<{ ok: boolean; error?: string }> {
   try {
     const components: any[] = []
 
@@ -155,6 +189,16 @@ export async function sendWATemplate(
       })
     }
 
+    // Botón URL dinámico (Opcional)
+    if (buttonParam) {
+      components.push({
+        type: 'button',
+        sub_type: 'url',
+        index: '0',
+        parameters: [{ type: 'text', text: buttonParam }]
+      })
+    }
+
     const res = await fetchConReintento(WA_BASE, {
       method: 'POST',
       headers: WA_HEADERS(),
@@ -164,13 +208,20 @@ export async function sendWATemplate(
         type: 'template',
         template: {
           name: templateName,
-          language: { code: 'es' },
+          language: { code: 'es_MX' },
           components
         }
       }),
     })
-    if (!res.ok) console.error('WA Template Error:', await res.text())
-  } catch (e) {
+    
+    if (!res.ok) {
+      const errText = await res.text()
+      console.error('WA Template Error:', errText)
+      return { ok: false, error: errText }
+    }
+    return { ok: true }
+  } catch (e: any) {
     console.error('WA Fatal Net Error (Template):', e)
+    return { ok: false, error: e.message }
   }
 }

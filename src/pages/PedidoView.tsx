@@ -6,9 +6,29 @@ import { Button } from '@/components/ui/button';
 import { MapPin, Package, Clock, Phone, Loader2, Navigation, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+interface Pedido {
+  id: string;
+  cliente_tel: string;
+  cliente_nombre?: string;
+  restaurante?: string;
+  repartidor_id?: string;
+  descripcion: string;
+  direccion?: string;
+  lat?: number;
+  lng?: number;
+  wb_message_id?: string;
+  precio_entrega?: number;
+  zona_entrega?: string;
+  estado: 'asignado' | 'recibido' | 'en_camino' | 'entregado' | 'cancelado';
+  created_at: string;
+  updated_at: string;
+  // join
+  restaurante_data?: { nombre: string; lat?: number; lng?: number };
+}
+
 export function PedidoView() {
   const { id } = useParams();
-  const [pedido, setPedido] = useState<any>(null);
+  const [pedido, setPedido] = useState<Pedido | null>(null);
   const [loading, setLoading] = useState(true);
   const [aceptando, setAceptando] = useState(false);
 

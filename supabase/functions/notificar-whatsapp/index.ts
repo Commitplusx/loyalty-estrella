@@ -84,7 +84,7 @@ async function sendInteractiveButton(to: string, text: string, buttonId: string,
   if (!res.ok) throw new Error(`WhatsApp Interactive API error: ${textBody}`)
 }
 
-async function notificarCliente(estado: string, tel: string, desc: string, nombre?: string, direccion?: string, restaurante?: string, repartidorNombre?: string): Promise<string> {
+async function notificarCliente(estado: string, tel: string, desc: string, nombre?: string, direccion?: string, restaurante?: string, repartidorNombre?: string, supabase?: any): Promise<string> {
   const telFormateado = formatTel(tel)
   const nombreC = nombre || 'Cliente'
   const restC = restaurante || 'Restaurante'
@@ -154,7 +154,44 @@ async function notificarCliente(estado: string, tel: string, desc: string, nombr
         body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template', template: { name: 'pedido_entregado_v2', language: { code: 'es_MX' }, components } })
       })
       if (!res.ok) console.error(`WA error (pedido_entregado_v2):`, await res.text())
-      return `✅ Plantilla 'pedido_entregado_v2' enviada`
+
+      // ── BURÓ DE CLIENTES: Pedir calificación al admin ──────────────────────
+      const adminPhone = Deno.env.get('ADMIN_PHONE') || ''
+      const tel10Client = tel.replace(/\D/g, '').slice(-10)
+      if (adminPhone && tel10Client) {
+        // Guardar calificación pendiente en DB
+        await supabase?.from('calificaciones_pendientes').upsert({
+          pedido_id: undefined,  // Se llenará si se pasa el ID
+          cliente_tel: tel10Client,
+          cliente_nombre: nombreC,
+          restaurante: restC,
+          admin_phone: adminPhone,
+          created_at: new Date().toISOString()
+        }).select().catch((e: any) => console.error('[BURÓ] Error guardando calificación pendiente:', e))
+
+        // Enviar botones al admin
+        const msgCal = `📦 *Entregado:* ${descC || 'Paquete'}\n👤 *Cliente:* ${nombreC} · 📞 ${tel10Client}\n🍽️ *Restaurante:* ${restC}\n\n¿Cómo estuvo este cliente?`
+        const btnUrl = `https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`
+        const btnBody = JSON.stringify({
+          messaging_product: 'whatsapp', recipient_type: 'individual',
+          to: `52${adminPhone.replace(/\D/g, '').slice(-10)}`,
+          type: 'interactive',
+          interactive: {
+            type: 'button',
+            body: { text: msgCal },
+            action: { buttons: [
+              { type: 'reply', reply: { id: `RATE_EXC_${tel10Client}`, title: '⭐ Excelente' } },
+              { type: 'reply', reply: { id: `RATE_BUE_${tel10Client}`, title: '👍 Bien' } },
+              { type: 'reply', reply: { id: `RATE_PRB_${tel10Client}`, title: '👎 Problema' } },
+            ]}
+          }
+        })
+        const resBtn = await fetch(btnUrl, { method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' }, body: btnBody })
+        if (!resBtn.ok) console.error(`[BURÓ] Error enviando botones de calificación al admin:`, await resBtn.text())
+        else console.log(`[BURÓ] Botones de calificación enviados al admin para cliente ${tel10Client}`)
+      }
+
+      return `✅ Plantilla 'pedido_entregado_v2' enviada + Botones de calificación al admin`
     }
     default:
       return `ℹ️ Estado '${estado}' no dispara plantilla de cliente`
@@ -184,10 +221,13 @@ serve(async (req: Request) => {
     console.log("NOTIFICAR_WHATSAPP INCOMING BODY:", bodyText)
     if (!bodyText) return new Response(JSON.stringify({ error: 'Body vacio' }), { status: 400 })
     
-    const { pedido_id, tipo, repartidor_tel } = JSON.parse(bodyText) as {
+    const { pedido_id, tipo, repartidor_tel, descripcion, minutos_total, minutos_estancado } = JSON.parse(bodyText) as {
       pedido_id: string
-      tipo: 'asignacion' | 'recibido' | 'en_camino' | 'entregado' | 'creado'
+      tipo: 'asignacion' | 'recibido' | 'en_camino' | 'entregado' | 'creado' | 'alerta_zombie'
       repartidor_tel?: string
+      descripcion?: string
+      minutos_total?: number
+      minutos_estancado?: number
     }
 
     if (!pedido_id || !tipo) {
@@ -210,6 +250,21 @@ serve(async (req: Request) => {
     console.log("PEDIDO FOUND:", pedido.id, "ESTADO:", pedido.estado, "TIPO_NOTIFICACION:", tipo)
 
     const results: string[] = []
+
+    // ── ZOMBIE WATCHDOG (INTERVENCIÓN DEL ADMIN) ──
+    if (tipo === 'alerta_zombie') {
+      const adminPhone = Deno.env.get('ADMIN_PHONE') || '529631550244' // Si no existe env, asume el número base de pruebas/admin
+      const msgZ = `🚨 *ALERTA CRÍTICA: PEDIDO ZOMBIE* 🚨\n\n⚠️ El siguiente pedido se ha atascado en el sistema:\n\n📦 *${descripcion || pedido.descripcion}*\n\n⏱️ *Tiempo total desde creación:* ${minutos_total} min\n⏳ *Sin moverse desde hace:* ${minutos_estancado} min\n\n👉 Por favor, revisa la consola o reasigna el pedido a otro repartidor.`
+      
+      const resZ = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: formatTel(adminPhone), type: 'text', text: { body: msgZ } })
+      })
+      if (!resZ.ok) console.error(`Error enviando Alerta Zombie:`, await resZ.text())
+      
+      results.push(`✅ Alerta Zombie despachada al Admin: ${adminPhone}`)
+      return new Response(JSON.stringify({ ok: true, actions: results }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
 
     // A. Notificar al Repartidor (Si aplica)
     const repartidorTelPayload = repartidor_tel
@@ -248,13 +303,22 @@ serve(async (req: Request) => {
       }
 
       if (repTelefono) {
+        // Buscar la fachada del cliente si existe
+        let clienteFachada = ''
+        if (pedido.cliente_tel) {
+          const { data: cInfo } = await supabase.from('clientes').select('foto_fachada_url').eq('telefono', extract10Digits(pedido.cliente_tel)).maybeSingle()
+          if (cInfo?.foto_fachada_url) {
+             clienteFachada = `\n📸 Fachada: ${cInfo.foto_fachada_url}`
+          }
+        }
+
         // Enviar plantilla de NUEVA ORDEN al Repartidor
         // Header ({{1}}): Hola {{1}}, tienes un servicio asignado: 📦
         // Body ({{1}}, {{2}}): *Pedido:* {{1}} 📍 *Referencia:* {{2}}
         const rawDesc = pedido.descripcion || 'Paquete'
         const descT = pedido.restaurante ? `🍽️ ${pedido.restaurante} - ${rawDesc}` : rawDesc
-        // Combinamos dirección de entrega con ubicación del restaurante
-        const dirT = (pedido.direccion || 'Revisar detalles') + restLoc
+        // Combinamos dirección de entrega con ubicación del restaurante y la fachada
+        const dirT = (pedido.direccion || 'Revisar detalles') + restLoc + clienteFachada
         
         await sendWhatsAppTemplate(
           formatTel(repTelefono), 
@@ -288,7 +352,8 @@ serve(async (req: Request) => {
         pedido.cliente_nombre ?? undefined, 
         pedido.direccion ?? undefined,
         pedido.restaurante ?? undefined,
-        repNom
+        repNom,
+        supabase
       )
       results.push(resCli)
     } else if (tipo !== 'asignacion') {

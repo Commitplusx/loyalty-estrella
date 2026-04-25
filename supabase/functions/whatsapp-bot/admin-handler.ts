@@ -17,7 +17,7 @@ export async function handleAdminGPS(
   // pidiendo el número del cliente post-creación en un flujo real.
   // Para no romper la funcionalidad, lo dejaremos parecido pero le agregaremos una advertencia de que falta el cliente.
   const pData = {
-    clienteTel: null, clienteNombre: null, restaurante: null,
+    clienteTel: '9999999999', clienteNombre: null, restaurante: null,
     descripcion: contextText || 'Entrega en coordenadas GPS',
     direccion: null, repartidorAlias: null,
   }
@@ -32,9 +32,8 @@ export async function handleAdminAssignRest(
   supabase: Supa, fromPhone: string, admin10: string, textoAdmin: string, pendingState: any
 ): Promise<Response | null> {
   const pedidosPendientes: any[] = pendingState.pedidos
-  // BUG FIX #5: Regex restrictiva para evitar falsos positivos con cualquier dígito.
-  // Solo hace match si hay "todos" o empieza con "1 jorge", etc.
-  const esAsignacion = /^(todos\s+\w+|\d+\s+\w+)/i.test(textoAdmin)
+  // Solo hace match si hay "todos" o empieza con "1 jorge", etc., y nada más que eso.
+  const esAsignacion = /^(todos\s+[a-zA-ZáéíóúÁÉÍÓÚñÑ]+|(\d+\s+[a-zA-ZáéíóúÁÉÍÓÚñÑ]+(,\s*\d+\s+[a-zA-ZáéíóúÁÉÍÓÚñÑ]+)*))$/i.test(textoAdmin.trim())
   
   if (!esAsignacion) return null // Pasa al flujo de DeepSeek
 
@@ -70,6 +69,13 @@ export async function handleAdminAssignRest(
       continue
     }
 
+    // CACHÉ GPS: Buscar coordenadas frecuentes del cliente
+    const telLimpio = extract10Digits(pedido.clienteTel || '0000000000')
+    const { data: clienteCache } = await supabase.from('clientes').select('lat_frecuente, lng_frecuente').eq('telefono', telLimpio).maybeSingle()
+    
+    const finalLat = pedido.lat || clienteCache?.lat_frecuente || null
+    const finalLng = pedido.lng || clienteCache?.lng_frecuente || null
+
     const { data: nuevo, error: pedErr } = await supabase.from('pedidos').insert({
       cliente_tel: pedido.clienteTel || '0000000000',
       descripcion: pedido.descripcion || 'Pedido de restaurante',
@@ -77,17 +83,18 @@ export async function handleAdminAssignRest(
       restaurante: pendingState.restaurante_nombre,
       repartidor_id: rep.user_id || null,
       estado: 'asignado',
+      lat: finalLat,
+      lng: finalLng
     }).select('id').single()
 
     if (pedErr || !nuevo) {
       resumen += `${idx + 1}️⃣ ❌ Error guardando: ${pedErr?.message}\n`; errores++
       continue
     }
-    if (rep.telefono) {
-      await supabase.functions.invoke('notificar-whatsapp', {
-        body: { pedido_id: nuevo.id, tipo: 'asignacion', repartidor_tel: rep.telefono }
-      })
-    }
+    // NOTA ARQUITECTURA: Ya no invocamos a `notificar-whatsapp` manualmente aquí.
+    // Ahora existe el Trigger `trg_notify_repartidor` en PostgreSQL que detecta el UPDATE de estado
+    // y se encarga de enviar el Webhook automáticamente garantizando un "Single Source of Truth".
+
     resumen += `${idx + 1}️⃣ ✅ a *${rep.nombre}* → Cliente ${pedido.clienteTel}\n`
   }
   resumen += errores > 0 ? `\n⚠️ ${errores} error(es).` : `\n🚀 Notificaciones enviadas.`
@@ -168,8 +175,23 @@ export async function handleAdminMessage(
     }
     case 'SUMAR_PUNTOS': {
       const tel10 = extract10Digits(d.clienteTel)
-      const { data: c } = await supabase.from('clientes').select('id, puntos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      const { data: c } = await supabase.from('clientes').select('id, puntos, acepta_terminos, nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      
       if (c) {
+        if (c.acepta_terminos === false) {
+           // No ha aceptado términos: Enviar plantilla de términos primero
+           await sendWATemplate(`52${tel10}`, 'estrella_terminos_condiciones', [c.nombre || 'Cliente'], undefined, tel10)
+           await sendWA(fromPhone, `⏳ El cliente *${tel10}* aún no acepta los términos y condiciones.\nLe he enviado la solicitud de aceptación. Los puntos se sumarán automáticamente cuando acepte.`)
+           
+           // Guardar en memoria que hay una suma pendiente
+           await supabase.from('bot_memory').upsert({
+             phone: `pending_pts_${tel10}`,
+             history: [{ puntos: d.puntosASumar, admin: fromPhone }],
+             updated_at: new Date().toISOString()
+           })
+           return new Response('OK', { status: 200 })
+        }
+
         const nr = (c.puntos || 0) + d.puntosASumar
         await supabase.from('clientes').update({ puntos: nr }).eq('id', c.id)
         await supabase.from('registros_puntos').insert({
@@ -177,9 +199,16 @@ export async function handleAdminMessage(
           descripcion: `+${d.puntosASumar} admin vía WhatsApp`
         })
         await sendWA(fromPhone, `🌟 Sumados ${d.puntosASumar} pts al ${d.clienteTel}.\nTotal: *${nr} pts*!`)
-        if (nr === d.puntosASumar || d.puntosASumar >= 10) {
-          const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://www.app-estrella.shop/loyalty/${tel10}`
-          await sendWAImage(`52${tel10}`, qrUrl, `¡Bienvenido a Estrella Delivery! 🏆✨\n\nTu QR personal. Puntos: ${nr}`)
+        // Notificar al cliente via plantilla (sin imagen, ligera)
+        const ptsResult = await sendWATemplate(
+          `52${tel10}`,
+          'estrella_puntos_acumulados',
+          [c.nombre || 'Cliente', d.puntosASumar.toString(), nr.toString()],
+          undefined,  // Sin imagen
+          tel10       // Botón URL dinámico
+        )
+        if (ptsResult && ptsResult.ok === false) {
+          console.error(`[SUMAR_PUNTOS] Error enviando notif. a ${tel10}:`, ptsResult.error)
         }
       } else { await sendWA(fromPhone, `🤖 Cliente no encontrado.`) }
       await limpiarMemoria(supabase, fromPhone)
@@ -187,9 +216,37 @@ export async function handleAdminMessage(
     }
     case 'ENVIAR_QR': {
       const tel10 = extract10Digits(d.clienteTel)
-      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://www.app-estrella.shop/loyalty/?tel=${tel10}`
-      await sendWAImage(`52${tel10}`, qrUrl, `Aquí tienes tu código QR personal. ⭐\n\nPreséntalo en tus entregas para sumar puntos.`)
-      await sendWA(fromPhone, `✅ QR enviado a *${tel10}*.`)
+      const { data: cli } = await supabase.from('clientes').select('nombre, puntos, acepta_terminos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      
+      if (cli && cli.acepta_terminos === false) {
+        await sendWATemplate(`52${tel10}`, 'estrella_terminos_condiciones', [cli.nombre || 'Cliente'], undefined, tel10)
+        await sendWA(fromPhone, `⏳ El cliente *${tel10}* aún no acepta los términos.\nLe he enviado la solicitud. El QR se enviará automáticamente cuando acepte.`)
+        
+        await supabase.from('bot_memory').upsert({
+          phone: `pending_qr_${tel10}`,
+          history: [{ admin: fromPhone }],
+          updated_at: new Date().toISOString()
+        })
+        break
+      }
+
+      const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
+      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data=${encodeURIComponent(loyaltyUrl)}`
+      
+      const result = await sendWATemplate(
+        `52${tel10}`, 
+        'estrella_loyalty_welcome', 
+        [cli?.nombre || 'Cliente', (cli?.puntos || 0).toString()],
+        qrImageUrl,
+        tel10
+      )
+      
+      if (result && result.ok === false) {
+          console.error(`[ENVIAR_QR] Error enviando QR a ${tel10}:`, result.error)
+          await sendWA(fromPhone, `❌ Error enviando QR al ${tel10}. Meta API lo rechazó.`)
+      } else {
+          await sendWA(fromPhone, `✅ QR enviado a *${tel10}* mediante plantilla segura.`)
+      }
       break
     }
     case 'VER_PEDIDOS': {
@@ -298,14 +355,31 @@ export async function handleAdminMessage(
       // Header: imagen QR ({{image}})
       // Body {{1}}: Nombre del cliente
       // Body {{2}}: Puntos iniciales
-      await sendWATemplate(
+      const result = await sendWATemplate(
         `52${tel10}`, 
         'estrella_loyalty_welcome', 
         [d.clienteNombre || 'Cliente', (d.puntosASumar || 0).toString()],
-        qrImageUrl
+        qrImageUrl,
+        tel10
       )
 
-      await sendWA(fromPhone, `✅ *Cliente Registrado: ${d.clienteNombre}*\n📱 ${tel10}\n🌟 Puntos: ${d.puntosASumar || 0}\n\nSe ha enviado el QR de bienvenida vía plantilla automática.`)
+      if (result && result.ok === false) {
+        console.error(`[AGREGAR_CLIENTE] Error enviando QR a ${tel10}:`, result.error)
+        await sendWA(fromPhone, `✅ *Cliente Registrado: ${d.clienteNombre}*\n📱 ${tel10}\n🌟 Puntos: ${d.puntosASumar || 0}\n\n⚠️ *ERROR AL ENVIAR QR:* Meta rechazó el mensaje de la plantilla. Revisa los logs.`)
+        await supabase.from('bot_memory').upsert({
+          phone: `syslog_qr_err_${tel10}`,
+          history: [{ error: result.error, ts: Date.now() }],
+          updated_at: new Date().toISOString()
+        })
+      } else {
+        console.log(`[AGREGAR_CLIENTE] QR enviado exitosamente a ${tel10}.`)
+        await sendWA(fromPhone, `✅ *Cliente Registrado: ${d.clienteNombre}*\n📱 ${tel10}\n🌟 Puntos: ${d.puntosASumar || 0}\n\nSe ha enviado el QR de bienvenida vía plantilla automática.`)
+        await supabase.from('bot_memory').upsert({
+          phone: `syslog_qr_ok_${tel10}`,
+          history: [{ status: 'success', ts: Date.now() }],
+          updated_at: new Date().toISOString()
+        })
+      }
       
       if (d.puntosASumar > 0 && clientId) {
         await supabase.from('registros_puntos').insert({
@@ -551,5 +625,153 @@ export async function handleAdminMessage(
   }
 
   await guardarMemoria(supabase, fromPhone, chat.nuevoHistorial || [])
+  return new Response('OK', { status: 200 })
+}
+
+// ─── Buró de Clientes: Procesar botones de calificación ───────────────────────
+export async function handleCalificacion(supabase: Supa, fromPhone: string, buttonId: string): Promise<Response> {
+  // Formatos de buttonId:
+  //   RATE_EXC_9631234567  → reputacion = 'excelente'
+  //   RATE_BUE_9631234567  → reputacion = 'bueno'
+  //   RATE_PRB_9631234567  → Pedir segunda ronda de etiquetas
+  //   TAG_DEMORA_9631234567, TAG_GROSERO_9631234567, etc. → añadir etiqueta
+  //   VETAR_9631234567     → reputacion = 'vetado'
+
+  const parts = buttonId.split('_')
+  const tel10 = parts[parts.length - 1]  // Último segmento siempre es el teléfono
+
+  if (!tel10 || tel10.length < 10) {
+    await sendWA(fromPhone, `⚠️ No pude identificar el número del cliente del botón.`)
+    return new Response('OK', { status: 200 })
+  }
+
+  // Buscar cliente
+  const { data: cli } = await supabase.from('clientes').select('id, nombre, etiquetas, reputacion').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+  const clienteId = cli?.id
+  const clienteNombre = cli?.nombre || `Cliente ${tel10}`
+  const etiquetasActuales: string[] = cli?.etiquetas || []
+
+  // ── RATE: Calificación general ──
+  if (buttonId.startsWith('RATE_EXC_')) {
+    if (clienteId) await supabase.from('clientes').update({ reputacion: 'excelente' }).eq('id', clienteId)
+    // Borrar calificación pendiente si existe
+    await supabase.from('calificaciones_pendientes').delete().eq('cliente_tel', tel10)
+    await sendWA(fromPhone, `⭐ *${clienteNombre}* → Reputación: *Excelente*\n¡Registrado!`)
+    return new Response('OK', { status: 200 })
+  }
+
+  if (buttonId.startsWith('RATE_BUE_')) {
+    if (clienteId) await supabase.from('clientes').update({ reputacion: 'bueno' }).eq('id', clienteId)
+    await supabase.from('calificaciones_pendientes').delete().eq('cliente_tel', tel10)
+    await sendWA(fromPhone, `👍 *${clienteNombre}* → Reputación: *Bueno*\n¡Registrado!`)
+    return new Response('OK', { status: 200 })
+  }
+
+  if (buttonId.startsWith('RATE_PRB_')) {
+    // Segunda ronda: enviar botones de etiquetas (máx 3 por mensaje, enviamos 2 mensajes)
+    const { sendInteractiveButtons } = await import('./whatsapp.ts')
+    await sendInteractiveButtons(fromPhone,
+      `¿Qué pasó con *${clienteNombre}*?\nElige la etiqueta que mejor describe el problema:`,
+      [
+        { id: `TAG_DEMORA_${tel10}`, title: '⏱️ Tardó mucho' },
+        { id: `TAG_GROSERO_${tel10}`, title: '😤 Fue grosero' },
+        { id: `TAG_NOATIENDE_${tel10}`, title: '📵 No contestó' },
+      ]
+    )
+    await sendInteractiveButtons(fromPhone,
+      `Más opciones:`,
+      [
+        { id: `TAG_DIRMAL_${tel10}`, title: '🏠 Dirección mal' },
+        { id: `TAG_PEDFALSO_${tel10}`, title: '🚫 Pedido falso' },
+        { id: `VETAR_${tel10}`, title: '🔴 Vetar cliente' },
+      ]
+    )
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── TAG: Etiquetas específicas ──
+  const TAG_MAP: Record<string, { etiqueta: string; reputacion: string; emoji: string }> = {
+    'TAG_DEMORA':    { etiqueta: 'demora',          reputacion: 'regular', emoji: '⏱️' },
+    'TAG_GROSERO':   { etiqueta: 'grosero',         reputacion: 'malo',    emoji: '😤' },
+    'TAG_NOATIENDE': { etiqueta: 'no_atiende',      reputacion: 'regular', emoji: '📵' },
+    'TAG_DIRMAL':    { etiqueta: 'direccion_mal',   reputacion: 'regular', emoji: '🏠' },
+    'TAG_PEDFALSO':  { etiqueta: 'pedido_falso',    reputacion: 'malo',    emoji: '🚫' },
+  }
+
+  const tagPrefix = Object.keys(TAG_MAP).find(k => buttonId.startsWith(k + '_'))
+  if (tagPrefix) {
+    const { etiqueta, reputacion, emoji } = TAG_MAP[tagPrefix]
+    const nuevasEtiquetas = [...new Set([...etiquetasActuales, etiqueta])]
+    if (clienteId) {
+      await supabase.from('clientes').update({ reputacion, etiquetas: nuevasEtiquetas }).eq('id', clienteId)
+    }
+    await supabase.from('calificaciones_pendientes').delete().eq('cliente_tel', tel10)
+    await sendWA(fromPhone, `${emoji} *${clienteNombre}* → Reputación: *${reputacion}*\nEtiqueta añadida: *${etiqueta}*\n🏷️ Historial: ${nuevasEtiquetas.join(', ')}`)
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── VETAR ──
+  if (buttonId.startsWith('VETAR_')) {
+    const nuevasEtiquetas = [...new Set([...etiquetasActuales, 'vetado'])]
+    if (clienteId) {
+      await supabase.from('clientes').update({ reputacion: 'vetado', etiquetas: nuevasEtiquetas }).eq('id', clienteId)
+    }
+    await supabase.from('calificaciones_pendientes').delete().eq('cliente_tel', tel10)
+    await sendWA(fromPhone, `🔴 *${clienteNombre}* → *VETADO*\nEste cliente ya no recibirá servicio. Los restaurantes serán alertados automáticamente.`)
+    return new Response('OK', { status: 200 })
+  }
+
+  return new Response('OK', { status: 200 })
+}
+
+// ─── Términos y Condiciones: Procesar aceptación ──────────────────────────────
+export async function handleTerminos(supabase: Supa, fromPhone: string, buttonId: string): Promise<Response> {
+  const tel10 = extract10Digits(fromPhone)
+  const upId = buttonId.toUpperCase()
+  
+  if (upId === 'ACEPTAR_TERMINOS' || upId === 'ACEPTAR') {
+    // 1. Marcar en DB
+    console.log(`✅ [T&C] Cliente ${tel10} HA ACEPTADO los términos.`)
+    await supabase.from('clientes').update({ acepta_terminos: true }).ilike('telefono', `%${tel10}%`)
+    
+    // 2. Avisar al cliente
+    await sendWA(fromPhone, "✅ ¡Gracias por aceptar! Ahora ya puedes disfrutar de todos los beneficios de Estrella Delivery. 🌟")
+    
+    // 3. Revisar acciones pendientes
+    // 3.A QR Pendiente
+    const { data: pendingQR } = await supabase.from('bot_memory').select('history').eq('phone', `pending_qr_${tel10}`).maybeSingle()
+    if (pendingQR?.history?.[0]) {
+      console.log(`🔄 [T&C] Ejecutando ENVÍO DE QR PENDIENTE para ${tel10}...`)
+      const { data: cli } = await supabase.from('clientes').select('nombre, puntos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
+      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data=${encodeURIComponent(loyaltyUrl)}`
+      await sendWATemplate(`52${tel10}`, 'estrella_loyalty_welcome', [cli?.nombre || 'Cliente', (cli?.puntos || 0).toString()], qrImageUrl, tel10)
+      
+      const adminPhone = pendingQR.history[0].admin
+      if (adminPhone) await sendWA(adminPhone, `✅ El cliente *${tel10}* aceptó términos. Le envié su QR automáticamente.`)
+      await supabase.from('bot_memory').delete().eq('phone', `pending_qr_${tel10}`)
+    }
+    
+    // 3.B Puntos Pendientes
+    const { data: pendingPts } = await supabase.from('bot_memory').select('history').eq('phone', `pending_pts_${tel10}`).maybeSingle()
+    if (pendingPts?.history?.[0]) {
+      console.log(`🔄 [T&C] Ejecutando SUMA DE PUNTOS PENDIENTE para ${tel10}...`)
+      const { puntos, admin } = pendingPts.history[0]
+      const { data: cli } = await supabase.from('clientes').select('id, nombre, puntos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      if (cli) {
+        const nuevoTotal = (cli.puntos || 0) + puntos
+        await supabase.from('clientes').update({ puntos: nuevoTotal }).eq('id', cli.id)
+        await sendWATemplate(`52${tel10}`, 'estrella_puntos_acumulados', [cli.nombre || 'Cliente', puntos.toString(), nuevoTotal.toString()], undefined, tel10)
+        
+        if (admin) await sendWA(admin, `✅ El cliente *${tel10}* aceptó términos. Le sumé los ${puntos} pts pendientes.`)
+      }
+      await supabase.from('bot_memory').delete().eq('phone', `pending_pts_${tel10}`)
+    }
+    
+  } else if (upId === 'RECHAZAR_TERMINOS' || upId === 'RECHAZAR') {
+    console.warn(`❌ [T&C] Cliente ${tel10} RECHAZÓ los términos.`)
+    await sendWA(fromPhone, "Lamentablemente, para poder usar el sistema de lealtad y beneficios de Estrella Delivery, es necesario aceptar los términos y condiciones. Si cambias de opinión, puedes volver a intentarlo más tarde. ¡Saludos! 👋")
+  }
+  
   return new Response('OK', { status: 200 })
 }

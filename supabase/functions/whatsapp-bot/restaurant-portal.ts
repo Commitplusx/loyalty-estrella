@@ -16,7 +16,7 @@ interface Pedido {
 }
 
 interface EstadoSesion {
-  phase: string    // idle | collecting_phone | collecting_desc | collecting_dir | collecting_extras
+  phase: string    // idle | collecting_phone | collecting_desc | collecting_dir | collecting_time | collecting_extras | waiting_confirmation
   pedidos_acumulados: Pedido[]
   pedido_actual: Partial<Pedido>
   total_esperados: number
@@ -43,7 +43,7 @@ interface PortalContext {
 }
 
 type SendWA = (to: string, body: string) => Promise<void>
-const TIMEOUT_SESION_MS = 4 * 60 * 60 * 1000 // 4 horas
+const TIMEOUT_SESION_MS = 15 * 60 * 1000 // 15 minutos (Evita sesiones zombis de un día a otro)
 
 const ESTADO_IDLE: EstadoSesion = {
   phase: 'idle',
@@ -56,7 +56,8 @@ const ESTADO_IDLE: EstadoSesion = {
 
 // ─── Esquema Zod de Validación para AI ─────────────────────────────────────────
 const AiResponseSchema = z.object({
-  intencion: z.enum(['dar_datos', 'preguntar', 'confirmar', 'otro']).catch('dar_datos'),
+  intencion: z.enum(['dar_datos', 'preguntar', 'confirmar', 'borrar_pedido', 'otro']).catch('dar_datos'),
+  telefono_a_borrar: z.string().nullable().catch(null),
   total_pedidos_esperados: z.number().nullable().catch(null),
   pedido_actual_actualizado: z.object({
     clienteTel: z.string().nullable().catch(null),
@@ -133,17 +134,22 @@ async function guardarEstado(supabase: SupabaseClient, memKey: string, estado: E
 
 async function extraerJsonSeguro(text: string): Promise<any | null> {
   try {
-    const startIndex = text.indexOf('{')
-    const endIndex = text.lastIndexOf('}')
-    if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) return null
-    let cleanJson = text.substring(startIndex, endIndex + 1)
-      .replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":')
-      .replace(/:\s*'([^']*)'/g, ': "$1"')
-
-    const parsed = JSON.parse(cleanJson)
-    return AiResponseSchema.parse(parsed)
+    // Intento 1: Parseo directo (La IA moderna con json_object devuelve JSON puro sin markdown)
+    try {
+      const parsed = JSON.parse(text)
+      return AiResponseSchema.parse(parsed)
+    } catch (parseError) {
+      // Intento 2: Extracción de bloque en caso de que la IA incluya texto antes o después (ej. ```json ... ```)
+      const startIndex = text.indexOf('{')
+      const endIndex = text.lastIndexOf('}')
+      if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) return null
+      
+      const cleanJson = text.substring(startIndex, endIndex + 1)
+      const parsed = JSON.parse(cleanJson)
+      return AiResponseSchema.parse(parsed)
+    }
   } catch (err) {
-    console.warn('[RESTAURANT AI] Fallo en JSON o validación Zod:', err)
+    console.warn('[RESTAURANT AI] Fallo masivo en JSON o validación Zod:', err)
     return null
   }
 }
@@ -158,12 +164,23 @@ async function llamarDeepSeek(
   esHoraFelizActiva: boolean,
   reintentos = 3
 ): Promise<any | null> {
-  const promptZonas = (zonas && zonas.length > 0)
-    ? `TABULADOR DE PRECIOS POR COLONIA CONFIGURADO PARA "${restaurante.nombre}":
-${zonas.map(z => `- "${z.colonias?.nombre}": Normal $${z.precio_estandar ?? 45}${z.aplica_hora_feliz ? ' [Aplica Hora Feliz: $35]' : ' [PRECIO FIJO (No aplica Hora Feliz)]'}`).join('\n')}
-ESTADO DE HORA FELIZ AHORA: ${esHoraFelizActiva ? 'ACTIVA (Lunes/Sábado 17-19h)' : 'INACTIVA'}
-CRÍTICO: Si la dirección coincide con una zona donde "aplica_hora_feliz" es true y HORA FELIZ está ACTIVA, el precio DEBE ser $35.`
-    : `No hay zonas específicas configuradas para este restaurante. Usa el precio estándar de $45 o lo que se negocie en el chat.`
+  const promptZonas = `TABULADOR MAESTRO DE PRECIOS POR ZONAS (COMITÁN):
+
+ZONA VERDE ($45, PERO $35 SI HORA FELIZ ESTÁ ACTIVA):
+CENTRO, SAN SEBASTIAN, SAN AGUSTIN, PUENTE HIDALGO, BELISARIO, BARRIO EL 25, PILA, PILITA, SAN JOSE, JESUSITO, CANDELARIA, INFONAVIT, GUADALUPE, FRACC. LAS FLORES, FOVISSTE, SANTA ANA, FRACC. 28 DE AGOSTO, LA POPULAR, MONTE VERDE, MICROONDAS, LA PILETA, MAGUEYES, YALCHIVOL, FRACC. MAYA, FRACC. LOS PINOS, ARENAL, FRACC TERRAZAS, EL ROSARIO, 1RO DE MAYO, LATINO AMERICANA, ORQUIDEAS, EL HERRAJE, COL ESMERALDA, COL LUIS DONALDO COLOSIO, BELLAVISTA, SIETE ESQUINAS, NICALOKOCK, FRACC. LOS LAGOS, FRACC. 9 ESTRELLAS.
+
+ZONA AZUL ($50 FIJOS, NO APLICA HORA FELIZ):
+CRUZ GRANDE (1RA SECCIÓN), SANTA CECILIA, CUEVA (1RA SECCION), ARBOLEDAS, BOSQUES, SAN MARTIN, BETHEL, FRACC. COMITLAN, MARIANO N RUIZ (ANTES DE LA 30 SUR OTE), SABINOS (ANTES DE LA 30 SUR), FRACC. PRADO, FRACC. TUCANES, ROSARIO, CHICHIMÁ GUADALUPE (ANTES DEL CUARTEL), CHILCAS, BONAMPAK, MIRAMAR, CERRITO, SALIDA A MARGARITAS, CEDRO (HASTA EL MERCADO), JERUSALEN, SAN ANTONIO, JORDAN, SAN MIGUEL, LA REPRESA, PASHTON (HASTA LA PRIMARIA), TENAM, COMITAN COLONIAL, LINDA VISTA.
+
+ZONA AMARILLA ($55-$60 FIJOS, NO APLICA HORA FELIZ):
+CHICHIMÁ GUADALUPE (DESPUES DEL CUARTEL), TINAJAS, SABINOS (DESPUES DE LA 30 SUR), DESAMPARADOS (HASTA EL CBTIS), 27 DE JUNIO, CEDRO (DESPUES DEL MERCADO), PASHTON ACAPULCO (DESPUES DE LA PRIMARIA), CRUZ GRANDE (2 SECCION), 20 DE NOVIEMBRE, CHICHIMÁ ACAPETAHUA, PLAZA LAS FLORES (SOLO RECOGER).
+
+ZONA ROJA (+$70 FIJOS, NO APLICA HORA FELIZ):
+ENTRONQUE A CHICHIMÁ, COCA EN ADELANTE (HASTA LA GN), GAS VILLATORO HASTA ENTRONQUE A CHICHIMÁ.
+
+ESTADO DE HORA FELIZ AHORA: ${esHoraFelizActiva ? 'ACTIVA (Aplica SÓLO a Zona Verde bajando el precio a $35)' : 'INACTIVA (Zona Verde es $45)'}
+
+REGLA DE ORO DE PRECIOS: Si la dirección es ambigua (ej: "Sabinos" pero no dice si antes o después de la 30 sur, o "Cruz Grande" sin decir qué sección), ASIGNA EL PRECIO MÁS CARO o USA LA ETIQUETA "preguntar" PARA CONFIRMAR CON EL RESTAURANTE. El precio debe ir con el símbolo de peso (ej: "$50", "$35").`
 
   const systemPrompt = `Eres "ALPHA-Estrella Restaurantes", el motor de Estrella Delivery. Eres ESTRICTO devolviendo EXCLUSIVAMENTE JSON.
 
@@ -183,14 +200,16 @@ TELEFONOS DETECTADOS: ${JSON.stringify(telefonosEnTexto)}
 
 REGLAS ABSOLUTAS:
 1. Cada TÉLEFONO DE CLIENTE = Un pedido diferente.
-2. Pedido COMPLETO = clienteTel (10 dígitos exactos) + descripcion + direccion.
+2. Pedido COMPLETO = clienteTel (10 dígitos exactos) + descripcion + direccion + tiempo_estimado.
 3. PRECIOS: Usa el TABULADOR arriba mencionado. Si no hay coincidencia, usa $45.
 4. NEGOCIACIÓN: Si el restaurante o el cliente acuerdan un precio diferente explícitamente (ej: "cobra 50", "va por 35"), ese manda sobre el tabulador.
 5. NO inventes datos. Si no hay, envía null.
-6. ENFOQUE LOGÍSTICO (CRÍTICO): Eres un servicio de mensajería para restaurantes. NUNCA preguntes "¿Qué va a pedir?". El pedido ya está hecho. Pregunta siempre de forma logística: "¿A qué dirección llevamos el paquete?" o "¿Lleva algún detalle escrito o monto a cobrar?". Puedes usar el campo 'descripcion' para guardar si llevan "1 hamburguesa" o "Paquete chico".
-7. DEBES DEVOLVER EXCLUSIVAMENTE ESTE FORMATO JSON:
+6. ENFOQUE LOGÍSTICO (CRÍTICO): NUNCA preguntes "¿Qué va a pedir?". El pedido ya está hecho. Si falta la dirección, pregúntala. Si falta el "tiempo_estimado", ES OBLIGATORIO PREGUNTARLO PROACTIVAMENTE (Ej: "¿En cuántos minutos estará listo el paquete?").
+7. EDICIÓN/BORRADO: Si el restaurante pide cancelar o borrar el pedido de un número específico (ej: "borra el del 9631234567" o "cancela el último"), usa "intencion": "borrar_pedido" y manda el "telefono_a_borrar".
+8. DEBES DEVOLVER EXCLUSIVAMENTE ESTE FORMATO JSON:
 {
-  "intencion": "dar_datos|preguntar|confirmar|otro",
+  "intencion": "dar_datos|preguntar|confirmar|borrar_pedido|otro",
+  "telefono_a_borrar": "<10_digitos_o_null>",
   "total_pedidos_esperados": <numero_o_null>,
   "pedido_actual_actualizado": { "clienteTel": "...", "descripcion": "...", "direccion": "...", "tiempo_estimado": "...", "precio": "..." },
   "pedido_actual_completo": <true/false>,
@@ -206,7 +225,8 @@ REGLAS ABSOLUTAS:
         method: 'POST',
         headers: { 'Authorization': `Bearer ${deepseekKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'deepseek-reasoner',
+          model: 'deepseek-chat',
+          response_format: { type: 'json_object' },
           messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: textoRest }],
           max_tokens: 1500,
           temperature: 0.0
@@ -246,8 +266,14 @@ async function manejarFallback(
   try {
     if (telefonosEnTexto.length > 0 && estado.phase === 'idle') {
       const primerTel = telefonosEnTexto[0]
-      await guardarEstado(supabase, memKey, { phase: 'collecting_desc', pedidos_acumulados: [], pedido_actual: { clienteTel: primerTel }, total_esperados: telefonosEnTexto.length, sesion_inicio: Date.now(), idempotency_keys: estado.idempotency_keys })
-      await sendWA(fromPhone, `✅ Recibí el teléfono *${primerTel}*.\n¿Lleva alguna indicación el paquete o monto a cobrar? 📦 (Si no, escribe "nada")`)
+      if (textoRest.length > 40 && telefonosEnTexto.length > 1) {
+        // Fallback robusto para múltiples teléfonos: empezamos con el primero en modo seguro
+        await guardarEstado(supabase, memKey, { phase: 'collecting_desc', pedidos_acumulados: [], pedido_actual: { clienteTel: primerTel }, total_esperados: telefonosEnTexto.length, sesion_inicio: Date.now(), idempotency_keys: estado.idempotency_keys })
+        await sendWA(fromPhone, `⚠️ Entrando en modo de emergencia. Recibí ${telefonosEnTexto.length} teléfonos.\nVamos uno por uno. Empezando por el *${primerTel}*.\n¿Lleva alguna indicación el paquete o monto a cobrar? 📦 (Si no, escribe "nada")`)
+      } else {
+        await guardarEstado(supabase, memKey, { phase: 'collecting_desc', pedidos_acumulados: [], pedido_actual: { clienteTel: primerTel }, total_esperados: telefonosEnTexto.length || 1, sesion_inicio: Date.now(), idempotency_keys: estado.idempotency_keys })
+        await sendWA(fromPhone, `✅ Recibí el teléfono *${primerTel}*.\n¿Lleva alguna indicación el paquete o monto a cobrar? 📦 (Si no, escribe "nada")`)
+      }
     } else if (estado.phase === 'collecting_phone' && telefonosEnTexto.length > 0) {
       await guardarEstado(supabase, memKey, { ...estado, phase: 'collecting_desc', pedido_actual: { ...estado.pedido_actual, clienteTel: telefonosEnTexto[0] } })
       await sendWA(fromPhone, `✅ Tel: *${telefonosEnTexto[0]}* anotado. ¿Lleva alguna indicación o cobro? 📦 (O escribe "nada")`)
@@ -255,8 +281,11 @@ async function manejarFallback(
       await guardarEstado(supabase, memKey, { ...estado, phase: 'collecting_dir', pedido_actual: { ...estado.pedido_actual, descripcion: textoRest } })
       await sendWA(fromPhone, `✅ Anotado.\n¿A qué dirección llevamos el paquete? 📍`)
     } else if (estado.phase === 'collecting_dir') {
-      await guardarEstado(supabase, memKey, { ...estado, phase: 'collecting_extras', pedido_actual: { ...estado.pedido_actual, direccion: textoRest } })
-      await sendWA(fromPhone, `✅ Dirección guardada.\n¿Hay detalles extra de ubicación?. Si no, mándame *"listo"*.`)
+      await guardarEstado(supabase, memKey, { ...estado, phase: 'collecting_time', pedido_actual: { ...estado.pedido_actual, direccion: textoRest } })
+      await sendWA(fromPhone, `✅ Dirección guardada.\n¿En cuántos minutos estará listo el paquete? ⏱️`)
+    } else if (estado.phase === 'collecting_time') {
+      await guardarEstado(supabase, memKey, { ...estado, phase: 'collecting_extras', pedido_actual: { ...estado.pedido_actual, tiempo_estimado: textoRest } })
+      await sendWA(fromPhone, `✅ Tiempo anotado.\n¿Hay detalles extra de ubicación o cobro?. Si no, mándame *"listo"*.`)
     } else {
       await sendWA(fromPhone, `⚠️ Tuvimos un error temporal de conexión, *${restaurante.nombre}*.\nIntenta enviar el texto de nuevo o escribe *cancelar*.`)
     }
@@ -365,17 +394,14 @@ export async function handleRestaurantPortal(
   const memKey = `rest_${from10}`
   let estado = await leerEstado(supabase, memKey)
 
-  // ── BUG FIX #1: Idempotencia ANTES de cualquier await largo (incluyendo debounce).
-  // Se guarda en DB inmediatamente para que el webhook duplicado de Meta sea ignorado
-  // incluso si llegara durante los 5 segundos del debounce.
+  // ── BUG FIX: Idempotencia de webhook (previa al debounce) ──
+  // Solo verificamos si el msgId ya fue procesado EXITOSAMENTE antes.
+  // NO persistimos la clave aquí todavía — la persistimos después del debounce
+  // para evitar que un webhook duplicado de Meta que llega durante el sleep
+  // marque el msgId como "ya procesado" antes de que nosotros respondamos.
   if (msgId && estado.idempotency_keys?.includes(msgId)) {
     console.log(`[RESTAURANT PORTAL] Ignorando webhook IDEMPOTENTE duplicado: ${msgId}`)
     return new Response('OK', { status: 200 })
-  }
-  if (msgId) {
-    estado.idempotency_keys = [msgId, ...(estado.idempotency_keys || [])].slice(0, 10)
-    // Persistir la clave ANTES del debounce para protegerse de duplicados temporales
-    await guardarEstado(supabase, memKey, estado)
   }
 
   console.log(`🍽️ [RESTAURANT PORTAL] ${restaurante.nombre} (${fromPhone}) - msgType: ${msgType}`)
@@ -429,7 +455,9 @@ export async function handleRestaurantPortal(
   let textoRest = (msg.text?.body as string || '').trim().substring(0, 2000)
   if (!textoRest) return new Response('OK', { status: 200 })
 
-  // ── DEBOUNCE QUEUE (Agrupar múltiples mensajes rápidos) ──
+  // ── DEBOUNCE QUEUE (Agrupar múltiples mensajes rápidos del restaurante) ──
+  // Nota: 800ms es suficiente para agrupar ráfagas y deja margen cómodo
+  // dentro del timeout de 5s de Meta antes de que reintente el webhook.
   const { data: qData } = await supabase.from('bot_memory').select('history').eq('phone', memKey + '_queue').maybeSingle()
   const currentBuffer = qData?.history?.[0]?.buffer || ''
   const newBuffer = currentBuffer ? currentBuffer + '\n' + textoRest : textoRest
@@ -437,17 +465,24 @@ export async function handleRestaurantPortal(
 
   await supabase.from('bot_memory').upsert({ phone: memKey + '_queue', history: [{ buffer: newBuffer, last_msg: queueId }], updated_at: new Date().toISOString() })
 
-  // Dormimos 4 segundos (dejando margen antes del timeout de 5s de Meta)
-  await new Promise(r => setTimeout(r, 4000))
+  // 800ms de espera — dentro del margen seguro ante reintentos de Meta
+  await new Promise(r => setTimeout(r, 800))
 
   // Verificamos si otro webhook llegó mientras dormíamos
   const { data: fData } = await supabase.from('bot_memory').select('history').eq('phone', memKey + '_queue').maybeSingle()
   if (fData?.history?.[0]?.last_msg !== queueId) {
-    // Otro mensaje está listo para procesar — morimos en silencio
+    // Otro mensaje más reciente tomó el control — no respondemos para evitar duplicados
+    console.log(`[RESTAURANT PORTAL] Debounce: mensaje ${queueId} cedido al siguiente.`)
     return new Response('OK', { status: 200 })
   }
 
-  // Somos el último. Limpiamos queue y procesamos el buffer completo
+  // Somos el último. Persistimos la clave idempotente AHORA que sabemos que vamos a procesar.
+  if (msgId) {
+    estado.idempotency_keys = [msgId, ...(estado.idempotency_keys || [])].slice(0, 10)
+    await guardarEstado(supabase, memKey, estado)
+  }
+
+  // Limpiamos la queue y procesamos el buffer completo
   await supabase.from('bot_memory').upsert({ phone: memKey + '_queue', history: [{ buffer: '', last_msg: '' }], updated_at: new Date().toISOString() })
   textoRest = newBuffer
 
@@ -515,8 +550,45 @@ export async function handleRestaurantPortal(
   const totalEsperados = aiResult.total_pedidos_esperados ?? estado.total_esperados ?? 0
   const intencion = aiResult.intencion || 'dar_datos'
 
+  // Si la intención es borrar un pedido
+  if (intencion === 'borrar_pedido') {
+    const rawTelBorrar = aiResult.telefono_a_borrar || (telefonosEnTexto.length > 0 ? telefonosEnTexto[0] : null)
+    
+    // Si no hay teléfono explícito para borrar pero el usuario dice "borra el último", podemos inferirlo de la bandeja.
+    // La IA a veces no logra mapear si el usuario dice "el último", así que hacemos un fallback lógico.
+    let telBorrar = rawTelBorrar ? rawTelBorrar.replace(/\D/g, '').slice(-10) : null
+    
+    if (!telBorrar && (textoBajo.includes('ultimo') || textoBajo.includes('último'))) {
+       if (estado.pedidos_acumulados?.length > 0) {
+         telBorrar = estado.pedidos_acumulados[estado.pedidos_acumulados.length - 1].clienteTel
+       } else if (estado.pedido_actual?.clienteTel) {
+         telBorrar = estado.pedido_actual.clienteTel
+       }
+    }
+
+    if (telBorrar) {
+      const nuevosAcumulados = (estado.pedidos_acumulados || []).filter(p => p.clienteTel !== telBorrar)
+      const estabaEnActual = estado.pedido_actual?.clienteTel === telBorrar
+      const nuevoPedidoActual = estabaEnActual ? {} : estado.pedido_actual
+      
+      const eliminados = (estado.pedidos_acumulados?.length || 0) - nuevosAcumulados.length + (estabaEnActual ? 1 : 0)
+      
+      await guardarEstado(supabase, memKey, { ...estado, phase: (estado.phase === 'waiting_confirmation' && nuevosAcumulados.length === 0) ? 'idle' : estado.phase, pedidos_acumulados: nuevosAcumulados, pedido_actual: nuevoPedidoActual })
+      
+      let resDel = eliminados > 0 ? `🗑️ Pedido para *${telBorrar}* eliminado correctamente de la bandeja.` : `⚠️ No encontré ningún pedido para *${telBorrar}* en la bandeja.`
+      if (nuevosAcumulados.length > 0 && eliminados > 0) {
+         resDel += `\nLlevamos ${nuevosAcumulados.length} pedidos. ¿Algo más o ya mandas *"confirmar"*?`
+      }
+      await sendWA(fromPhone, resDel)
+      return new Response('OK', { status: 200 })
+    } else {
+      await sendWA(fromPhone, `🤔 No logré identificar qué pedido quieres borrar. Por favor escribe "borrar el del 963..." con el número del cliente.`)
+      return new Response('OK', { status: 200 })
+    }
+  }
+
   const pedidoActualFinal: Pedido = {
-    clienteTel: aiPedidoActual.clienteTel || estado.pedido_actual?.clienteTel || null,
+    clienteTel: (aiPedidoActual.clienteTel || estado.pedido_actual?.clienteTel || '')?.replace(/\D/g, '').slice(-10) || null,
     descripcion: aiPedidoActual.descripcion || estado.pedido_actual?.descripcion || null,
     direccion: aiPedidoActual.direccion || estado.pedido_actual?.direccion || null,
     tiempo_estimado: aiPedidoActual.tiempo_estimado || estado.pedido_actual?.tiempo_estimado || null,
@@ -524,7 +596,7 @@ export async function handleRestaurantPortal(
   }
 
   const pedidoActualEstaCompleto = aiCompleto || (
-    (pedidoActualFinal.clienteTel?.length ?? 0) >= 10 && !!pedidoActualFinal.descripcion?.trim() && !!pedidoActualFinal.direccion?.trim()
+    (pedidoActualFinal.clienteTel?.length ?? 0) >= 10 && !!pedidoActualFinal.descripcion?.trim() && !!pedidoActualFinal.direccion?.trim() && !!pedidoActualFinal.tiempo_estimado?.trim()
   )
 
   const nuevosCompletos = nuevosDetect.filter((p: any) => p.completo)
@@ -542,34 +614,77 @@ export async function handleRestaurantPortal(
   const pedidosListos = pedidosAcumulados.length
   const haySuficientes = totalEsperados > 0 ? pedidosListos >= totalEsperados : (pedidoActualEstaCompleto && nuevosIncompletos.length === 0 && (esListo || intencion === 'confirmar'))
 
-  if (!haySuficientes && (!pedidoActualEstaCompleto || nuevosIncompletos.length > 0)) {
+  if (!haySuficientes) {
     let nuevaFase = estado.phase
-    if (!pedidoActualFinal.clienteTel) nuevaFase = 'collecting_phone'
-    else if (!pedidoActualFinal.descripcion) nuevaFase = 'collecting_desc'
-    else if (!pedidoActualFinal.direccion) nuevaFase = 'collecting_dir'
-    else nuevaFase = 'collecting_extras'
-
-    await guardarEstado(supabase, memKey, { phase: nuevaFase, pedidos_acumulados: pedidosAcumulados, pedido_actual: pedidoActualEstaCompleto ? {} : pedidoActualFinal, total_esperados: totalEsperados || estado.total_esperados, sesion_inicio: estado.sesion_inicio ?? Date.now(), idempotency_keys: estado.idempotency_keys })
     let replyMsg = `🤖 *${restaurante.nombre}* | ${msgRest}`
-    if (pedidosAcumulados.length > 0) replyMsg += `\n\n_(✅ Anotados por ahora: ${pedidosAcumulados.length})_`
-    if (!msgRest.toLowerCase().includes('listo') && pedidoActualEstaCompleto && pedidosAcumulados.length > 0 && !totalEsperados) replyMsg += `\nSi eso es todo, responde *"listo"*.`
+
+    if (!pedidoActualEstaCompleto || nuevosIncompletos.length > 0) {
+      if (!pedidoActualFinal.clienteTel) nuevaFase = 'collecting_phone'
+      else if (!pedidoActualFinal.descripcion) nuevaFase = 'collecting_desc'
+      else if (!pedidoActualFinal.direccion) nuevaFase = 'collecting_dir'
+      else if (!pedidoActualFinal.tiempo_estimado) nuevaFase = 'collecting_time'
+      else nuevaFase = 'collecting_extras'
+    } else {
+      nuevaFase = 'idle'
+      replyMsg = `✅ ¡Anotado el pedido para ${pedidoActualFinal.clienteTel}!\nLlevamos ${pedidosListos} pedido(s) en la bandeja.\n`
+      if (totalEsperados > 0) {
+        replyMsg += `Faltan ${totalEsperados - pedidosListos} para la meta de ${totalEsperados}. Envíame el siguiente.`
+      } else {
+        replyMsg += `Si eso es todo, responde *"listo"* para solicitar el mensajero. O pásame el siguiente pedido.`
+      }
+    }
+
+    await guardarEstado(supabase, memKey, { phase: nuevaFase, pedidos_acumulados: pedidosAcumulados, pedido_actual: (!pedidoActualEstaCompleto || nuevosIncompletos.length > 0) ? pedidoActualFinal : {}, total_esperados: totalEsperados || estado.total_esperados, sesion_inicio: estado.sesion_inicio ?? Date.now(), idempotency_keys: estado.idempotency_keys })
+    
+    // Especial para "listo" sin pedidos
+    if (pedidosAcumulados.length === 0 && (esListo || intencion === 'confirmar')) {
+       replyMsg = `⚠️ *${restaurante.nombre}*, me dices "listo" pero no tengo ningún pedido completo aún. Necesito *teléfono*, *indicaciones* y *dirección*.`
+    } else if (!pedidoActualEstaCompleto && pedidosAcumulados.length > 0) {
+       replyMsg += `\n\n_(✅ Anotados completos: ${pedidosAcumulados.length})_`
+    }
 
     await sendWA(fromPhone, replyMsg)
     return new Response('OK', { status: 200 })
   }
 
+  // Llegando aquí, haySuficientes = true
   if (pedidosAcumulados.length === 0) {
-    if (esListo || intencion === 'confirmar') await sendWA(fromPhone, `⚠️ *${restaurante.nombre}*, me dices "listo" pero no tengo ningún pedido completo. Necesito *teléfono*, *dirección* y *cobro*.`)
-    else await sendWA(fromPhone, `🤖 ${msgRest}`)
-
+    await sendWA(fromPhone, `⚠️ Ha ocurrido un error extraño. No hay pedidos para confirmar.`)
     await guardarEstado(supabase, memKey, { ...estado, idempotency_keys: estado.idempotency_keys })
     return new Response('OK', { status: 200 })
   }
 
-  // 📝 ENVIAR BOTÓN DE CONFIRMACIÓN EN LUGAR DE ENVIAR DIRECTO AL ADMIN
-  console.log(`✅ [RESTAURANT PORTAL] Esperando confirmación de ${pedidosAcumulados.length} pedido(s) de ${restaurante.nombre}`)
+  // 📝 BURÓ DE CLIENTES: Verificar reputación antes de mostrar resumen
+  let bloqueadoPorVeto = false
+  let alertasReputacion = ""
+  
+  for (const p of pedidosAcumulados) {
+    if (p.clienteTel) {
+      const { data: cliRep } = await supabase.from('clientes').select('reputacion, etiquetas').ilike('telefono', `%${p.clienteTel}%`).limit(1).maybeSingle()
+      if (cliRep) {
+        if (cliRep.reputacion === 'vetado') {
+          bloqueadoPorVeto = true
+          alertasReputacion += `🔴 *SERVICIO RESTRINGIDO:* ${p.clienteTel}\nMotivo: Incidencias de seguridad críticas registradas.\n`
+        } else if (cliRep.reputacion === 'malo') {
+          alertasReputacion += `🚨 *ALERTA:* Historial de incidencias alto (${p.clienteTel})\n🏷️ Detalle: ${cliRep.etiquetas?.join(', ') || 'revisar historial'}\n`
+        } else if (cliRep.reputacion === 'regular') {
+          alertasReputacion += `⚠️ *AVISO:* Historial de incidencias moderado (${p.clienteTel})\n`
+        } else if (cliRep.reputacion === 'excelente') {
+          alertasReputacion += `⭐ *CLIENTE VIP:* ${p.clienteTel} (Excelente historial de servicio)\n`
+        }
+      }
+    }
+  }
+
+  if (bloqueadoPorVeto) {
+    await sendWA(fromPhone, `🔴 *PEDIDO NO PROCESABLE*\n\n${alertasReputacion}\nPor seguridad del personal, este número tiene el servicio restringido de acuerdo a nuestros términos. Contacta al admin si tienes dudas.`)
+    await guardarEstado(supabase, memKey, { ...ESTADO_IDLE, idempotency_keys: estado.idempotency_keys })
+    return new Response('OK', { status: 200 })
+  }
 
   let resumenMsg = `📝 *RESUMEN DEL ENVÍO*\n\n`
+  if (alertasReputacion) resumenMsg = `ℹ️ *NOTAS DE REPUTACIÓN:*\n${alertasReputacion}\n` + resumenMsg
+
   pedidosAcumulados.forEach((p, i) => {
      resumenMsg += `🔹 *Pedido ${i + 1}*\n`
      resumenMsg += `📞 Tel: ${p.clienteTel}\n📍 Dir: ${p.direccion}\n`

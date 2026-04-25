@@ -1,0 +1,178 @@
+🚀 CORRIGIENDO Y GEOCODIFICANDO CON NOMBRES REALES...
+=================================================================
+📌 Procesando 169 colonias con nombres corregidos...
+
+  ✅ [1/169] Barrio 20 de Noviembre → 16.248641, -92.158531
+  ✅ [2/169] Barrio 20 de Noviembre 2a Sección → 16.231036, -92.131655
+  ✅ [3/169] Barrio 7 Esquinas → 16.234740, -92.133954
+  ✅ [4/169] Barrio Belisario Domínguez → 16.231320, -92.126613
+  ✅ [5/169] Barrio Calzada el Panteón → 16.237856, -92.134590
+  ✅ [6/169] Barrio Candelaria → 16.248790, -92.143797
+  ✅ [7/169] Barrio Cerrito Concepción → 16.251055, -92.119403
+  ✅ [8/169] Barrio Cerrito Nitre → 16.251259, -92.117409
+  ✅ [9/169] Barrio Chichima Guadalupe → 16.204910, -92.121704
+  ✅ [10/169] Barrio Cristóbal Colon → 16.243663, -92.141955
+  ✅ [11/169] Barrio Cruz Grande → 16.256882, -92.143183
+  ✅ [12/169] Barrio Cruz Grande 2a Sección → 16.256882, -92.143183
+  ✅ [13/169] Barrio Cumpatá → 16.233434, -92.135818
+  ✅ [14/169] Barrio El Arenal → 16.239388, -92.128453
+  ✅ [15/169] Barrio El Calvario → 16.253991, -92.138273
+  ✅ [16/169] Barrio El Cedro → 16.265077, -92.130560
+  ✅ [17/169] Barrio El Cerrito Nitre 2a Sección → 16.239796, -92.155972
+  ✅ [18/169] Barrio El Jordán → 16.261252, -92.128914
+  ✅ [19/169] Barrio El Mirador → 16.257562, -92.148708
+  ✅ [20/169] Barrio El Piedrón → 16.250507, -92.155768
+  ✅ [21/169] Barrio El Rosario → 16.239141, -92.153005
+  ✅ [22/169] Barrio El Veinticinco → 16.247017, -92.137352
+  ✅ [23/169] Barrio Guadalupe → 16.250204, -92.139941
+  ✅ [24/169] Barrio Jerusalem → 16.262552, -92.127533
+  ✅ [25/169] Barrio Jesusito → 16.250747, -92.131829
+  ✅ [26/169] Barrio La Cueva → 16.248691, -92.153619
+  ✅ [27/169] Barrio La Pila → 16.255510, -92.133363
+  ✅ [28/169] Barrio La Pileta → 16.240809, -92.133363
+  ✅ [29/169] Barrio La Pilita Seca → 16.257042, -92.127226
+  ✅ [30/169] Barrio La Represa → 16.252385, -92.151777
+  ✅ [31/169] Barrio Las Flores → 16.240272, -92.150243
+  ✅ [32/169] Barrio Linda Vista → 16.253816, -92.118943
+  ✅ [33/169] Barrio Los Cipreses → 16.247164, -92.122624
+  ✅ [34/169] Barrio Los Desamparados → 16.251368, -92.106368
+  ✅ [35/169] Barrio Los Magueyes → 16.248622, -92.123852
+  ✅ [36/169] Barrio Los Sabinos → 16.221213, -92.108208
+  ✅ [37/169] Barrio Mariano N Ruíz → 16.225514, -92.119250
+  ✅ [38/169] Barrio Microondas → 16.246386, -92.126919
+  ✅ [39/169] Barrio Nicalocok → 16.240018, -92.138886
+  ✅ [40/169] Barrio Puente Hidalgo → 16.244879, -92.130601
+   Error: HTTPSConnectionPool(host='maps.googleapis.com', port=443): Read timed out. (read timeout=10)
+  ❌ [41/169] Barrio Quija → NO ENCONTRADA
+  ✅ [42/169] Barrio San Agustín → 16.252644, -92.125999
+  ✅ [43/169] Barrio San Antonio → 16.260575, -92.130647
+  ✅ [44/169] Barrio San José → 16.249253, -92.134283
+  ✅ [45/169] Barrio San Martín → 16.243502, -92.157917
+  ✅ [46/169] Barrio San Miguel → 16.259544, -92.139209
+  ✅ [47/169] Barrio San Sebastián → 16.246689, -92.133363
+  ✅ [48/169] Barrio San Vicente Buena Vista → 16.243852, -92.156238
+  ✅ [49/169] Barrio Santa Ana Calanchuy → 16.242143, -92.146866
+  ✅ [50/169] Barrio Santa Cecilia → 16.252434, -92.146866
+  ✅ [51/169] Barrio Santa Cruz → 16.239684, -92.159466
+  ✅ [52/169] Barrio Tepeyac → 16.263130, -92.134053
+  ✅ [53/169] Barrio Yalchivol → 16.240190, -92.121704
+  ✅ [54/169] Colonia 27 de Junio → 16.258659, -92.112502
+  ✅ [55/169] Colonia 9 Estrellas → 16.217933, -92.114726
+  ✅ [56/169] Colonia Ampliación Bugambilias → 16.217933, -92.114726
+  ✅ [57/169] Colonia Bellavista → 16.217933, -92.114726
+  ✅ [58/169] Colonia Buenavista → 16.228925, -92.145638
+  ✅ [59/169] Colonia Bugambilias → 16.266890, -92.134897
+  ✅ [60/169] Colonia Bugambilias → 16.266890, -92.134897
+  ✅ [61/169] Colonia Cash → 16.263956, -92.097169
+  ✅ [62/169] Colonia Chichima Acapetahua → 16.207212, -92.100016
+  ✅ [63/169] Colonia Chichima Benito Juárez → 16.228575, -92.106982
+  ✅ [64/169] Colonia Chichima Concepción → 16.215138, -92.127840
+  ✅ [65/169] Colonia Comitán de Domínguez Centro → 16.252558, -92.134590
+  ✅ [66/169] Colonia Concepción Yocnajab → 16.245465, -92.071116
+  ✅ [67/169] Colonia Corrala → 16.165133, -92.056104
+  ✅ [68/169] Colonia Cruz de Phastón → 16.234740, -92.133954
+  ✅ [69/169] Colonia El Bethel → 16.240658, -92.111582
+  ✅ [70/169] Colonia El Milagro → 16.217933, -92.114726
+  ✅ [71/169] Colonia El Pedregal → 16.217933, -92.114726
+  ✅ [72/169] Colonia Guadalupe Quistaj → 16.211601, -92.038341
+  ✅ [73/169] Colonia INFONAVIT Belisario Domínguez → 16.245667, -92.143643
+  ✅ [74/169] Colonia Jatón → 16.217933, -92.114726
+  ✅ [75/169] Colonia La Esperanza → 16.169577, -92.052428
+  ✅ [76/169] Colonia La Merced → 16.217933, -92.114726
+  ✅ [77/169] Colonia Las Lajitas → 16.263308, -92.134667
+  ✅ [78/169] Colonia Lindavista → 16.217933, -92.114726
+  ✅ [79/169] Colonia Lázaro Cárdenas → 16.231528, -92.130054
+  ✅ [80/169] Colonia Miguel Alemán → 16.217933, -92.114726
+  ✅ [81/169] Colonia Nuevo Belén → 16.266580, -92.133512
+  ✅ [82/169] Colonia Paraíso Chichima → 16.217933, -92.114726
+  ✅ [83/169] Colonia Pashton Acapulco → 16.235719, -92.164365
+  ✅ [84/169] Colonia San Juan → 16.409075, -92.289963
+  ✅ [85/169] Colonia San Rafael Chacaljemel → 16.166715, -92.101309
+  ✅ [86/169] Colonia Valle Balún Canan → 16.225318, -92.138886
+  ✅ [87/169] Colonia Valle de Sabines Guerrero → 16.227614, -92.137464
+  ✅ [88/169] Ejido Hidalgo → 16.284114, -92.211985
+  ✅ [89/169] Ejido Jusnajab → 16.234740, -92.133954
+  ✅ [90/169] Ejido La Floresta → 16.509720, -92.310560
+  ✅ [91/169] Ejido La Palmira → 16.440170, -92.302607
+  ✅ [92/169] Ejido Villahermosa Yalumá → 16.337472, -92.080635
+  ✅ [93/169] Ejido Yaltzi 3 Lagunas → 16.297585, -92.259347
+  ✅ [94/169] Fraccionamiento 1ro. de Mayo → 16.282242, -92.030993
+  ✅ [95/169] Fraccionamiento 28 de Agosto → 16.233712, -92.144718
+  ✅ [96/169] Fraccionamiento Arboledas → 16.239174, -92.116553
+  ✅ [97/169] Fraccionamiento Bonampak → 16.243130, -92.121704
+  ✅ [98/169] Fraccionamiento Bosques de Comitán → 16.237980, -92.158838
+  ✅ [99/169] Fraccionamiento Bosques de Comitán 2a Sección → 16.237980, -92.158838
+  ✅ [100/169] Fraccionamiento Bosques de Comitán 3a Sección → 16.238202, -92.155001
+  ✅ [101/169] Fraccionamiento Burócratas → 16.243130, -92.121704
+  ✅ [102/169] Fraccionamiento Colinas del Sol → 16.224243, -92.136124
+  ✅ [103/169] Fraccionamiento Comitlán → 16.234740, -92.133954
+  ✅ [104/169] Fraccionamiento Comitán Colonial → 16.237800, -92.158659
+  ✅ [105/169] Fraccionamiento Concepción Bella Vista → 16.227115, -92.142876
+  ✅ [106/169] Fraccionamiento Doctor Manuel Velasco Suárez → 16.131088, -92.227971
+  ✅ [107/169] Fraccionamiento El Cedro → 16.263257, -92.130601
+  ✅ [108/169] Fraccionamiento El Chumis → 16.245473, -92.144718
+  ✅ [109/169] Fraccionamiento El Herraje → 16.237733, -92.146866
+  ✅ [110/169] Fraccionamiento El Laurel → 16.239309, -92.111378
+  ✅ [111/169] Fraccionamiento Esthela Morales → 16.237343, -92.144025
+  ✅ [112/169] Fraccionamiento FOVISSSTE Chiapas 94 → 16.234987, -92.145792
+  ✅ [113/169] Fraccionamiento FOVISSSTE las Flores → 16.234987, -92.145792
+  ✅ [114/169] Fraccionamiento Jacarandas → 16.243130, -92.121704
+  ✅ [115/169] Fraccionamiento Jocote → 16.243130, -92.121704
+  ✅ [116/169] Fraccionamiento Joyas del Pedregal → 16.231513, -92.144104
+  ✅ [117/169] Fraccionamiento Juan Sabines Guerrero → 16.190938, -92.085213
+  ✅ [118/169] Fraccionamiento Las Chilcas → 16.243130, -92.121704
+  ✅ [119/169] Fraccionamiento Las Tinajas → 16.261810, -92.131931
+  ✅ [120/169] Fraccionamiento Latino Americana → 16.243130, -92.121704
+  ✅ [121/169] Fraccionamiento Libertad → 16.234465, -92.142876
+  ✅ [122/169] Fraccionamiento Libertad Campanario → 16.239787, -92.143643
+  ✅ [123/169] Fraccionamiento Lomas del Sur → 16.235729, -92.145178
+  ✅ [124/169] Fraccionamiento Lomas del Valle → 16.230782, -92.151069
+  ✅ [125/169] Fraccionamiento Los Lagos de Montebello → 16.223961, -92.133734
+  ✅ [126/169] Fraccionamiento Los Olivos → 16.254679, -92.124618
+  ✅ [127/169] Fraccionamiento Los Pinos → 16.226517, -92.131644
+  ✅ [128/169] Fraccionamiento Los Robles → 16.232223, -92.146559
+  ✅ [129/169] Fraccionamiento Luis Donaldo Colosio → 16.238666, -92.145485
+  ✅ [130/169] Fraccionamiento Magisterial Issstech → 16.252503, -92.132878
+  ✅ [131/169] Fraccionamiento Maya → 16.244645, -92.153926
+  ✅ [132/169] Fraccionamiento Miramar → 16.246463, -92.119092
+  ✅ [133/169] Fraccionamiento Monte Verde → 16.230448, -92.144903
+  ✅ [134/169] Fraccionamiento Paraíso Comiteco → 16.243130, -92.121704
+  ✅ [135/169] Fraccionamiento Paz → 16.256882, -92.124813
+  ✅ [136/169] Fraccionamiento Popular Comitán → 16.231902, -92.141955
+  ✅ [137/169] Fraccionamiento Portal de Hierro → 16.222962, -92.149024
+  ✅ [138/169] Fraccionamiento Residencial las Flores → 16.242982, -92.137936
+  ✅ [139/169] Fraccionamiento Salubridad → 16.243130, -92.121704
+  ✅ [140/169] Fraccionamiento Santa María → 16.254958, -92.124235
+  ✅ [141/169] Fraccionamiento Solidaridad Comiteca → 16.243130, -92.121704
+  ✅ [142/169] Fraccionamiento Tenam → 16.236305, -92.157423
+  ✅ [143/169] Fraccionamiento Tikal → 16.243130, -92.121704
+  ✅ [144/169] Fraccionamiento Vicente Fox → 16.243130, -92.121704
+  ✅ [145/169] Pueblo Abelardo L. Rodríguez → 16.234740, -92.133954
+  ✅ [146/169] Pueblo Ajayaxh → 16.309303, -92.193545
+  ✅ [147/169] Pueblo Efraín A Gutiérrez → 16.344536, -92.199691
+  ✅ [148/169] Pueblo Francisco Sarabia → 16.158060, -92.104170
+  ✅ [149/169] Pueblo San Francisco → 16.234740, -92.133954
+  ✅ [150/169] Pueblo Zaragoza La Montaña → 16.416670, -92.205280
+  ✅ [151/169] Ranchería Cajcam → 16.265467, -92.048310
+  ✅ [152/169] Ranchería Chacaljocom → 16.298357, -92.185557
+  ✅ [153/169] Ranchería El Durazno → 16.408474, -92.257039
+  ✅ [154/169] Ranchería El Rosario Yocnajab → 16.231902, -92.141955
+  ✅ [155/169] Ranchería Francisco J Mújica → 16.052220, -92.218060
+  ✅ [156/169] Ranchería Laguna Larga → 16.419720, -92.259720
+  ✅ [157/169] Ranchería Los Riegos → 16.231902, -92.141955
+  ✅ [158/169] Ranchería Pozo Nuevo → 16.255446, -92.065294
+  ✅ [159/169] Ranchería Primero de Mayo → 16.231902, -92.141955
+  ✅ [160/169] Ranchería Río Grande → 16.291484, -92.117227
+  ✅ [161/169] Ranchería San Francisco el Rincón → 16.279424, -92.131215
+  ✅ [162/169] Ranchería San Isidro Tinajab → 16.287096, -92.110423
+  ✅ [163/169] Ranchería San José Yocnajab → 16.252290, -92.087359
+  ✅ [164/169] Ranchería San Miguel Tinajab → 16.281975, -92.103346
+  ✅ [165/169] Ranchería San Rafael Jocom → 16.297450, -92.126783
+  ✅ [166/169] Ranchería Santa Rosalía → 16.474935, -92.251347
+  ✅ [167/169] Ranchería Señor del Pozo → 16.290437, -92.112079
+  ✅ [168/169] Unidad habitacional Zona Militar 15 Regimiento → 16.213267, -92.131215
+  ✅ [169/169] Zona federal Panteón Municipal → 16.240627, -92.131295
+
+=================================================================
+🎉 ¡PROCESO CORREGIDO TERMINADO!
+📄 SQL generado: padron_google_corregido.sql

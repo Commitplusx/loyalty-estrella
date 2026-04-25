@@ -71,7 +71,13 @@ export async function handleRepButtons(supabase: Supa, fromPhone: string, button
         `✅ [OP] Orden entregada exitosamente.`)
       await sendWA(fromPhone, `✅ ¡Excelente trabajo! El pedido ha sido entregado. Quedas libre. 🌟`)
     }
-  } catch (err) { console.error('[REP HANDLER] Button Error:', err) }
+  } catch (err) {
+    console.error('[REP HANDLER] Button Error:', err)
+    // BUG FIX #5: Notificar al repartidor en lugar de quedar en silencio
+    try {
+      await sendWA(fromPhone, `⚠️ Ocurrió un error procesando esa acción. Por favor intenta de nuevo o contacta al administrador.`)
+    } catch (_) { /* silencioso si WA también falla */ }
+  }
   return true
 }
 

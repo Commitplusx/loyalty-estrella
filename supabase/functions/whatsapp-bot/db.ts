@@ -54,6 +54,18 @@ export async function crearPedidoDesdeBot(
 
     const repartidorInfo = rep ? datos.repartidorAlias! : ''
 
+    // CACHÉ GPS: Si no hay lat/lng explícitos, intentar obtener de caché
+    let finalLat = lat
+    let finalLng = lng
+    if (finalLat === undefined || finalLng === undefined) {
+      const telLimpio = extract10Digits(datos.clienteTel || '0000000000')
+      const { data: clienteCache } = await supabase.from('clientes').select('lat_frecuente, lng_frecuente').eq('telefono', telLimpio).maybeSingle()
+      if (clienteCache?.lat_frecuente && clienteCache?.lng_frecuente) {
+        finalLat = clienteCache.lat_frecuente
+        finalLng = clienteCache.lng_frecuente
+      }
+    }
+
     const insertData: Record<string, unknown> = {
       cliente_tel: datos.clienteTel ?? '0000000000',
       descripcion: datos.descripcion,
@@ -61,8 +73,8 @@ export async function crearPedidoDesdeBot(
     if (datos.clienteNombre) insertData.cliente_nombre = datos.clienteNombre
     if (datos.restaurante)   insertData.restaurante = datos.restaurante
     if (datos.direccion)     insertData.direccion = datos.direccion
-    if (lat !== undefined)   insertData.lat = lat
-    if (lng !== undefined)   insertData.lng = lng
+    if (finalLat !== undefined)   insertData.lat = finalLat
+    if (finalLng !== undefined)   insertData.lng = finalLng
     if (messageId)           insertData.wb_message_id = messageId
     if (rep?.user_id)        insertData.repartidor_id = rep.user_id
 
