@@ -867,7 +867,8 @@ export function ClienteView() {
                         )}
                       </>
                     ) : (
-                      <Card className="border-0 shadow-xl overflow-hidden">
+                      <>
+                        <Card className="border-0 shadow-xl overflow-hidden">
                         <div className="p-6 text-white bg-gradient-to-br from-orange-500 to-amber-500">
                           <div className="flex items-center justify-between mb-4">
                             <div>
@@ -935,6 +936,7 @@ export function ClienteView() {
                         <Ticket className="w-6 h-6" />
                         Canjear Beneficio
                       </button>
+                      </>
                     )}
                   </>
                 ) : (
