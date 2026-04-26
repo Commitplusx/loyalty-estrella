@@ -39,7 +39,7 @@ function useCountUp(target: number, delay: number = 0) {
   return count;
 }
 
-export function AuthorityCounter() {
+export default function AuthorityCounter() {
   const [deliveryTarget, setDeliveryTarget] = useState(BASE_DELIVERIES);
 
   useEffect(() => {

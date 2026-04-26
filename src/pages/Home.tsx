@@ -7,7 +7,7 @@ import {
   Package, CheckCircle2, Flame, Users
 } from 'lucide-react';
 import { useSchedule } from '@/hooks/useSchedule';
-import { AuthorityCounter } from '@/components/client/AuthorityCounter';
+import AuthorityCounter from '@/components/client/AuthorityCounter';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 40 },
