@@ -141,6 +141,12 @@ export async function sendInteractiveButtons(
       type: 'reply',
       reply: { id: b.id.substring(0, 256), title: b.title.substring(0, 20) }
     }))
+    
+    if (btns.length === 0) {
+      console.warn('⚠️ sendInteractiveButtons called with empty buttons array. Sending as normal text.')
+      return await sendWA(to, text)
+    }
+
     const res = await fetchConReintento(WA_BASE, {
       method: 'POST',
       headers: WA_HEADERS(),

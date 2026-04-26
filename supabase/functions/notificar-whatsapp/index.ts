@@ -207,7 +207,7 @@ async function notificarCliente(
 }
 
 function buildRepartidorAsignacionText(
-  pedidoId: string, descripcion: string, direccion: string | null, restaurante: string | null, clienteNombre: string | null,
+  pedidoId: string, descripcion: string, direccion: string | null, restaurante: string | null, clienteNombre: string | null, cuponTexto: string = ''
 ): string {
   const numeroOrden = generarNumeroOrden(pedidoId)
   return [
@@ -218,6 +218,7 @@ function buildRepartidorAsignacionText(
     clienteNombre ? `👤 *Cliente:* ${clienteNombre}` : null,
     `📝 *Pedido:* ${descripcion}`,
     direccion ? `📍 *Dirección:* ${direccion}` : null,
+    cuponTexto ? `\n${cuponTexto}` : null
   ].filter(Boolean).join('\n')
 }
 
@@ -231,18 +232,46 @@ serve(async (req: Request) => {
     console.log("NOTIFICAR_WHATSAPP INCOMING BODY:", bodyText)
     if (!bodyText) return new Response(JSON.stringify({ error: 'Body vacio' }), { status: 400 })
     
-    const { pedido_id, tipo, repartidor_tel, descripcion, minutos_total, minutos_estancado } = JSON.parse(bodyText) as {
-      pedido_id: string
-      tipo: 'asignacion' | 'recibido' | 'en_camino' | 'entregado' | 'creado' | 'alerta_zombie'
-      repartidor_tel?: string
-      descripcion?: string
-      minutos_total?: number
-      minutos_estancado?: number
+    const payload = JSON.parse(bodyText)
+    const { tipo } = payload
+    
+    if (!tipo) {
+      return new Response(JSON.stringify({ error: 'tipo es requerido' }), { status: 400 })
     }
 
-    if (!pedido_id || !tipo) {
-      console.error("Falta pedido_id o tipo")
-      return new Response(JSON.stringify({ error: 'pedido_id y tipo requeridos' }), { status: 400 })
+    if (tipo === 'cupon_generado') {
+      const { cliente_tel, cliente_nombre, codigo_cupon, descuento, expires_at, tipo_canje } = payload
+      const telFormateado = formatTel(cliente_tel)
+      const f_exp = new Date(expires_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
+      const strDesc = tipo_canje === 'billetera' ? `$${descuento} en pedidos/comida` : `Hasta $${descuento} en tu próximo envío`
+      
+      const res = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template',
+          template: {
+            name: 'estrella_cupon_generado',
+            language: { code: 'es_MX' },
+            components: [
+              { type: 'body', parameters: [
+                { type: 'text', text: cliente_nombre || 'Cliente' }, // {{1}}
+                { type: 'text', text: codigo_cupon }, // {{2}}
+                { type: 'text', text: strDesc }, // {{3}}
+                { type: 'text', text: f_exp } // {{4}}
+              ]}
+            ]
+          }
+        })
+      })
+      if (!res.ok) console.error(`WA error (estrella_cupon_generado):`, await res.text())
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+
+    const { pedido_id, repartidor_tel, descripcion, minutos_total, minutos_estancado } = payload
+
+    if (!pedido_id) {
+      console.error("Falta pedido_id")
+      return new Response(JSON.stringify({ error: 'pedido_id requerido para este tipo' }), { status: 400 })
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
@@ -326,6 +355,27 @@ serve(async (req: Request) => {
         const descT = pedido.restaurante ? `🍽️ ${pedido.restaurante} - ${rawDesc}` : rawDesc
         const dirT = (pedido.direccion || 'Revisar detalles') + restLoc + clienteFachada
         
+        // ── VERIFICAR CUPÓN ACTIVO ──
+        let cuponInfo = ''
+        let cuponBtnId = `BTN_ACEPTAR_${pedido.id}`
+        let cuponBtnTitle = 'Aceptar Servicio'
+        
+        if (pedido.cliente_tel) {
+          const { data: cupon } = await supabase.from('cupones')
+            .select('*')
+            .eq('cliente_tel', extract10Digits(pedido.cliente_tel))
+            .eq('estado', 'activo')
+            .limit(1)
+            .maybeSingle()
+            
+          if (cupon) {
+            cuponInfo = `⚠️ *CUPÓN ACTIVO: ${cupon.codigo}*\n💰 *Descuento:* $${cupon.valor_pesos} pesos\n💡 Cobra $${cupon.valor_pesos} pesos MENOS de la cuenta total.`
+            // Si hay cupón, cambiamos el botón para que el repartidor confirme que lo aplicó (se maneja en rep-handler)
+            // Primero debe aceptarlo normalmente, el botón de aplicar cupón se le envía cuando lo recoge o entrega.
+            // Para simplificar, le mandamos el mismo botón de aceptar.
+          }
+        }
+        
         await sendWhatsAppTemplate(
           formatTel(repTelefono), 
           'estrella_delivery__nueva_orden', 
@@ -333,9 +383,9 @@ serve(async (req: Request) => {
           [repNombre]
         )
         
-        const msg = buildRepartidorAsignacionText(pedido.id, descT, dirT, pedido.restaurante, pedido.cliente_nombre)
+        const msg = buildRepartidorAsignacionText(pedido.id, descT, dirT, pedido.restaurante, pedido.cliente_nombre, cuponInfo)
         try {
-          await sendInteractiveButton(formatTel(repTelefono), msg, `BTN_ACEPTAR_${pedido.id}`, 'Aceptar Servicio')
+          await sendInteractiveButton(formatTel(repTelefono), msg, cuponBtnId, cuponBtnTitle)
         } catch (e) { console.log('El boton interactivo no pudo salir, posible ventana cerrada de 24h', e) }
         results.push(`✅ WA template y/o interactivo enviado al repartidor: ${repTelefono}`)
       } else {

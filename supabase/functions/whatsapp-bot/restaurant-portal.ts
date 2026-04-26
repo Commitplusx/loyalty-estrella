@@ -13,6 +13,8 @@ interface Pedido {
   direccion: string | null
   tiempo_estimado: string | null
   precio: string | null // Puede ser negociado
+  lat?: number | null
+  lng?: number | null
 }
 
 interface EstadoSesion {
@@ -164,23 +166,7 @@ async function llamarDeepSeek(
   esHoraFelizActiva: boolean,
   reintentos = 3
 ): Promise<any | null> {
-  const promptZonas = `TABULADOR MAESTRO DE PRECIOS POR ZONAS (COMITÁN):
-
-ZONA VERDE ($45, PERO $35 SI HORA FELIZ ESTÁ ACTIVA):
-CENTRO, SAN SEBASTIAN, SAN AGUSTIN, PUENTE HIDALGO, BELISARIO, BARRIO EL 25, PILA, PILITA, SAN JOSE, JESUSITO, CANDELARIA, INFONAVIT, GUADALUPE, FRACC. LAS FLORES, FOVISSTE, SANTA ANA, FRACC. 28 DE AGOSTO, LA POPULAR, MONTE VERDE, MICROONDAS, LA PILETA, MAGUEYES, YALCHIVOL, FRACC. MAYA, FRACC. LOS PINOS, ARENAL, FRACC TERRAZAS, EL ROSARIO, 1RO DE MAYO, LATINO AMERICANA, ORQUIDEAS, EL HERRAJE, COL ESMERALDA, COL LUIS DONALDO COLOSIO, BELLAVISTA, SIETE ESQUINAS, NICALOKOCK, FRACC. LOS LAGOS, FRACC. 9 ESTRELLAS.
-
-ZONA AZUL ($50 FIJOS, NO APLICA HORA FELIZ):
-CRUZ GRANDE (1RA SECCIÓN), SANTA CECILIA, CUEVA (1RA SECCION), ARBOLEDAS, BOSQUES, SAN MARTIN, BETHEL, FRACC. COMITLAN, MARIANO N RUIZ (ANTES DE LA 30 SUR OTE), SABINOS (ANTES DE LA 30 SUR), FRACC. PRADO, FRACC. TUCANES, ROSARIO, CHICHIMÁ GUADALUPE (ANTES DEL CUARTEL), CHILCAS, BONAMPAK, MIRAMAR, CERRITO, SALIDA A MARGARITAS, CEDRO (HASTA EL MERCADO), JERUSALEN, SAN ANTONIO, JORDAN, SAN MIGUEL, LA REPRESA, PASHTON (HASTA LA PRIMARIA), TENAM, COMITAN COLONIAL, LINDA VISTA.
-
-ZONA AMARILLA ($55-$60 FIJOS, NO APLICA HORA FELIZ):
-CHICHIMÁ GUADALUPE (DESPUES DEL CUARTEL), TINAJAS, SABINOS (DESPUES DE LA 30 SUR), DESAMPARADOS (HASTA EL CBTIS), 27 DE JUNIO, CEDRO (DESPUES DEL MERCADO), PASHTON ACAPULCO (DESPUES DE LA PRIMARIA), CRUZ GRANDE (2 SECCION), 20 DE NOVIEMBRE, CHICHIMÁ ACAPETAHUA, PLAZA LAS FLORES (SOLO RECOGER).
-
-ZONA ROJA (+$70 FIJOS, NO APLICA HORA FELIZ):
-ENTRONQUE A CHICHIMÁ, COCA EN ADELANTE (HASTA LA GN), GAS VILLATORO HASTA ENTRONQUE A CHICHIMÁ.
-
-ESTADO DE HORA FELIZ AHORA: ${esHoraFelizActiva ? 'ACTIVA (Aplica SÓLO a Zona Verde bajando el precio a $35)' : 'INACTIVA (Zona Verde es $45)'}
-
-REGLA DE ORO DE PRECIOS: Si la dirección es ambigua (ej: "Sabinos" pero no dice si antes o después de la 30 sur, o "Cruz Grande" sin decir qué sección), ASIGNA EL PRECIO MÁS CARO o USA LA ETIQUETA "preguntar" PARA CONFIRMAR CON EL RESTAURANTE. El precio debe ir con el símbolo de peso (ej: "$50", "$35").`
+  const promptZonas = `NOTA: En este momento, el sistema NO calcula ni asigna precios. No menciones cobros, tarifas ni zonas al restaurante. Solo captura el pedido.`
 
   const systemPrompt = `Eres "ALPHA-Estrella Restaurantes", el motor de Estrella Delivery. Eres ESTRICTO devolviendo EXCLUSIVAMENTE JSON.
 
@@ -192,7 +178,7 @@ ESTADO ACTUAL:
 ${JSON.stringify({
     fase: estado.phase,
     pedido_actual_memoria: estado.pedido_actual,
-    pedidos_acumulados_listos: estado.pedidos_acumulados?.length || 0,
+    pedidos_acumulados: estado.pedidos_acumulados || [],
     total_esperados_anotados: estado.total_esperados
   })}
 
@@ -320,11 +306,13 @@ async function notificarAdmin(
     if (p.descripcion) adminMsg += `🍔 Lleva: *${p.descripcion}*\n`
     if (p.direccion) adminMsg += `📍 Va para: *${p.direccion}*\n`
 
-    // Logica visual si aplicó Happy Hour
-    if (p.precio === '$35' && esHoraFeliz()) {
-      adminMsg += `💰 Cobro: ${p.precio} _(🔥 Hora Feliz Aplicada)_\n`
-    } else if (p.precio) {
-      adminMsg += `💰 Cobro: ${p.precio}\n`
+    if (p.precio && p.precio !== 'nada' && p.precio !== 'null') {
+      adminMsg += `💰 Cobrar: ${p.precio}\n`
+      // Guardrail de precios anómalos (por si el restaurante lo ingresó manualmente)
+      const numPrecio = parseFloat(p.precio.replace(/[^0-9.]/g, ''))
+      if (numPrecio > 200) {
+        adminMsg += `🚨 *ALERTA DE PRECIO ANÓMALO:* ¡El cobro excede los $200! Verifica si es error de dedo.\n`
+      }
     }
 
     if (p.tiempo_estimado) adminMsg += `⏱️ Tiempo: ${p.tiempo_estimado}\n`
@@ -593,6 +581,8 @@ export async function handleRestaurantPortal(
     direccion: aiPedidoActual.direccion || estado.pedido_actual?.direccion || null,
     tiempo_estimado: aiPedidoActual.tiempo_estimado || estado.pedido_actual?.tiempo_estimado || null,
     precio: aiPedidoActual.precio || estado.pedido_actual?.precio || null,
+    lat: estado.pedido_actual?.lat,
+    lng: estado.pedido_actual?.lng
   }
 
   const pedidoActualEstaCompleto = aiCompleto || (
@@ -676,10 +666,22 @@ export async function handleRestaurantPortal(
     }
   }
 
+  // BUG FIX: Filtrar pedidos vetados en lugar de destruir toda la sesión
   if (bloqueadoPorVeto) {
-    await sendWA(fromPhone, `🔴 *PEDIDO NO PROCESABLE*\n\n${alertasReputacion}\nPor seguridad del personal, este número tiene el servicio restringido de acuerdo a nuestros términos. Contacta al admin si tienes dudas.`)
-    await guardarEstado(supabase, memKey, { ...ESTADO_IDLE, idempotency_keys: estado.idempotency_keys })
-    return new Response('OK', { status: 200 })
+    pedidosAcumulados = pedidosAcumulados.filter(p => {
+      const cliRep = p.clienteTel ? p.clienteTel : null // Simplificado, ya extrajimos la alerta
+      // No tenemos el dato exacto de cual fue vetado aqui adentro del filter facilmente a menos que re-chequemos,
+      // pero podemos apoyarnos en la cadena de alertas
+      return !(alertasReputacion.includes(`🔴 *SERVICIO RESTRINGIDO:* ${p.clienteTel}`))
+    })
+    
+    if (pedidosAcumulados.length === 0) {
+      await sendWA(fromPhone, `🔴 *PEDIDOS NO PROCESABLES*\n\n${alertasReputacion}\nPor seguridad del personal, todos los números en esta lista tienen el servicio restringido.`)
+      await guardarEstado(supabase, memKey, { ...ESTADO_IDLE, idempotency_keys: estado.idempotency_keys })
+      return new Response('OK', { status: 200 })
+    } else {
+      alertasReputacion += `\n⚠️ *Los pedidos restringidos fueron eliminados de la bandeja automáticamente.*\n\n`
+    }
   }
 
   let resumenMsg = `📝 *RESUMEN DEL ENVÍO*\n\n`
@@ -689,7 +691,7 @@ export async function handleRestaurantPortal(
      resumenMsg += `🔹 *Pedido ${i + 1}*\n`
      resumenMsg += `📞 Tel: ${p.clienteTel}\n📍 Dir: ${p.direccion}\n`
      if (p.descripcion && p.descripcion !== 'nada') resumenMsg += `📦 Notas: ${p.descripcion}\n`
-     if (p.precio && p.precio !== 'nada') resumenMsg += `💰 Cobrar: ${p.precio}\n`
+     // Precio desactivado: el admin asigna el cobro manualmente
      resumenMsg += `\n`
   })
 

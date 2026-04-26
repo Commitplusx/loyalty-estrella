@@ -191,11 +191,17 @@ class RepartidorService {
 
     final dataPedidos = await queryPedidos;
     for (var p in dataPedidos) {
+      // BUG FIX #3: Leer precio real del pedido en lugar de hardcodear $45
+      double montoPedido = 45.0; // Fallback si no hay precio
+      if (p['precio'] != null) {
+        final precioStr = p['precio'].toString().replaceAll(RegExp(r'[^0-9.]'), '');
+        montoPedido = double.tryParse(precioStr) ?? 45.0;
+      }
       combined.add({
         'id': p['id'],
         'repartidor_id': repartidorId,
         'descripcion': p['descripcion'] ?? 'Pedido Bot',
-        'monto': 45.0, // TODO: Get actual tarifa from db if available
+        'monto': montoPedido,
         'cliente_id': null,
         'restaurante_id': null,
         'tipo_servicio': 'cliente',
@@ -250,11 +256,16 @@ class RepartidorService {
             .limit(100);
             
         for (var p in dataPedidos) {
+          double montoPedido = 45.0;
+          if (p['precio'] != null) {
+            final precioStr = p['precio'].toString().replaceAll(RegExp(r'[^0-9.]'), '');
+            montoPedido = double.tryParse(precioStr) ?? 45.0;
+          }
           combined.add({
             'id': p['id'],
             'repartidor_id': repartidorId,
             'descripcion': p['descripcion'] ?? 'Pedido Bot',
-            'monto': 45.0,
+            'monto': montoPedido,
             'cliente_id': null,
             'restaurante_id': null,
             'tipo_servicio': 'cliente',

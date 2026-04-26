@@ -1,12 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Cliente, RegistroPunto, AdminUser, AppConfig } from '@/types';
 
-// Helper to decode fallback credentials at runtime
-const _f = (s: string) => atob(s);
+// BUG FIX #1: Credentials must come from environment variables only — no hardcoded fallbacks
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Bug fix: corrected typo in the URL (restored missing 'r')
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || _f('aHR0cHM6Ly9qZHJya3B2b2RucW9sanljaXhiZy5zdXBhYmFzZS5jbw==');
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || _f('ZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnBjM01pT2lKemRYQmhZbUZ6WlNJc0luSmxaaUk2SW1wa2NuSnJjSFp2Wkc1eGIyeHFlV05wZUdKbklpd2ljbTlzWlNJNkltRnViMjRpTENKcFlYUWlPakUzTnpVd05Ea3lPVEVzSW1WNGNDSTZNakE1TURZeU5USTVNWDAuV0VLcWRMMnA5OWN5OFh2eXFZMzFFUDgtS2JkT25oeDItZng5cXpfaVF0UQ==');
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('⚠️ VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY no están configuradas en .env');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 

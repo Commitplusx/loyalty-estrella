@@ -17,6 +17,18 @@ export async function handleRepButtons(supabase: Supa, fromPhone: string, button
   const pedidoId = rest.slice(1).join('_')
 
   try {
+    if (tipo === 'CUPON') {
+      const codigo = rest.join('_')
+      const { data: cupon, error } = await supabase.from('cupones').update({ estado: 'usado', used_at: new Date().toISOString() }).eq('codigo', codigo).eq('estado', 'activo').select().maybeSingle()
+      if (cupon) {
+        await sendWA(fromPhone, `✅ Cupón *${codigo}* marcado como usado. ¡Buen trabajo!`)
+        if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN, `🎟️ [OP] Repartidor marcó cupón ${codigo} como usado.`)
+      } else {
+        await sendWA(fromPhone, `⚠️ Ese cupón ya fue usado o no existe.`)
+      }
+      return true
+    }
+
     const { data: p } = await supabase.from('pedidos').select('*').eq('id', pedidoId).maybeSingle()
     if (!p) {
       await sendWA(fromPhone, '❌ Este pedido no se encontró en la central.')
@@ -48,6 +60,16 @@ export async function handleRepButtons(supabase: Supa, fromPhone: string, button
       
       // Notificación centralizada al cliente vía plantilla (tipo 'recibido')
       await supabase.functions.invoke('notificar-whatsapp', { body: { pedido_id: pedidoId, tipo: 'recibido' } })
+
+      if (p.cliente_tel) {
+        const telExtraido = extract10Digits(p.cliente_tel)
+        if (telExtraido.length === 10) {
+          const { data: cupon } = await supabase.from('cupones').select('*').eq('cliente_tel', telExtraido).eq('estado', 'activo').limit(1).maybeSingle()
+          if (cupon) {
+            await sendInteractiveButton(fromPhone, `🎟️ El cliente tiene un cupón activo ($${cupon.valor_pesos} pesos). ¿Lo descontaste de la cuenta?`, `BTN_CUPON_${cupon.codigo}`, '✅ Cupón aplicado')
+          }
+        }
+      }
 
       if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN,
         `👁️ [OP] Repartidor tiene en manos el pedido de *${p.cliente_nombre || 'cliente'}*.`)
@@ -118,21 +140,33 @@ export async function handleRepMessage(
     const { data: c } = await supabase.from('clientes').select('id, puntos')
       .ilike('telefono', `%${d.clienteTel}%`).limit(1).maybeSingle()
     if (c) {
-      const nuevo = c.puntos + Number(d.puntosASumar)
-      await supabase.from('clientes').update({ puntos: nuevo, updated_at: new Date().toISOString() }).eq('id', c.id)
-      await supabase.from('registros_puntos').insert({
-        cliente_id: c.id, tipo: 'acumulacion', puntos: d.puntosASumar, monto_saldo: 0,
-        descripcion: d.descripcion || 'Repartidor (bot)'
-      })
+      const cant = Number(d.puntosASumar) || 1
+      let lastRes: any = null
+      for (let i = 0; i < cant; i++) {
+        // BUG FIX #3: Pasar from10 como p_admin_id para auditoría (quién sumó los puntos)
+        const { data, error } = await supabase.rpc('fn_registrar_entrega', {
+          p_cliente_tel: d.clienteTel,
+          p_admin_id: from10,
+          p_descripcion: `Repartidor ${isRep.nombre}`
+        })
+        if (!error && data?.ok) lastRes = data
+      }
+      const nuevo = lastRes ? lastRes.puntos : ((c.puntos || 0) + cant)
       await sendWA(fromPhone, `✅ *${d.puntosASumar} pts* sumados. Total: *${nuevo}* pts.`)
+      // Notificar al admin solo si sumó puntos (acción significativa)
+      if (ADMIN_PHONE_MAIN && from10 !== extract10Digits(ADMIN_PHONE_MAIN)) {
+        await sendWA(ADMIN_PHONE_MAIN, `🌟 [OP] *${isRep.nombre}* sumó ${d.puntosASumar} pts al cliente ${d.clienteTel}.`)
+      }
     } else {
       await sendWA(fromPhone, `❌ No encontré ese cliente. Pídele que use la Web App primero.`)
     }
   } else {
     await sendWA(fromPhone, usrMsg)
-    // BUG FIX #1: Reenviar al administrador la respuesta del repartidor si este contesta libre
-    if (accion === 'RESPONDER' && ADMIN_PHONE_MAIN && from10 !== extract10Digits(ADMIN_PHONE_MAIN)) {
-      await sendWA(ADMIN_PHONE_MAIN, `💬 *[Mensaje de ${isRep.nombre}]*:\n${msgText}`)
+    // BUG FIX #1: Solo notificar al admin si el repartidor reporta algo operativo
+    // (no reenviar mensajes casuales como "ok", "ya voy", "sale", etc.)
+    const esOperativo = /problem|error|accidente|no encuentro|cancelar|ayuda|tardare|tarde|demora|perdido|falla/i.test(msgText)
+    if (esOperativo && ADMIN_PHONE_MAIN && from10 !== extract10Digits(ADMIN_PHONE_MAIN)) {
+      await sendWA(ADMIN_PHONE_MAIN, `⚠️ *[Alerta de ${isRep.nombre}]*:\n${msgText}`)
     }
   }
 

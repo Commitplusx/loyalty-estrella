@@ -59,9 +59,9 @@ class PedidosScreen extends ConsumerWidget {
             Text(
               'Pedidos en tiempo real',
               style: TextStyle(
-                fontSize: 11,
-                color: onSurface.withValues(alpha: 0.45),
-                fontWeight: FontWeight.w400,
+                fontSize: 13,
+                color: onSurface.withValues(alpha: 0.5),
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -94,13 +94,19 @@ class PedidosScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _mostrarNuevoPedido(context, ref),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Nuevo', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: primary,
-        foregroundColor: Colors.white,
-        elevation: 6,
+      floatingActionButton: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 16.0, right: 8.0),
+          child: FloatingActionButton.extended(
+            onPressed: () => _mostrarNuevoPedido(context, ref),
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Nuevo Pedido', style: TextStyle(fontWeight: FontWeight.bold)),
+            backgroundColor: primary,
+            foregroundColor: Colors.white,
+            elevation: 8,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          ),
+        ),
       ),
       body: pedidosAsync.when(
         loading: () => Center(child: CircularProgressIndicator(color: primary)),

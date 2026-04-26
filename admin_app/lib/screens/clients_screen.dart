@@ -192,11 +192,18 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showRegistroExpress,
-        backgroundColor: const Color(0xFFFF6B35),
-        icon: Icon(Icons.person_add_rounded, color: Theme.of(context).colorScheme.onSurface),
-        label: Text('Registro Express', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
+      floatingActionButton: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 16.0, right: 8.0),
+          child: FloatingActionButton.extended(
+            onPressed: _showRegistroExpress,
+            backgroundColor: const Color(0xFFFF6B35),
+            icon: Icon(Icons.person_add_rounded, color: Theme.of(context).colorScheme.onSurface),
+            label: Text('Registro Express', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
+            elevation: 8,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          ),
+        ),
       ),
     );
   }

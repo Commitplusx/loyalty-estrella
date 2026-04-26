@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,10 +13,10 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { supabase, getClienteByTelefono, subscribeToCliente, getHistorialCliente, canjearSaldoBilleteraRPC } from '@/lib/supabase';
-import { AuthorityCounter } from '@/components/client/AuthorityCounter';
 import { PromosBanner } from '@/components/client/PromosBanner';
 import { ClientStats } from '@/components/ClientStats';
 import { RatingModal } from '@/components/RatingModal';
+import { CanjeModal } from '@/components/client/CanjeModal';
 import { useSchedule } from '@/hooks/useSchedule';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import type { Cliente, RegistroMovimiento } from '@/types';
@@ -23,6 +24,7 @@ import type { Cliente, RegistroMovimiento } from '@/types';
 type ViewState = 'search' | 'loading' | 'result' | 'error-not-found' | 'error-generic';
 
 export function ClienteView() {
+  const { tel: routeTel } = useParams<{ tel?: string }>();
   const [telefono, setTelefono] = useState('');
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [viewState, setViewState] = useState<ViewState>('search');
@@ -33,6 +35,8 @@ export function ClienteView() {
 
   const [showRating, setShowRating] = useState(false);
   const [activeRegistroId, setActiveRegistroId] = useState<string | null>(null);
+
+  const [showCanjeModal, setShowCanjeModal] = useState(false);
 
   // Wallet Redemption
   const [showWalletModal, setShowWalletModal] = useState(false);
@@ -69,10 +73,10 @@ export function ClienteView() {
     }
   }, [cliente]);
 
-  // DEEP LINKING: Detectar teléfono en la URL (?tel=9611234567)
+  // DEEP LINKING: Detectar teléfono en la URL (?tel=9611234567) O en la ruta /loyalty/:tel
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const telParam = params.get('tel');
+    const telParam = routeTel || params.get('tel');
     if (telParam && telParam.length >= 10) {
       const cleanTel = telParam.replace(/\D/g, '').slice(-10);
       setTelefono(cleanTel);
@@ -92,7 +96,7 @@ export function ClienteView() {
         }
       });
     }
-  }, []);
+  }, [routeTel]);
 
   // Suscripción en tiempo real
   const clienteId = cliente?.id;
@@ -917,11 +921,18 @@ export function ClienteView() {
                             </div>
                             <div className="bg-green-50 rounded-xl p-4 text-center">
                               <p className="text-2xl font-bold text-green-600">{cliente.envios_gratis_disponibles}</p>
-                              <p className="text-xs text-gray-500">Gratis disponibles</p>
-                            </div>
                           </div>
                         </CardContent>
                       </Card>
+                      
+                      {/* Botón de Canje */}
+                      <button
+                        onClick={() => setShowCanjeModal(true)}
+                        className="w-full mt-4 py-4 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold flex items-center justify-center gap-3 hover:from-orange-600 hover:to-amber-600 shadow-xl transition-all hover:scale-[1.02] hover:-translate-y-1"
+                      >
+                        <Ticket className="w-6 h-6" />
+                        Canjear Beneficio
+                      </button>
                     )}
                   </>
                 ) : (
@@ -1045,6 +1056,11 @@ export function ClienteView() {
             onClose={() => setShowRating(false)} 
           />
         )}
+        <CanjeModal
+          isOpen={showCanjeModal}
+          onClose={() => { setShowCanjeModal(false); if (cliente?.telefono) getClienteByTelefono(cliente.telefono).then(d => {if(d && !('found' in d)) setCliente(d)}) }}
+          cliente={cliente as Cliente}
+        />
       </AnimatePresence>
     </motion.div>
   );

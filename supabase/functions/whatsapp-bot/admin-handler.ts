@@ -98,7 +98,8 @@ export async function handleAdminAssignRest(
     resumen += `${idx + 1}️⃣ ✅ a *${rep.nombre}* → Cliente ${pedido.clienteTel}\n`
   }
   resumen += errores > 0 ? `\n⚠️ ${errores} error(es).` : `\n🚀 Notificaciones enviadas.`
-  await limpiarMemoria(supabase, `admin_rest_pending_${admin10}`)
+  // BUG FIX: Eliminar el registro pendiente correctamente sin pasar por el limpiador de 10 dígitos
+  await supabase.from('bot_memory').delete().eq('phone', `admin_rest_pending_${admin10}`)
   await sendWA(fromPhone, resumen)
   return new Response('OK', { status: 200 })
 }
@@ -192,12 +193,19 @@ export async function handleAdminMessage(
            return new Response('OK', { status: 200 })
         }
 
-        const nr = (c.puntos || 0) + d.puntosASumar
-        await supabase.from('clientes').update({ puntos: nr }).eq('id', c.id)
-        await supabase.from('registros_puntos').insert({
-          cliente_id: c.id, tipo: 'acumulacion', puntos: d.puntosASumar, monto_saldo: 0,
-          descripcion: `+${d.puntosASumar} admin vía WhatsApp`
-        })
+        const cant = Number(d.puntosASumar) || 1
+        let lastRes: any = null
+        for (let i = 0; i < cant; i++) {
+          // BUG FIX #3: Pasar fromPhone como p_admin_id para auditoría del admin
+          const { data, error } = await supabase.rpc('fn_registrar_entrega', {
+            p_cliente_tel: tel10,
+            p_admin_id: fromPhone,
+            p_descripcion: 'Suma manual por Admin'
+          })
+          if (!error && data?.ok) lastRes = data
+        }
+        
+        const nr = lastRes ? lastRes.puntos : ((c.puntos || 0) + cant)
         await sendWA(fromPhone, `🌟 Sumados ${d.puntosASumar} pts al ${d.clienteTel}.\nTotal: *${nr} pts*!`)
         // Notificar al cliente via plantilla (sin imagen, ligera)
         const ptsResult = await sendWATemplate(
@@ -335,7 +343,7 @@ export async function handleAdminMessage(
           nombre: d.clienteNombre || 'Cliente Nuevo',
           telefono: tel10,
           colonia: d.colonia || null,
-          puntos: d.puntosASumar || 0,
+          puntos: 0,
           qr_code: loyaltyUrl // <<< MISMO valor que usa QRGenerator.tsx
         }).select().single()
         
@@ -382,10 +390,10 @@ export async function handleAdminMessage(
       }
       
       if (d.puntosASumar > 0 && clientId) {
-        await supabase.from('registros_puntos').insert({
-          cliente_id: clientId, tipo: 'acumulacion', puntos: d.puntosASumar,
-          descripcion: `Puntos iniciales de registro vía WhatsApp`
-        })
+        const cant = Number(d.puntosASumar) || 1
+        for (let i = 0; i < cant; i++) {
+          await supabase.rpc('fn_registrar_entrega', { p_cliente_tel: tel10, p_admin_id: fromPhone, p_descripcion: 'Registro inicial' })
+        }
       }
       
       await limpiarMemoria(supabase, fromPhone)
@@ -394,21 +402,28 @@ export async function handleAdminMessage(
     case 'CANCELAR_PEDIDO': {
       // BUG FIX #4: Usar update en lugar de delete
       const tel10 = extract10Digits(d.clienteTel)
-      const { data: ped } = await supabase.from('pedidos').select('id, descripcion')
-        .ilike('cliente_tel', `%${tel10}%`).in('estado', ['asignado', 'recibido']).order('created_at', { ascending: false }).limit(1).maybeSingle()
-      if (ped) {
-        await supabase.from('pedidos').update({ estado: 'cancelado' }).eq('id', ped.id)
-        await sendWA(fromPhone, `❌ *Cancelado*\nDe: ${d.clienteTel}\n📦 _${ped.descripcion?.slice(0,60)}_`)
-      } else { await sendWA(fromPhone, `🔍 No encontré pedidos activos.`) }
+      const { data: peds } = await supabase.from('pedidos').select('id, descripcion')
+        .ilike('cliente_tel', `%${tel10}%`).in('estado', ['asignado', 'recibido']).order('created_at', { ascending: false })
+      if (peds && peds.length > 0) {
+        const ids = peds.map((p: any) => p.id)
+        await supabase.from('pedidos').update({ estado: 'cancelado' }).in('id', ids)
+        await sendWA(fromPhone, `❌ *Cancelado*\nSe cancelaron ${peds.length} pedido(s) de: ${d.clienteTel}\n📦 _${peds[0].descripcion?.slice(0,60)}_`)
+      } else { await sendWA(fromPhone, `🔍 No encontré pedidos activos para ese cliente.`) }
       break
     }
     case 'REASIGNAR_PEDIDO': {
-      const { data: ped } = await supabase.from('pedidos').select('id').ilike('cliente_tel', `%${extract10Digits(d.clienteTel)}%`).in('estado', ['asignado', 'recibido']).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      const { data: peds } = await supabase.from('pedidos').select('id').ilike('cliente_tel', `%${extract10Digits(d.clienteTel)}%`).in('estado', ['asignado', 'recibido']).order('created_at', { ascending: false })
       const nuevoRep = await buscarRepartidor(supabase, d.repartidorAlias)
-      if (ped && nuevoRep) {
-        await supabase.from('pedidos').update({ repartidor_id: nuevoRep.user_id }).eq('id', ped.id)
-        if (nuevoRep.telefono) await supabase.functions.invoke('notificar-whatsapp', { body: { pedido_id: ped.id, tipo: 'asignacion' } })
-        await sendWA(fromPhone, `🔀 *Reasignado* a *${d.repartidorAlias}*. 🛵`)
+      if (peds && peds.length > 0 && nuevoRep) {
+        const ids = peds.map((p: any) => p.id)
+        await supabase.from('pedidos').update({ repartidor_id: nuevoRep.user_id }).in('id', ids)
+        if (nuevoRep.telefono) {
+          // Invocamos notificacion para cada pedido reasignado
+          for (const id of ids) {
+            await supabase.functions.invoke('notificar-whatsapp', { body: { pedido_id: id, tipo: 'asignacion' } })
+          }
+        }
+        await sendWA(fromPhone, `🔀 *Reasignado*\nSe pasaron ${peds.length} pedido(s) a *${nuevoRep.nombre}*. 🛵`)
       } else { await sendWA(fromPhone, `⚠️ Falla localizando pedido o repartidor.`) }
       break
     }
@@ -618,7 +633,7 @@ export async function handleAdminMessage(
       const result = await crearPedidoDesdeBot(supabase, d, undefined, undefined, messageId)
       if (result.ok && result.pedidoId) {
         await limpiarMemoria(supabase, fromPhone)
-        await sendWA(fromPhone, `${mensajeUsuario}\n\n✅ *Creado*\n📦 ${d.descripcion}\n🔗 ${BASE_LINK}/${result.pedidoId}`)
+        await sendWA(fromPhone, `✅ *Pedido Asignado*\n${mensajeUsuario}\n\n📦 *Detalle:* ${d.descripcion}\n🔗 ${BASE_LINK}/${result.pedidoId}`)
       } else { await sendWA(fromPhone, `❌ Error: ${result.error}`) }
       return new Response('OK', { status: 200 })
     }
@@ -759,8 +774,18 @@ export async function handleTerminos(supabase: Supa, fromPhone: string, buttonId
       const { puntos, admin } = pendingPts.history[0]
       const { data: cli } = await supabase.from('clientes').select('id, nombre, puntos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
       if (cli) {
-        const nuevoTotal = (cli.puntos || 0) + puntos
-        await supabase.from('clientes').update({ puntos: nuevoTotal }).eq('id', cli.id)
+        const cant = Number(puntos) || 1
+        let lastRes: any = null
+        for (let i = 0; i < cant; i++) {
+          // BUG FIX #5: Añadir p_admin_id='sistema' para no fallar si el campo es NOT NULL
+          const { data, error } = await supabase.rpc('fn_registrar_entrega', {
+            p_cliente_tel: tel10,
+            p_admin_id: 'sistema',
+            p_descripcion: 'Puntos pendientes por aceptación de Términos'
+          })
+          if (!error && data?.ok) lastRes = data
+        }
+        const nuevoTotal = lastRes ? lastRes.puntos : ((cli.puntos || 0) + cant)
         await sendWATemplate(`52${tel10}`, 'estrella_puntos_acumulados', [cli.nombre || 'Cliente', puntos.toString(), nuevoTotal.toString()], undefined, tel10)
         
         if (admin) await sendWA(admin, `✅ El cliente *${tel10}* aceptó términos. Le sumé los ${puntos} pts pendientes.`)

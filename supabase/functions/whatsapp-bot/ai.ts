@@ -78,15 +78,18 @@ FORMATO JSON DE SALIDA (responde SOLO con esto, sin nada más):
 
 function buildRepartidorPrompt(repartidorInfo: any): string {
   return `Eres el asistente de Estrella Delivery exclusivo para el Repartidor: ${repartidorInfo?.nombre || 'de nuestro equipo'}.
-Estás en MODO LIMITADO. Tienes estrictamente prohibido crear pedidos o reasignarlos.
-Tus ÚNICAS herramientas permitidas son:
-- UBICACION_RESTAURANTE: Buscar y enviar el mapa de un restaurante. Extrae cualquier nombre o indicio mencionado en "restaurante".
+Estás en MODO LIMITADO. Tienes estrictamente prohibido crear pedidos, reasignarlos, o realizar acciones de administrador.
+Tus herramientas permitidas son:
+- SUMAR_PUNTOS: Si el cliente te paga o escanea su QR, suma puntos a su cuenta. Requiere clienteTel a 10 dígitos y puntosASumar.
+- BUSCAR_CLIENTE: Para revisar cuántos puntos tiene un cliente. Requiere clienteTel a 10 dígitos.
+- ESTADO_REPARTIDOR: Para que el repartidor vea su resumen de entregas de hoy. Requiere repartidorAlias (tu nombre).
+- UBICACION_RESTAURANTE: Buscar y enviar el mapa de un restaurante.
 - RESPONDER: Para confirmar recepción, chatear o responder un saludo.
 
 Reglas Estrictas: 
 1. PROACTIVIDAD.
 2. NUNCA le digas "Jefe". Llámalo por su nombre "${repartidorInfo?.nombre}". Ni uses jergas militares.
-3. Si el repartidor indica texto normal ("Ya voy", "Voy retrasado", "Sale", "Gracias", etc), simplemente usa RESPONDER, reconoce el mensaje y sé breve: "Entendido, buen camino." o similar. No le pidas teléfonos ni nada si no está cobrando puntos.
+3. Si el repartidor indica texto normal ("Ya voy", "Voy retrasado", "Sale", "Gracias", etc), simplemente usa RESPONDER, reconoce el mensaje y sé breve.
 
 SALIDA ESTRICTA (Únicamente un objeto JSON):
 {
@@ -95,7 +98,7 @@ SALIDA ESTRICTA (Únicamente un objeto JSON):
   "datosAExtraer": {
     "clienteTel": "10 dígitos o null",
     "puntosASumar": numero_entero o null,
-    "descripcion": "Motivo de puntos o null",
+    "descripcion": "Motivo o null",
     "restaurante": "Nombre del restaurante a buscar o null",
     "repartidorAlias": "${repartidorInfo?.alias || ''}"
   }
@@ -120,12 +123,16 @@ function enforcerValidator(respuesta: AIRespuesta): AIRespuesta {
       if (!d.clienteTel || d.clienteTel.length !== 10) { blocked = true; respuesta.mensajeUsuario = 'Necesito el número de teléfono del cliente a 10 dígitos para crear un pedido.' }
       else if (!d.descripcion?.trim()) { blocked = true; respuesta.mensajeUsuario = 'Necesito saber exactamente qué productos quiere en el pedido.' }
       break
-    case 'SUMAR_PUNTOS': case 'BUSCAR_CLIENTE': case 'VER_HISTORIAL_CLIENTE':
+    case 'SUMAR_PUNTOS': 
+      if (!d.clienteTel || d.clienteTel.length !== 10) { blocked = true; respuesta.mensajeUsuario = 'Faltan los 10 dígitos del teléfono del cliente.' }
+      else if (d.puntosASumar != null && d.puntosASumar <= 0) { blocked = true; respuesta.mensajeUsuario = 'La cantidad de puntos a sumar debe ser mayor a cero.' }
+      break
+    case 'BUSCAR_CLIENTE': case 'VER_HISTORIAL_CLIENTE':
     case 'MARCAR_VIP': case 'CANCELAR_PEDIDO': case 'AGREGAR_NOTA_CLIENTE':
       if (!d.clienteTel || d.clienteTel.length !== 10) { blocked = true; respuesta.mensajeUsuario = 'Faltan los 10 dígitos del teléfono del cliente para ejecutar eso.' }
       break
     case 'CARGAR_SALDO':
-      if (!d.clienteTel || d.clienteTel.length !== 10 || isNaN(d.montoSaldo)) { blocked = true; respuesta.mensajeUsuario = 'Para recargar necesito los 10 dígitos del cliente y el monto numérico exacto.' }
+      if (!d.clienteTel || d.clienteTel.length !== 10 || isNaN(d.montoSaldo) || d.montoSaldo <= 0) { blocked = true; respuesta.mensajeUsuario = 'Para recargar necesito los 10 dígitos del cliente y el monto numérico mayor a 0.' }
       break
     case 'ELIMINAR_REPARTIDOR': case 'ESTADO_REPARTIDOR': case 'RECORDATORIO_REPARTIDOR':
       if (!d.repartidorAlias) { blocked = true; respuesta.mensajeUsuario = 'Necesito el nombre del repartidor para ejecutar esa acción específica.' }
@@ -138,6 +145,9 @@ function enforcerValidator(respuesta: AIRespuesta): AIRespuesta {
       break
     case 'AGREGAR_REPARTIDOR':
       if (!d.clienteNombre || !d.clienteTel || d.clienteTel.length !== 10) { blocked = true; respuesta.mensajeUsuario = 'Para registrar personal, necesito el nombre y su número a 10 dígitos obligatoriamente.' }
+      break
+    case 'AGREGAR_CLIENTE':
+      if (!d.clienteNombre || !d.clienteTel || d.clienteTel.length !== 10) { blocked = true; respuesta.mensajeUsuario = 'Para registrar al cliente, necesito su nombre y su teléfono a 10 dígitos.' }
       break
   }
 
@@ -195,7 +205,7 @@ export async function conversacionDeepSeek(
             model: 'deepseek-chat',
             response_format: { type: 'json_object' },
             messages,
-            max_tokens: 512,
+            max_tokens: 2048,
             temperature: 0.0,
           }),
           signal: controller.signal,

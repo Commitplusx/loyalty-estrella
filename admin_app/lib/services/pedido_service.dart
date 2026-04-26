@@ -16,7 +16,8 @@ class PedidoService {
     final data = await supabase
         .from('pedidos')
         .select()
-        .neq('estado', 'entregado')
+        // BUG FIX #8: Also filter out cancelled orders
+        .not('estado', 'in', '("entregado","cancelado")')
         .order('created_at', ascending: false);
     return (data as List).map((m) => PedidoModel.fromMap(m)).toList();
   }
@@ -41,7 +42,7 @@ class PedidoService {
           .single();
       return PedidoModel.fromMap(data);
     } catch (e) {
-      debugPrint('Error getPedido: $e');
+      print('Error getPedido: $e');
       return null;
     }
   }
@@ -85,7 +86,7 @@ class PedidoService {
       await _notificar(pedidoId: pedidoId, tipo: 'asignacion');
       return (ok: true, error: null, pedidoId: pedidoId);
     } catch (e) {
-      debugPrint('Error crearPedido: $e');
+      print('Error crearPedido: $e');
       return (ok: false, error: e.toString(), pedidoId: null);
     }
   }
@@ -104,7 +105,7 @@ class PedidoService {
           timeLimit: const Duration(seconds: 5),
         );
       } catch (e) {
-        debugPrint('Aviso: No se pudo obtener GPS rápido para Geocerca.');
+        print('Aviso: No se pudo obtener GPS rapido para Geocerca.');
       }
     }
 
@@ -125,11 +126,11 @@ class PedidoService {
       } catch (e) {
         // Validación Anti-Fraude de Supabase (SQL RAISE EXCEPTION)
         if (e is PostgrestException && e.message.contains('FRAUDE DE GEOCERCA')) {
-          debugPrint('🚨 RECHAZADO por DB: Repartidor lejos del destino.');
+          print('RECHAZADO por DB: Repartidor lejos del destino.');
           rethrow; // Rompe el ciclo y le lanza el error a la UI
         }
 
-        debugPrint('⚠️ Fallo actualizando estado (Intento $attempts): $e');
+        print('Fallo actualizando estado (Intento $attempts): $e');
         if (attempts >= 3) break;
         
         // Exponential Backoff (2s, 4s...)
@@ -142,7 +143,7 @@ class PedidoService {
       _notificar(pedidoId: pedidoId, tipo: nuevoEstado);
       return true;
     } else {
-      debugPrint('❌ Fracaso tras 3 intentos. Guardando en Offline Queue (Pendiente implementar SQLite/Hive).');
+      print('Fracaso tras 3 intentos. Guardando en Offline Queue.');
       return false;
     }
   }
@@ -159,7 +160,7 @@ class PedidoService {
       );
     } catch (e) {
       // No lanzar error si el WA falla — el pedido ya fue guardado
-      debugPrint('⚠️ WhatsApp notification failed: $e');
+      print('WhatsApp notification failed: $e');
     }
   }
 }

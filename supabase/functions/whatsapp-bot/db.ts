@@ -127,11 +127,7 @@ export async function guardarMemoria(supabase: SupabaseClient, phone: string, hi
 
 export async function limpiarMemoria(supabase: SupabaseClient, phone: string) {
   try {
-    await supabase.from('bot_memory').upsert({
-      phone: extract10Digits(phone),
-      history: [],
-      updated_at: new Date().toISOString(),
-    })
+    await supabase.from('bot_memory').delete().eq('phone', extract10Digits(phone))
   } catch (_) { /* silencioso */ }
 }
 

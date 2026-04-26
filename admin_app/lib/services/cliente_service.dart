@@ -34,7 +34,20 @@ class ClienteService {
     for (String item in queue) {
       try {
         final payload = jsonDecode(item);
-        final clienteId = payload['cliente_id'];
+        // BUG FIX #6: Use codigo_qr to find cliente_id if not present
+        String? clienteId = payload['cliente_id'];
+        if (clienteId == null && payload['codigo_qr'] != null) {
+          final response = await supabase
+              .from('clientes')
+              .select('id')
+              .or('qr_code.eq.${payload['codigo_qr']},telefono.eq.${payload['codigo_qr']}')
+              .maybeSingle();
+          clienteId = response?['id'];
+        }
+        if (clienteId == null) {
+          debugPrint('⚠️ Offline sync: No se encontró cliente para QR ${payload['codigo_qr']}');
+          continue; // Skip this entry instead of failing forever
+        }
         final adminId = payload['admin_id'];
         final lat = payload['lat'];
         final lng = payload['lng'];
@@ -248,8 +261,11 @@ class ClienteService {
   /// Canjear saldo de la billetera VIP (descontar monto)
   Future<bool> canjearSaldo(String clienteId, double monto) async {
     try {
+      // BUG FIX #2: Pass current user ID for audit trail
+      final adminId = supabase.auth.currentUser?.id;
       await supabase.rpc('canjear_saldo', params: {
         'p_cliente_id': clienteId,
+        'p_admin_id': adminId,
         'p_monto': monto,
       });
       return true;

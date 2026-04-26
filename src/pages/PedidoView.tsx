@@ -37,7 +37,7 @@ export function PedidoView() {
       try {
         const { data, error } = await supabase
           .from('pedidos')
-          .select('*, restaurante_data:restaurantes(nombre, lat, lng)')
+          .select('*')
           .eq('id', id)
           .single();
 

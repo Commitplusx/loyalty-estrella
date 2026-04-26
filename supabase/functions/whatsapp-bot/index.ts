@@ -115,6 +115,7 @@ serve(async (req: Request) => {
     if (Math.random() < 0.05) {
       const unaHoraAtras = new Date(Date.now() - 3600 * 1000).toISOString()
       await supabase.from('bot_memory').delete().like('phone', 'processed_msg:%').lt('updated_at', unaHoraAtras)
+      await supabase.from('bot_memory').delete().like('phone', 'rate_limit_%').lt('updated_at', unaHoraAtras)
     }
 
     // ── IDENTIFICACIÓN DE ROLES ── (DEBE IR ANTES de cualquier uso de esAdmin)
@@ -229,16 +230,44 @@ serve(async (req: Request) => {
       }
     }
 
-    // 3. RESTAURANT PORTAL ──
+    // 3. RESTAURANT PORTAL / MODO REPARTIDOR DEL ADMIN ──
     if (!esAdmin || adminEnModoRepartidor) {
       // Si el admin está en modo repartidor, tratarlo como repartidor
       if (adminEnModoRepartidor) {
-        const { data: adminAsRep } = await supabase.from('repartidores').select('id, user_id, nombre, alias').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
-        if (adminAsRep && msgType === 'text') return await handleRepMessage(supabase, fromPhone, from10, msg.text.body as string, adminAsRep)
-        if (adminAsRep) {
-          await sendWA(fromPhone, `🛵 Hola ${adminAsRep.nombre}. Usa los botones para avanzar pedidos o envíame texto.`)
+        // Buscar si el admin está registrado en la tabla repartidores
+        let { data: adminAsRep } = await supabase.from('repartidores')
+          .select('id, user_id, nombre, alias')
+          .ilike('telefono', `%${from10}%`)
+          .limit(1).maybeSingle()
+
+        // Si el admin NO está en repartidores, crear un objeto de fallback
+        // para que pueda usar todos los botones del ciclo de pedido
+        if (!adminAsRep) {
+          const { data: adminUser } = await supabase.auth.getUser()
+          adminAsRep = {
+            id: 'admin-proxy',
+            user_id: adminUser?.user?.id || from10,
+            nombre: 'Admin (Modo Rep)',
+            alias: 'admin',
+          } as any
+        }
+
+        // Procesar botones interactivos del ciclo de vida del pedido
+        if (msgType === 'interactive') {
+          const buttonId = msg.interactive?.button_reply?.id as string | undefined
+          if (buttonId) {
+            const handled = await handleRepButtons(supabase, fromPhone, buttonId)
+            if (handled) return new Response('OK', { status: 200 })
+          }
           return new Response('OK', { status: 200 })
         }
+
+        if (msgType === 'text') {
+          return await handleRepMessage(supabase, fromPhone, from10, msg.text?.body as string, adminAsRep)
+        }
+
+        await sendWA(fromPhone, `🛵 *Modo Repartidor activo.*\nEnvía texto o usa los botones de pedido.\n\nEscribe */admin* para regresar a modo administrador.`)
+        return new Response('OK', { status: 200 })
       }
 
       const portalResponse = await handleRestaurantPortal(supabase, fromPhone, from10, admin10, `52${admin10}`, msgType, msg, sendWA, sendInteractiveButton)

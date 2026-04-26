@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'core/theme.dart';
 import 'core/theme_provider.dart';
 import 'router.dart';
@@ -9,6 +10,9 @@ import 'services/sync_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Evitar que Google Fonts intente descargar fuentes en runtime (crash en release)
+  GoogleFonts.config.allowRuntimeFetching = false;
 
   await Supabase.initialize(
     url: 'https://jdrrkpvodnqoljycixbg.supabase.co',
