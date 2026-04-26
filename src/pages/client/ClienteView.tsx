@@ -17,6 +17,7 @@ import { PromosBanner } from '@/components/client/PromosBanner';
 import { ClientStats } from '@/components/ClientStats';
 import { RatingModal } from '@/components/RatingModal';
 import { CanjeModal } from '@/components/client/CanjeModal';
+import { AuthorityCounter } from '@/components/client/AuthorityCounter';
 import { useSchedule } from '@/hooks/useSchedule';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import type { Cliente, RegistroMovimiento } from '@/types';
