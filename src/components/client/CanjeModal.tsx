@@ -15,10 +15,10 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
   const [errorMsg, setErrorMsg] = useState('');
   const [successData, setSuccessData] = useState<{codigo: string, valor_pesos: number, expires_at: string} | null>(null);
 
-  const isVip = cliente.es_vip === true;
+  const isVip = cliente?.es_vip === true;
   const puntosNecesarios = 5; // Regla de negocio: 5 puntos
-  const puedeCanjearNormal = (cliente.puntos || 0) >= puntosNecesarios;
-  const saldoBilletera = cliente.saldo_billetera || 0;
+  const puedeCanjearNormal = (cliente?.puntos || 0) >= puntosNecesarios;
+  const saldoBilletera = cliente?.saldo_billetera || 0;
 
   const handleCanjear = async (tipo: 'envio_normal' | 'envio_vip', montoPedido: number = 0) => {
     setLoading(true);
@@ -27,7 +27,7 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
     try {
       const { data, error } = await supabase.functions.invoke('canjear-puntos', {
         body: {
-          clienteTel: cliente.telefono,
+          clienteTel: cliente?.telefono,
           tipo,
           montoPedido, // 0 for normal, otherwise max 50 for VIP
         }
@@ -103,7 +103,7 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
                 <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
                   <div>
                     <p className="text-sm text-gray-500">Tus puntos</p>
-                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{cliente.puntos || 0}</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{cliente?.puntos || 0}</p>
                   </div>
                   {isVip && (
                     <div className="text-right">

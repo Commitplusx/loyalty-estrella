@@ -1061,11 +1061,13 @@ export function ClienteView() {
             onClose={() => setShowRating(false)} 
           />
         )}
-        <CanjeModal
-          isOpen={showCanjeModal}
-          onClose={() => { setShowCanjeModal(false); if (cliente?.telefono) getClienteByTelefono(cliente.telefono).then(d => {if(d && !('found' in d)) setCliente(d)}) }}
-          cliente={cliente as Cliente}
-        />
+        {cliente && (
+          <CanjeModal
+            isOpen={showCanjeModal}
+            onClose={() => { setShowCanjeModal(false); if (cliente?.telefono) getClienteByTelefono(cliente.telefono).then(d => {if(d && !('found' in d)) setCliente(d)}) }}
+            cliente={cliente as Cliente}
+          />
+        )}
       </AnimatePresence>
     </motion.div>
   );
