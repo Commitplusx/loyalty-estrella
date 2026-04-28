@@ -239,15 +239,28 @@ serve(async (req: Request) => {
       const telFormateado = formatTel(cliente_tel)
       const adminPhoneMain = '529631539156' // Número del admin
 
-      // Avisar al cliente
+      // Avisar al cliente (USANDO PLANTILLA estrella_cupon_generado en INGLES)
+      const fExp = 'Válido hoy'
+      const strDesc = `Hasta $${monto} en pedidos/comida`
       const resCli = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text',
-          text: { body: `🌟 *¡Canje Exitoso!*\n\nHola ${cliente_nombre || 'Cliente'},\nHas canjeado *$${monto}* de tu Billetera VIP para comida.\n\n🎟️ Tu código de canje es: *${codigo_canje}*\nMuéstrale o dile este código al repartidor o al restaurante.\n\n💳 Tu saldo restante: *$${saldo_restante}*` }
+          messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template',
+          template: {
+            name: 'estrella_cupon_generado',
+            language: { code: 'en' },
+            components: [
+              { type: 'body', parameters: [
+                { type: 'text', text: cliente_nombre || 'Cliente' }, // {{1}}
+                { type: 'text', text: codigo_canje || 'CUPON' }, // {{2}}
+                { type: 'text', text: strDesc }, // {{3}}
+                { type: 'text', text: fExp } // {{4}}
+              ]}
+            ]
+          }
         })
       })
-      if (!resCli.ok) console.error(`WA error cliente canje:`, await resCli.text())
+      if (!resCli.ok) console.error(`WA error cliente canje template:`, await resCli.text())
 
       // Avisar al admin
       const resAdm = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {

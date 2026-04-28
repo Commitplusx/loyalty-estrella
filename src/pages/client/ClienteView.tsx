@@ -640,21 +640,29 @@ export function ClienteView() {
             className="w-full"
             style={{ willChange: "transform, opacity" }}
           >
-            {/* Back button */}
-            <div className="mb-6 flex items-center gap-4">
-              <Button variant="ghost" onClick={handleReset} className="text-gray-500 hover:text-gray-800 transition-colors">
-                <ChevronLeft className="w-5 h-5 mr-1" /> Volver
-              </Button>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                  {isVip && <Crown className="w-5 h-5 text-amber-500 fill-amber-400" />}
-                  ¡Hola, {cliente.nombre}!
-                  {isVip && <Crown className="w-5 h-5 text-amber-500 fill-amber-400" />}
-                </h1>
-                {isVip
-                  ? <p className="text-amber-600 text-xs font-semibold">✨ Cliente VIP — Meta de {metaVip} envíos</p>
-                  : <p className="text-gray-500 text-xs">Progreso de fidelización · {cliente.telefono}</p>
-                }
+            {/* Profile Header Card */}
+            <div className="mb-6">
+              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 text-white shadow-2xl">
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(251,191,36,0.15),transparent_60%)]" />
+                <div className="absolute top-0 right-0 w-40 h-40 bg-amber-500/10 rounded-full blur-3xl -mr-10 -mt-10" />
+                <div className="relative z-10 flex items-center gap-4">
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${isVip ? 'bg-gradient-to-br from-amber-400 to-yellow-500 shadow-lg shadow-amber-500/30' : 'bg-white/10 backdrop-blur-sm'}`}>
+                    {isVip ? <Crown className="w-7 h-7 text-white" /> : <Star className="w-7 h-7 text-orange-300" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-xl font-bold truncate">¡Hola, {cliente.nombre}!</h1>
+                    <p className="text-sm text-white/60 truncate">{cliente.telefono}</p>
+                  </div>
+                  <Button variant="ghost" onClick={handleReset} className="text-white/50 hover:text-white hover:bg-white/10 shrink-0">
+                    <ChevronLeft className="w-4 h-4 mr-1" /> Salir
+                  </Button>
+                </div>
+                {isVip && (
+                  <div className="relative z-10 mt-3 flex items-center gap-2">
+                    <Badge className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs">✨ VIP</Badge>
+                    <span className="text-xs text-white/40">Meta de {metaVip} envíos por ciclo</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -875,15 +883,34 @@ export function ClienteView() {
                               )}
 
                               {walletMode === 'success' && (
-                                <div className="text-center py-4 space-y-4">
-                                  <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                                <div className="text-center py-2 space-y-5">
+                                  <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto">
                                     <CheckCircle2 className="w-10 h-10 text-green-500" />
                                   </div>
-                                  <div>
-                                    <p className="font-bold text-gray-900 dark:text-white text-lg">¡Canje Exitoso!</p>
-                                    <p className="text-gray-500 text-sm mt-1 whitespace-pre-line">{walletMsg}</p>
-                                  </div>
-                                  <p className="text-xs text-gray-400 italic">Muestra esta pantalla al repartidor</p>
+                                  <p className="font-bold text-gray-900 dark:text-white text-lg">¡Canje Exitoso!</p>
+                                  
+                                  {/* Extract code from walletMsg */}
+                                  {(() => {
+                                    const cMatch = walletMsg.match(/(CANJE-[A-Z0-9]+)/i);
+                                    const code = cMatch ? cMatch[1] : null;
+                                    return code ? (
+                                      <div className="relative bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-50 dark:from-amber-900/30 dark:via-yellow-900/20 dark:to-amber-900/30 border-2 border-dashed border-amber-400 rounded-2xl p-5 space-y-2">
+                                        <p className="text-xs uppercase tracking-widest text-amber-500 font-bold">Tu código de descuento</p>
+                                        <p className="font-mono font-black text-2xl text-amber-700 dark:text-amber-300 tracking-[0.25em]">{code}</p>
+                                        <p className="text-[11px] text-amber-600/70 dark:text-amber-400/70">Muestra o dicta este código al repartidor</p>
+                                        <button
+                                          onClick={() => navigator.clipboard.writeText(code)}
+                                          className="mt-2 text-xs font-bold text-amber-600 bg-amber-200/60 dark:bg-amber-800/40 dark:text-amber-300 px-4 py-2 rounded-lg hover:bg-amber-300/60 transition-colors"
+                                        >
+                                          📋 Copiar código
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <p className="text-gray-500 text-sm whitespace-pre-line">{walletMsg}</p>
+                                    );
+                                  })()}
+                                  
+                                  <p className="text-xs text-gray-400 dark:text-gray-500 italic">También te lo enviamos por WhatsApp 📲</p>
                                   <button
                                     onClick={resetWalletModal}
                                     className="w-full py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold hover:from-green-600 hover:to-emerald-600 transition-all shadow-md"
@@ -1025,7 +1052,7 @@ export function ClienteView() {
 
                 {/* Historial Estrella */}
                 <div className="mb-6">
-                  <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                     <History className="w-5 h-5 text-orange-500" />
                     Historial Estrella
                   </h3>
@@ -1033,30 +1060,67 @@ export function ClienteView() {
                     {historial.length === 0 ? (
                       <p className="text-gray-500 italic text-center text-sm py-4">Aún no hay movimientos</p>
                     ) : (
-                      historial.map((mov: RegistroMovimiento) => (
-                        <Card key={mov.id ?? `${mov.cliente_id}-${mov.created_at}`} className="border-0 shadow-sm bg-white overflow-hidden">
-                          <CardContent className="p-4 flex items-center gap-4">
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${mov.tipo === 'acumulacion' ? (mov.monto_saldo ? 'bg-amber-100' : 'bg-orange-100') : 'bg-emerald-100'}`}>
-                              {mov.tipo === 'acumulacion'
-                                ? (mov.monto_saldo ? <DollarSign className="w-6 h-6 text-amber-500" /> : <Star className="w-6 h-6 text-orange-500 fill-orange-500" />)
-                                : <Gift className="w-6 h-6 text-emerald-500 disabled" />}
-                            </div>
-                            <div className="flex-1">
-                              <p className="font-bold text-gray-900">
-                                {mov.tipo === 'acumulacion'
-                                  ? (mov.monto_saldo ? `Envío Registrado (+$${mov.monto_saldo.toFixed(2)} Cashback)` : '+1 Punto Acumulado')
-                                  : (mov.monto_saldo !== undefined && mov.monto_saldo < 0 ? `Uso de Billetera VIP` : 'Canje de Envío Gratis')}
-                              </p>
-                              <p className="text-sm text-gray-500 mt-0.5">
-                                {new Date(mov.created_at).toLocaleDateString()} a las {new Date(mov.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                {mov.monto_saldo !== undefined && mov.monto_saldo < 0 && (
-                                  <span className="font-semibold text-rose-500 ml-2">(-${Math.abs(mov.monto_saldo).toFixed(2)})</span>
-                                )}
-                              </p>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))
+                      historial.map((mov: RegistroMovimiento) => {
+                        // Extract coupon code from description if present
+                        const codeMatch = mov.descripcion?.match(/Código:\s*(CANJE-[A-Z0-9]+)/i);
+                        const couponCode = codeMatch ? codeMatch[1] : null;
+                        const isCanje = mov.tipo === 'canje';
+                        const isCashback = mov.tipo === 'acumulacion' && !!mov.monto_saldo;
+
+                        return (
+                          <div key={mov.id ?? `${mov.cliente_id}-${mov.created_at}`}>
+                            <Card className={`border-0 shadow-sm overflow-hidden transition-all hover:shadow-md ${isCanje && couponCode ? 'ring-2 ring-amber-400/60' : 'bg-white dark:bg-card'}`}>
+                              <CardContent className="p-4 flex items-center gap-4">
+                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
+                                  isCashback ? 'bg-amber-100 dark:bg-amber-900/30' 
+                                  : isCanje ? 'bg-emerald-100 dark:bg-emerald-900/30' 
+                                  : 'bg-orange-100 dark:bg-orange-900/30'
+                                }`}>
+                                  {isCashback
+                                    ? <DollarSign className="w-6 h-6 text-amber-500" />
+                                    : isCanje
+                                      ? <Gift className="w-6 h-6 text-emerald-500" />
+                                      : <Star className="w-6 h-6 text-orange-500 fill-orange-500" />
+                                  }
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-bold text-gray-900 dark:text-white text-sm">
+                                    {isCashback ? `Envío Registrado (+$${mov.monto_saldo?.toFixed(2)} Cashback)`
+                                      : isCanje ? (mov.monto_saldo !== undefined && mov.monto_saldo < 0 ? 'Uso de Billetera VIP' : 'Canje de Envío Gratis')
+                                      : '+1 Punto Acumulado'}
+                                  </p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                    {new Date(mov.created_at).toLocaleDateString()} a las {new Date(mov.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                    {mov.monto_saldo !== undefined && mov.monto_saldo < 0 && (
+                                      <span className="font-semibold text-rose-500 ml-2">(-${Math.abs(mov.monto_saldo).toFixed(2)})</span>
+                                    )}
+                                  </p>
+                                </div>
+                              </CardContent>
+                              {/* Coupon Ticket — always visible for recovery */}
+                              {couponCode && (
+                                <div className="px-4 pb-4 -mt-1">
+                                  <div className="relative bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border border-dashed border-amber-300 dark:border-amber-600 rounded-xl p-3 flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span className="text-lg">🎟️</span>
+                                      <div className="min-w-0">
+                                        <p className="text-[10px] uppercase tracking-wider text-amber-600 dark:text-amber-400 font-semibold">Tu código de descuento</p>
+                                        <p className="font-mono font-black text-amber-700 dark:text-amber-300 text-base tracking-widest truncate">{couponCode}</p>
+                                      </div>
+                                    </div>
+                                    <button
+                                      onClick={() => { navigator.clipboard.writeText(couponCode); }}
+                                      className="shrink-0 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-200/60 dark:bg-amber-800/40 px-2.5 py-1.5 rounded-lg hover:bg-amber-300/60 transition-colors"
+                                    >
+                                      Copiar
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </Card>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
                 </div>
