@@ -228,15 +228,22 @@ export function ClienteView() {
   const handleCanjeComida = async () => {
     const monto = parseFloat(foodAmount);
     if (!cliente || isNaN(monto) || monto <= 0 || monto > (cliente.saldo_billetera || 0)) return;
+    if (cliente.cupon_activo) {
+      setWalletMsg(`❌ Ya tienes un cupón activo: ${cliente.cupon_activo}. Úsalo antes de generar otro.`);
+      return;
+    }
     setWalletLoading(true);
-    const res = await canjearSaldoBilleteraRPC(cliente.id, cliente.id, monto);
+    const res = await canjearSaldoBilleteraRPC(cliente.id, monto, 'Descuento en comida');
     setWalletLoading(false);
-    if (res.success) {
+
+    if (res.ok) {
       const codigo = res.codigo || 'SIN-CODIGO';
+      const nuevoSaldo = res.nuevo_saldo ?? ((cliente.saldo_billetera || 0) - monto);
       setWalletMsg(`✅ Se descontaron $${monto.toFixed(2)} de tu billetera VIP.\n🎟️ Código de descuento: ${codigo}`);
       setWalletMode('success');
-      setCliente(prev => prev ? { ...prev, saldo_billetera: (prev.saldo_billetera || 0) - monto } : prev);
-      
+      // Actualizar estado local con datos reales del DB (incluye cupon_activo)
+      setCliente(prev => prev ? { ...prev, saldo_billetera: nuevoSaldo, cupon_activo: codigo } : prev);
+
       // Notificar por WhatsApp en segundo plano
       supabase.functions.invoke('notificar-whatsapp', {
         body: {
@@ -245,16 +252,20 @@ export function ClienteView() {
           cliente_nombre: cliente.nombre,
           codigo_canje: codigo,
           monto: monto.toFixed(2),
-          saldo_restante: ((cliente.saldo_billetera || 0) - monto).toFixed(2)
+          saldo_restante: nuevoSaldo.toFixed(2)
         }
       }).catch(console.error);
     } else {
-      setWalletMsg(`❌ ${res.message}`);
+      setWalletMsg(`❌ ${res.error || 'Error al procesar el canje'}`);
     }
   };
 
   const handleCanjeEnvio = async () => {
     if (!cliente) return;
+    if (cliente.cupon_activo) {
+      setWalletMsg(`❌ Ya tienes un cupón activo: ${cliente.cupon_activo}. Úsalo antes de generar otro.`);
+      return;
+    }
     const costoReal = parseFloat(deliveryCost) || MAX_ENVIO_GRATIS;
     const cobertura = Math.min(costoReal, MAX_ENVIO_GRATIS);
     const diferencia = Math.max(0, costoReal - MAX_ENVIO_GRATIS);
@@ -263,17 +274,20 @@ export function ClienteView() {
       return;
     }
     setWalletLoading(true);
-    const res = await canjearSaldoBilleteraRPC(cliente.id, 'cliente', cobertura);
+    const res = await canjearSaldoBilleteraRPC(cliente.id, cobertura, 'Canje de envío gratis');
     setWalletLoading(false);
-    if (res.success) {
+
+    if (res.ok) {
       const codigo = res.codigo || 'SIN-CODIGO';
+      const nuevoSaldo = res.nuevo_saldo ?? ((cliente.saldo_billetera || 0) - cobertura);
       const msg = diferencia > 0
-        ? `✅ Cobertura de $${cobertura.toFixed(2)} aplicada. \n💳 Diferencia a pagar: $${diferencia.toFixed(2)}\n🎟️ Código: ${codigo}`
+        ? `✅ Cobertura de $${cobertura.toFixed(2)} aplicada.\n💳 Diferencia a pagar: $${diferencia.toFixed(2)}\n🎟️ Código: ${codigo}`
         : `✅ Envío cubierto totalmente ($${cobertura.toFixed(2)}) con tu Billetera VIP.\n🎟️ Código: ${codigo}`;
       setWalletMsg(msg);
       setWalletMode('success');
-      setCliente(prev => prev ? { ...prev, saldo_billetera: (prev.saldo_billetera || 0) - cobertura } : prev);
-      
+      // Actualizar estado local con datos reales del DB (incluye cupon_activo)
+      setCliente(prev => prev ? { ...prev, saldo_billetera: nuevoSaldo, cupon_activo: codigo } : prev);
+
       // Notificar por WhatsApp en segundo plano
       supabase.functions.invoke('notificar-whatsapp', {
         body: {
@@ -282,11 +296,11 @@ export function ClienteView() {
           cliente_nombre: cliente.nombre,
           codigo_canje: codigo,
           monto: cobertura.toFixed(2),
-          saldo_restante: ((cliente.saldo_billetera || 0) - cobertura).toFixed(2)
+          saldo_restante: nuevoSaldo.toFixed(2)
         }
       }).catch(console.error);
     } else {
-      setWalletMsg(`❌ ${res.message}`);
+      setWalletMsg(`❌ ${res.error || 'Error al procesar el canje'}`);
     }
   };
 

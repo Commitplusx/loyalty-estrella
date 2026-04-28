@@ -228,25 +228,27 @@ export async function canjearEnvioGratisRPC(
 
 export async function canjearSaldoBilleteraRPC(
   clienteId: string,
-  adminId: string,
-  monto: number
-): Promise<{ success: boolean; message: string; saldo_billetera?: number; codigo?: string }> {
+  monto: number,
+  concepto: string
+): Promise<{ ok: boolean; error?: string; nuevo_saldo?: number; codigo?: string; mensaje?: string }> {
   try {
     const { data, error } = await supabase.rpc('canjear_saldo', {
       p_cliente_id: clienteId,
-      p_admin_id: adminId,
-      p_monto: monto
+      p_admin_id: clienteId, // Se usa el mismo ID del cliente para autocanjes en web
+      p_monto: monto,
+      p_concepto: concepto
     });
 
     if (error) {
-      console.error('RPC Error:', error);
-      return { success: false, message: 'Error de servidor al canjear saldo de la Billetera' };
+      console.error('[RPC canjear_saldo] Error:', error);
+      return { ok: false, error: 'Error de servidor al procesar el canje' };
     }
 
-    return data;
+    // El RPC retorna jsonb: { ok, error?, nuevo_saldo, codigo, mensaje }
+    return data as { ok: boolean; error?: string; nuevo_saldo?: number; codigo?: string; mensaje?: string };
   } catch (err) {
-    console.error('Error in canjearSaldoBilleteraRPC:', err);
-    return { success: false, message: 'Error al conectar con la base de datos' };
+    console.error('[RPC canjear_saldo] Exception:', err);
+    return { ok: false, error: 'Error al conectar con la base de datos' };
   }
 }
 
