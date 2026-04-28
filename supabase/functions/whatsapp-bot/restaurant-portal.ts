@@ -156,57 +156,111 @@ async function extraerJsonSeguro(text: string): Promise<any | null> {
   }
 }
 
+// ── Circuit Breaker DeepSeek — Portal Restaurantes ───────────────────────────
+// Instancia independiente del circuit breaker de ai.ts (módulo distinto).
+const _restCircuit = { fails: 0, openUntil: 0 }
+const REST_CB_THRESHOLD = 3
+const REST_CB_OPEN_MS = 45_000
+function _restCbFail(): void {
+  _restCircuit.fails++
+  if (_restCircuit.fails >= REST_CB_THRESHOLD) {
+    _restCircuit.openUntil = Date.now() + REST_CB_OPEN_MS
+    _restCircuit.fails = 0
+    console.error('[CIRCUIT OPEN] DeepSeek-Restaurantes pausado 45s por 3 fallas consecutivas')
+  }
+}
+function _restCbSuccess(): void { _restCircuit.fails = 0 }
+
 async function llamarDeepSeek(
   deepseekKey: string,
   restaurante: RestauranteRow,
   estado: EstadoSesion,
   telefonosEnTexto: string[],
   textoRest: string,
-  zonas: any[],
-  esHoraFelizActiva: boolean,
-  reintentos = 3
+  reintentos = 2
 ): Promise<any | null> {
-  const promptZonas = `NOTA: En este momento, el sistema NO calcula ni asigna precios. No menciones cobros, tarifas ni zonas al restaurante. Solo captura el pedido.`
+  // Circuit breaker: si DeepSeek está caído, respondemos null de inmediato
+  if (Date.now() < _restCircuit.openUntil) {
+    const secsLeft = Math.ceil((_restCircuit.openUntil - Date.now()) / 1000)
+    console.warn(`[CIRCUIT OPEN] Restaurantes DeepSeek en pausa — ${secsLeft}s`)
+    return null
+  }
 
-  const systemPrompt = `Eres "ALPHA-Estrella Restaurantes", el motor de Estrella Delivery. Eres ESTRICTO devolviendo EXCLUSIVAMENTE JSON.
+  const systemPrompt = `Eres "ALPHA-Estrella", motor de extracción de pedidos de Estrella Delivery. Tu única función es extraer datos con máxima precisión. DEVUELVES EXCLUSIVAMENTE JSON VÁLIDO. Sin texto previo ni posterior.
 
-RESTAURANTE: "${restaurante.nombre}"
+RESTAURANTE ACTIVO: "${restaurante.nombre}"
 
-${promptZonas}
-
-ESTADO ACTUAL:
+ESTADO DE SESIÓN ACTUAL:
 ${JSON.stringify({
     fase: estado.phase,
-    pedido_actual_memoria: estado.pedido_actual,
+    pedido_en_curso: estado.pedido_actual,
     pedidos_acumulados: estado.pedidos_acumulados || [],
-    total_esperados_anotados: estado.total_esperados
+    total_esperados: estado.total_esperados
   })}
 
-TELEFONOS DETECTADOS: ${JSON.stringify(telefonosEnTexto)}
+TELÉFONOS DETECTADOS AUTOMÁTICAMENTE: ${JSON.stringify(telefonosEnTexto)}
+(Úsalos como base. El restaurante puede dar más en el texto.)
 
-REGLAS ABSOLUTAS:
-1. Cada TÉLEFONO DE CLIENTE = Un pedido diferente.
-2. Pedido COMPLETO = clienteTel (10 dígitos exactos) + descripcion + direccion + tiempo_estimado.
-3. PRECIOS: Usa el TABULADOR arriba mencionado. Si no hay coincidencia, usa $45.
-4. NEGOCIACIÓN: Si el restaurante o el cliente acuerdan un precio diferente explícitamente (ej: "cobra 50", "va por 35"), ese manda sobre el tabulador.
-5. NO inventes datos. Si no hay, envía null.
-6. ENFOQUE LOGÍSTICO (CRÍTICO): NUNCA preguntes "¿Qué va a pedir?". El pedido ya está hecho. Si falta la dirección, pregúntala. Si falta el "tiempo_estimado", ES OBLIGATORIO PREGUNTARLO PROACTIVAMENTE (Ej: "¿En cuántos minutos estará listo el paquete?").
-7. EDICIÓN/BORRADO: Si el restaurante pide cancelar o borrar el pedido de un número específico (ej: "borra el del 9631234567" o "cancela el último"), usa "intencion": "borrar_pedido" y manda el "telefono_a_borrar".
-8. DEBES DEVOLVER EXCLUSIVAMENTE ESTE FORMATO JSON:
+════════════ REGLAS ABSOLUTAS ════════════
+
+R1. CADA TELÉFONO = UN PEDIDO DISTINTO
+    • 3 teléfonos en el texto = 3 pedidos separados en "nuevos_pedidos_detectados".
+    • El primero puede ir en "pedido_actual_actualizado", el resto en "nuevos_pedidos_detectados".
+
+R2. CAMPOS DE UN PEDIDO:
+    ✅ OBLIGATORIO: clienteTel (exactamente 10 dígitos numéricos)
+    ✅ OBLIGATORIO: direccion (dónde se entrega)
+    ✅ IMPORTANTE:  descripcion (qué lleva o instrucciones; si no dice nada escribe "Sin indicaciones")
+    ⏱️ OPCIONAL:   tiempo_estimado — Si el restaurante lo menciona, captúralo en texto (ej: "20 min", "media hora"). Si NO lo menciona, pon null. NO lo solicites. El administrador lo confirmará.
+    💰 OPCIONAL:   precio — Solo si el restaurante indica un cobro explícito (ej: "cobra 60"). Si no, null.
+
+R3. PEDIDO COMPLETO = clienteTel + descripcion + direccion presentes. tiempo_estimado es bonus, no requisito.
+    • Marca "pedido_actual_completo": true si clienteTel + descripcion + direccion están presentes.
+    • No esperes el tiempo para marcar completo.
+
+R4. NO INVENTES DATOS
+    • Si un campo no aparece en el texto, pon null. Nunca supongas, nunca inventes.
+
+R5. PRIORIDAD: DIRECCIÓN FALTANTE
+    • Si tienes clienteTel pero NO direccion: pregunta "¿A qué dirección llevamos el pedido de ${telefonosEnTexto[0] || 'ese cliente'}?"
+    • Si ya tienes direccion guardada en el estado, NO la vuelvas a pedir.
+
+R6. NO PIDAS TIEMPO ESTIMADO
+    • Si el restaurante no mencionó el tiempo, acepta null y procede. El admin lo maneja.
+
+R7. CANCELACIONES
+    • "borra el del 963...", "cancela el último" → intencion: "borrar_pedido" + telefono_a_borrar.
+
+R8. CONFIRMACIÓN
+    • "listo", "confirmar", "ok", "mándalo", "envíalo" → intencion: "confirmar"
+
+R9. MÚLTIPLES PEDIDOS EN UN MENSAJE
+    • Si el restaurante manda "tel1, desc1, dir1 / tel2, desc2, dir2", extrae ambos correctamente.
+    • Usa "nuevos_pedidos_detectados" para el segundo y sucesivos.
+
+════════════ FORMATO JSON OBLIGATORIO ════════════
 {
   "intencion": "dar_datos|preguntar|confirmar|borrar_pedido|otro",
-  "telefono_a_borrar": "<10_digitos_o_null>",
-  "total_pedidos_esperados": <numero_o_null>,
-  "pedido_actual_actualizado": { "clienteTel": "...", "descripcion": "...", "direccion": "...", "tiempo_estimado": "...", "precio": "..." },
-  "pedido_actual_completo": <true/false>,
-  "nuevos_pedidos_detectados": [ { "clienteTel": "...", "descripcion": "...", "direccion": "...", "tiempo_estimado": "...", "precio": "...", "completo": true/false } ],
-  "mensaje_para_restaurante": "..."
+  "telefono_a_borrar": "<10 dígitos o null>",
+  "total_pedidos_esperados": <número o null>,
+  "pedido_actual_actualizado": {
+    "clienteTel": "<10 dígitos exactos o null>",
+    "descripcion": "<texto, 'Sin indicaciones', o null>",
+    "direccion": "<texto o null>",
+    "tiempo_estimado": "<texto o null>",
+    "precio": "<texto o null>"
+  },
+  "pedido_actual_completo": <true si clienteTel+descripcion+direccion presentes, false si falta alguno>,
+  "nuevos_pedidos_detectados": [
+    { "clienteTel": "...", "descripcion": "...", "direccion": "...", "tiempo_estimado": "...", "precio": "...", "completo": true }
+  ],
+  "mensaje_para_restaurante": "<mensaje breve, directo y amigable>"
 }`
 
   for (let intento = 1; intento <= reintentos; intento++) {
     try {
       const ctrl = new AbortController()
-      const tmr = setTimeout(() => ctrl.abort(), 20000)
+      const tmr = setTimeout(() => ctrl.abort(), 12000)
       const res = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${deepseekKey}`, 'Content-Type': 'application/json' },
@@ -221,15 +275,24 @@ REGLAS ABSOLUTAS:
       })
       clearTimeout(tmr)
 
-      if (!res.ok) continue
+      if (!res.ok) {
+        console.warn(`[RESTAURANT AI] HTTP ${res.status} intento ${intento}`)
+        _restCbFail()
+        continue
+      }
 
       const raw = await res.json()
       const content = raw.choices?.[0]?.message?.content || ''
       const result = await extraerJsonSeguro(content)
 
-      if (result) return result
-    } catch (err) {
-      console.warn(`[RESTAURANT AI] Red Error Intento ${intento}:`, err)
+      if (result) {
+        _restCbSuccess()
+        return result
+      }
+    } catch (err: any) {
+      const isTimeout = err?.name === 'AbortError'
+      console.warn(`[RESTAURANT AI] ${isTimeout ? 'Timeout 12s' : 'Red Error'} intento ${intento}:`, isTimeout ? '' : err)
+      _restCbFail()
     }
   }
   return null
@@ -267,11 +330,13 @@ async function manejarFallback(
       await guardarEstado(supabase, memKey, { ...estado, phase: 'collecting_dir', pedido_actual: { ...estado.pedido_actual, descripcion: textoRest } })
       await sendWA(fromPhone, `✅ Anotado.\n¿A qué dirección llevamos el paquete? 📍`)
     } else if (estado.phase === 'collecting_dir') {
-      await guardarEstado(supabase, memKey, { ...estado, phase: 'collecting_time', pedido_actual: { ...estado.pedido_actual, direccion: textoRest } })
-      await sendWA(fromPhone, `✅ Dirección guardada.\n¿En cuántos minutos estará listo el paquete? ⏱️`)
+      // tiempo_estimado es opcional: al tener tel+desc+dir vamos directo a extras/confirmación
+      await guardarEstado(supabase, memKey, { ...estado, phase: 'collecting_extras', pedido_actual: { ...estado.pedido_actual, direccion: textoRest } })
+      await sendWA(fromPhone, `✅ Dirección guardada.\n¿Hay detalles extra (cobro, referencias)? Si no, responde *"listo"* para enviar al mensajero. ⏱️ Si sabes el tiempo de preparación, inclúyelo.`)
     } else if (estado.phase === 'collecting_time') {
+      // Fase legacy — si el sistema aún tiene este estado, avanzamos a extras
       await guardarEstado(supabase, memKey, { ...estado, phase: 'collecting_extras', pedido_actual: { ...estado.pedido_actual, tiempo_estimado: textoRest } })
-      await sendWA(fromPhone, `✅ Tiempo anotado.\n¿Hay detalles extra de ubicación o cobro?. Si no, mándame *"listo"*.`)
+      await sendWA(fromPhone, `✅ Tiempo anotado.\n¿Hay detalles extra de ubicación o cobro? Si no, mándame *"listo"*.`)
     } else {
       await sendWA(fromPhone, `⚠️ Tuvimos un error temporal de conexión, *${restaurante.nombre}*.\nIntenta enviar el texto de nuevo o escribe *cancelar*.`)
     }
@@ -315,7 +380,9 @@ async function notificarAdmin(
       }
     }
 
-    if (p.tiempo_estimado) adminMsg += `⏱️ Tiempo: ${p.tiempo_estimado}\n`
+    adminMsg += p.tiempo_estimado
+      ? `⏱️ Tiempo: ${p.tiempo_estimado}\n`
+      : `⏱️ Tiempo: *⚠️ Sin confirmar — pregunta al restaurante*\n`
   })
 
   adminMsg += `\n━━━━━━━━━━━━━━━━━━━━\n`
@@ -519,16 +586,8 @@ export async function handleRestaurantPortal(
     return new Response('OK', { status: 200 })
   }
 
-  // 1. Fetch Dynamic Zones for this restaurant
-  const { data: zonasEnvio } = await supabase
-    .from('restaurante_colonias')
-    .select('*, colonias(nombre)')
-    .eq('restaurante_telefono', from10)
-
-  const horaFelizActiva = esHoraFeliz()
-
-  // LLAMADA IA
-  const aiResult = await llamarDeepSeek(DSKEY, restaurante, estado, telefonosEnTexto, textoRest, zonasEnvio || [], horaFelizActiva)
+  // LLAMADA IA (sin cálculo de zonas ni distancias — solo captura y asignación)
+  const aiResult = await llamarDeepSeek(DSKEY, restaurante, estado, telefonosEnTexto, textoRest)
   if (!aiResult) return await manejarFallback(ctx, sendWA, memKey, estado, telefonosEnTexto, textoRest)
 
   const aiPedidoActual = aiResult.pedido_actual_actualizado || {}
@@ -585,8 +644,11 @@ export async function handleRestaurantPortal(
     lng: estado.pedido_actual?.lng
   }
 
+  // tiempo_estimado es OPCIONAL — no bloquea el pedido. El admin lo confirma si falta.
   const pedidoActualEstaCompleto = aiCompleto || (
-    (pedidoActualFinal.clienteTel?.length ?? 0) >= 10 && !!pedidoActualFinal.descripcion?.trim() && !!pedidoActualFinal.direccion?.trim() && !!pedidoActualFinal.tiempo_estimado?.trim()
+    (pedidoActualFinal.clienteTel?.length ?? 0) >= 10 &&
+    !!pedidoActualFinal.descripcion?.trim() &&
+    !!pedidoActualFinal.direccion?.trim()
   )
 
   const nuevosCompletos = nuevosDetect.filter((p: any) => p.completo)

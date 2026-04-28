@@ -8,6 +8,7 @@ import { extract10Digits } from './db.ts'
 import { handleRepButtons, handleRepMessage } from './rep-handler.ts'
 import { handleAdminGPS, handleAdminAssignRest, handleAdminMessage } from './admin-handler.ts'
 import { handleRestaurantPortal } from './restaurant-portal.ts'
+import { syncToChatwoot, syncBotReplyByConvId, updateChatwootProfile } from './chatwoot-sync.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -69,6 +70,13 @@ serve(async (req: Request) => {
     if (!messages || messages.length === 0) return new Response('No messages', { status: 200 })
 
     const msg = messages[0]
+
+    // Validar campos obligatorios — Meta puede enviar webhooks malformados
+    if (!msg.from || !msg.id || !msg.type) {
+      console.warn('[BOT] Mensaje malformado sin from/id/type, ignorando:', JSON.stringify(msg).substring(0, 200))
+      return new Response('OK', { status: 200 })
+    }
+
     const fromPhone = msg.from as string
     errorNotifyPhone = fromPhone
     const messageId = msg.id as string
@@ -110,19 +118,45 @@ serve(async (req: Request) => {
     await supabase.from('bot_memory').upsert({ phone: rateLimitKey, history: timestamps, updated_at: new Date().toISOString() })
 
 
-    // BUG FIX #7: Limpiar llaves de idempotencia y RateLimits viejos (mayores a 1 hora) de forma probabilística (5%)
-    // Esto salva a la base de datos de hacer un DELETE con patrón LIKE miles de veces por hora.
-    if (Math.random() < 0.05) {
-      const unaHoraAtras = new Date(Date.now() - 3600 * 1000).toISOString()
-      await supabase.from('bot_memory').delete().like('phone', 'processed_msg:%').lt('updated_at', unaHoraAtras)
-      await supabase.from('bot_memory').delete().like('phone', 'rate_limit_%').lt('updated_at', unaHoraAtras)
-    }
+    // NOTA: La limpieza de bot_memory (idempotencia + rate limits) se delega a pg_cron.
+    // Ejecutar en Supabase Dashboard → SQL Editor una sola vez:
+    //   SELECT cron.schedule('limpiar-bot-memory','0 3 * * *',
+    //     $$ DELETE FROM bot_memory WHERE phone LIKE 'processed_msg:%' AND updated_at < NOW()-INTERVAL '1 hour';
+    //        DELETE FROM bot_memory WHERE phone LIKE 'rate_limit_%'    AND updated_at < NOW()-INTERVAL '2 hours'; $$);
 
     // ── IDENTIFICACIÓN DE ROLES ── (DEBE IR ANTES de cualquier uso de esAdmin)
     const from10 = extract10Digits(fromPhone)
     const ADMIN_PHONES_LIST = ADMIN_PHONES_ENV.split(',').map(s => extract10Digits(s)).filter(Boolean)
     const esAdmin = ADMIN_PHONES_LIST.includes(from10)
     const admin10 = esAdmin ? from10 : (ADMIN_PHONES_LIST[0] || '')
+
+    // ── IDENTIFICAR ROL PARA ETIQUETAS DE CHATWOOT ──
+    let userLabel = 'cliente'
+    if (esAdmin) {
+      userLabel = 'admin'
+    } else {
+      const { data: isRep } = await supabase.from('repartidores').select('id').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
+      if (isRep) userLabel = 'repartidor'
+      else {
+        const { data: isRest } = await supabase.from('restaurantes').select('id').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
+        if (isRest) userLabel = 'restaurante'
+      }
+    }
+
+    // ── SYNC A CHATWOOT CRM — guarda el promise para usarlo en la respuesta del bot ──
+    let cwConvIdPromise: Promise<number | null> = Promise.resolve(null)
+    const profileName = body?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.profile?.name
+    if (msgType === 'text' && msg.text?.body) {
+      cwConvIdPromise = syncToChatwoot(fromPhone, msg.text.body as string, profileName, userLabel)
+    } else if (msgType === 'interactive') {
+      const buttonTitle = msg.interactive?.button_reply?.title || 'Botón presionado'
+      cwConvIdPromise = syncToChatwoot(fromPhone, `[Clic Botón] ${buttonTitle}`, profileName, userLabel)
+    }
+    
+    // Disparar sincronización de Atributos Personalizados en segundo plano
+    if (userLabel === 'cliente') {
+       updateChatwootProfile(supabase, fromPhone).catch(e => console.error('[CW Sync] Error actualizando perfil:', e))
+    }
 
     // ── COMANDO SECRETO SANEAMIENTO (ahora sí después de esAdmin) ──
     if (msgType === 'text' && msg.text?.body === 'SANEAMIENTO_TOTAL') {
@@ -148,9 +182,9 @@ serve(async (req: Request) => {
       return new Response('OK', { status: 200 })
     }
 
-    // 1. BOTONES INTERACTIVOS ──
-    if (msgType === 'interactive') {
-      const buttonId = msg.interactive?.button_reply?.id as string | undefined
+    // 1. BOTONES INTERACTIVOS Y PLANTILLAS ──
+    if (msgType === 'interactive' || msgType === 'button') {
+      const buttonId = (msg.interactive?.button_reply?.id || msg.button?.payload || msg.button?.text) as string | undefined
       if (buttonId) {
         // Botones de calificación de clientes
         if (buttonId.startsWith('RATE_') || buttonId.startsWith('TAG_') || buttonId.startsWith('VETAR_')) {
@@ -287,7 +321,14 @@ serve(async (req: Request) => {
         await sendWA(fromPhone, `🤖 Hola ${isRep.nombre}.\nRecuerda usar los botones para avanzar pedidos o enviarme mensajes de texto sin emojis.`)
       } else {
         const profileName = body?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.profile?.name
-        await sendWA(fromPhone, `¡Hola *${profileName || ''}*! 👋 Soy el asistente de Estrella Delivery.\n\nPara pedir un servicio, escríbele al administrador: wa.me/52${admin10}\n\n¡Gracias! ⭐`)
+        // Si el cliente está registrado, mostrar sus puntos en lugar de redirigir al admin
+        const { data: cliente } = await supabase.from('clientes')
+          .select('nombre, puntos').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
+        const botMsg = cliente
+          ? `⭐ ¡Hola *${cliente.nombre || profileName || ''}*!\n\nTienes *${cliente.puntos || 0} puntos* de lealtad acumulados.\n🔗 Tu tarjeta: https://www.app-estrella.shop/loyalty/${from10}\n\nPara hacer un pedido escríbele al administrador: wa.me/52${admin10}`
+          : `¡Hola *${profileName || ''}*! 👋 Soy el asistente de Estrella Delivery.\n\nPara pedir un servicio, escríbele al administrador: wa.me/52${admin10}\n\n¡Gracias! ⭐`
+        await sendWA(fromPhone, botMsg)
+        // cwConvIdPromise se resuelve asincronamente para asegurar que el contacto se creó antes del sendWA
       }
       return new Response('OK', { status: 200 })
     }

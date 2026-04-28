@@ -17,7 +17,7 @@ export interface AIRespuesta {
   | 'VER_HISTORIAL_CLIENTE' | 'RECORDATORIO_REPARTIDOR' | 'REVISAR_ENTREGADOS'
   | 'AGREGAR_REPARTIDOR' | 'ELIMINAR_REPARTIDOR' | 'ESTADO_REPARTIDOR'
   | 'VER_ATRASOS' | 'CARGAR_SALDO' | 'ANUNCIO_REPARTIDORES' | 'UBICACION_RESTAURANTE'
-  | 'ENTREGAR_TODOS' | 'CANCELAR_TODOS' | 'ENVIAR_QR' | 'VER_RESTAURANTES' | 'AGREGAR_CLIENTE'
+  | 'ENTREGAR_TODOS' | 'CANCELAR_TODOS' | 'ENVIAR_QR' | 'VER_RESTAURANTES' | 'AGREGAR_CLIENTE' | 'ENVIAR_TERMINOS'
   mensajeUsuario: string
   datosAExtraer?: PedidoData & { montoSaldo?: number, diasAtras?: number, clienteNombre?: string, colonia?: string }
 }
@@ -30,7 +30,7 @@ const VALID_ACTIONS: AIRespuesta['accion'][] = [
   'VER_HISTORIAL_CLIENTE', 'RECORDATORIO_REPARTIDOR', 'REVISAR_ENTREGADOS',
   'AGREGAR_REPARTIDOR', 'ELIMINAR_REPARTIDOR', 'ESTADO_REPARTIDOR',
   'VER_ATRASOS', 'CARGAR_SALDO', 'ANUNCIO_REPARTIDORES', 'UBICACION_RESTAURANTE',
-  'ENTREGAR_TODOS', 'CANCELAR_TODOS', 'ENVIAR_QR', 'VER_RESTAURANTES', 'AGREGAR_CLIENTE',
+  'ENTREGAR_TODOS', 'CANCELAR_TODOS', 'ENVIAR_QR', 'VER_RESTAURANTES', 'AGREGAR_CLIENTE', 'ENVIAR_TERMINOS',
 ]
 
 // ── System prompts ────────────────────────────────────────────────────────────
@@ -65,7 +65,8 @@ HERRAMIENTAS DISPONIBLES:
 - REVISAR_ENTREGADOS: diasAtras (0=hoy, 1=ayer, N=hace N días).
 - VER_RESTAURANTES, VER_REPARTIDORES, VER_VIPS, VER_PEDIDOS, ESTADISTICAS, REPORTE_SEMANAL, VER_ATRASOS.
 - ENTREGAR_TODOS / CANCELAR_TODOS.
-- ENVIAR_QR: Requiere clienteTel. Manda tarjeta de lealtad al cliente.
+- ENVIAR_QR: Requiere clienteTel. Manda tarjeta de lealtad (QR) al cliente.
+- ENVIAR_TERMINOS: Requiere clienteTel. Manda la solicitud de aceptación de términos y condiciones al cliente. Úsalo cuando el admin pida "manda términos", "envía términos", "pide aceptación" a un cliente.
 - REASIGNAR_PEDIDO: Requiere clienteTel, repartidorAlias.
 - AGREGAR_NOTA_CLIENTE: Requiere clienteTel, descripcion.
 - MARCAR_VIP: Requiere clienteTel.
@@ -158,6 +159,23 @@ function enforcerValidator(respuesta: AIRespuesta): AIRespuesta {
   return respuesta
 }
 
+// ── Circuit Breaker DeepSeek (in-memory, por instancia Deno) ─────────────────
+// Previene saturar DeepSeek cuando está caído: tras 3 fallas consecutivas,
+// pausa 45s antes de intentar de nuevo. Cada instancia mantiene su estado.
+const _dsCircuit = { fails: 0, openUntil: 0 }
+const DS_FAIL_THRESHOLD = 3
+const DS_OPEN_MS = 45_000
+
+function _cbFail(): void {
+  _dsCircuit.fails++
+  if (_dsCircuit.fails >= DS_FAIL_THRESHOLD) {
+    _dsCircuit.openUntil = Date.now() + DS_OPEN_MS
+    _dsCircuit.fails = 0
+    console.error(`⛔ [CIRCUIT OPEN] DeepSeek pausado ${DS_OPEN_MS / 1000}s por ${DS_FAIL_THRESHOLD} fallas consecutivas.`)
+  }
+}
+function _cbSuccess(): void { _dsCircuit.fails = 0 }
+
 // ── Llamar a DeepSeek R1 ──────────────────────────────────────────────────────
 export async function conversacionDeepSeek(
   supabase: SupabaseClient,
@@ -167,6 +185,13 @@ export async function conversacionDeepSeek(
   repartidorInfo: any = null,
 ): Promise<{ respuesta?: AIRespuesta; nuevoHistorial?: any[]; errorObj?: string } | null> {
   try {
+    // Circuit breaker: si está abierto, rechazar inmediatamente sin llamar a DeepSeek
+    if (Date.now() < _dsCircuit.openUntil) {
+      const secsLeft = Math.ceil((_dsCircuit.openUntil - Date.now()) / 1000)
+      console.warn(`⛔ [CIRCUIT OPEN] DeepSeek en pausa — ${secsLeft}s restantes`)
+      return { errorObj: `IA en pausa temporal (${secsLeft}s). Reintenta en un momento.` }
+    }
+
     const memPhone = extract10Digits(phone)
     const { data: mem } = await supabase.from('bot_memory').select('history').eq('phone', memPhone).maybeSingle()
     const historia = mem?.history || []
@@ -225,12 +250,14 @@ export async function conversacionDeepSeek(
     } catch (fetchErr: any) {
       const isTimeout = fetchErr?.name === 'AbortError'
       console.error(isTimeout ? '⏱️ Timeout 12s alcanzado, usando fallback' : '🌐 Fetch error:', String(fetchErr))
+      _cbFail()
       return { errorObj: isTimeout ? 'DeepSeek no respondió a tiempo. Intente de nuevo.' : String(fetchErr) }
     }
 
     if (!res.ok) {
       const errText = await res.text()
       console.error('DeepSeek API Error:', errText)
+      _cbFail()
       return { errorObj: `HTTP ${res.status} - ${errText}` }
     }
 
@@ -275,6 +302,7 @@ export async function conversacionDeepSeek(
     }
 
     respuesta = enforcerValidator(respuesta)
+    _cbSuccess()
 
     const nuevoHistorial = [
       ...historia.slice(-6),

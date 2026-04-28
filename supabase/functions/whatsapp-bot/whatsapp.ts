@@ -2,6 +2,7 @@
 // whatsapp.ts — Helpers para enviar mensajes via WhatsApp Cloud API
 // ══════════════════════════════════════════════════════════════════════════════
 
+import { syncOutgoingToChatwoot } from './chatwoot-sync.ts'
 const WA_TOKEN    = Deno.env.get('WHATSAPP_TOKEN')!
 const WA_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_ID')!
 
@@ -51,6 +52,7 @@ export async function sendWA(to: string, body: string): Promise<void> {
       }),
     })
     if (!res.ok) console.error('WA Error:', await res.text())
+    else syncOutgoingToChatwoot(to, body).catch(e => console.error(e))
   } catch (e) {
     console.error('WA Fatal Net Error:', e)
   }
@@ -71,6 +73,7 @@ export async function sendWAImage(to: string, url: string, caption?: string): Pr
       }),
     })
     if (!res.ok) console.error('WA Image Error:', await res.text())
+    else syncOutgoingToChatwoot(to, `📷 [Imagen enviada] ${caption || ''}`).catch(e => console.error(e))
   } catch (e) {
     console.error('WA Fatal Net Error (Image):', e)
   }
@@ -96,6 +99,7 @@ export async function sendWALocation(to: string, lat: number, lng: number, name:
       }),
     })
     if (!res.ok) console.error('WA Location Error:', await res.text())
+    else syncOutgoingToChatwoot(to, `📍 [Ubicación enviada] ${name}`).catch(e => console.error(e))
   } catch (e) {
     console.error('WA Fatal Net Error (Location):', e)
   }
@@ -125,6 +129,7 @@ export async function sendInteractiveButton(
       }),
     })
     if (!res.ok) console.error('WA Interactive Error:', await res.text())
+    else syncOutgoingToChatwoot(to, `${text}\n[Botón] ${buttonTitle}`).catch(e => console.error(e))
   } catch (e) {
     console.error('WA Fatal Net Error (Interactive):', e)
   }
@@ -163,6 +168,7 @@ export async function sendInteractiveButtons(
       }),
     })
     if (!res.ok) console.error('WA InteractiveButtons Error:', await res.text())
+    else syncOutgoingToChatwoot(to, `${text}\n[Botones] ${buttons.map(b => b.title).join(' | ')}`).catch(e => console.error(e))
   } catch (e) {
     console.error('WA Fatal Net Error (InteractiveButtons):', e)
   }
@@ -205,29 +211,30 @@ export async function sendWATemplate(
       })
     }
 
+    const payload = {
+      messaging_product: 'whatsapp',
+      to,
+      type: 'template',
+      template: { name: templateName, language: { code: 'es_MX' }, components }
+    }
+    console.log(`[TEMPLATE] Enviando '${templateName}' a ${to} | componentes: ${JSON.stringify(components)}`)
+
     const res = await fetchConReintento(WA_BASE, {
       method: 'POST',
       headers: WA_HEADERS(),
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to,
-        type: 'template',
-        template: {
-          name: templateName,
-          language: { code: 'es_MX' },
-          components
-        }
-      }),
+      body: JSON.stringify(payload),
     })
-    
+
+    const respText = await res.text()
     if (!res.ok) {
-      const errText = await res.text()
-      console.error('WA Template Error:', errText)
-      return { ok: false, error: errText }
+      console.error(`[TEMPLATE] ❌ '${templateName}' HTTP ${res.status} → ${respText}`)
+      return { ok: false, error: respText }
     }
+    console.log(`[TEMPLATE] ✅ '${templateName}' enviada → ${respText.substring(0, 120)}`)
+    syncOutgoingToChatwoot(to, `📲 [Plantilla] ${templateName}\n${params.join(' | ')}`).catch(e => console.error(e))
     return { ok: true }
   } catch (e: any) {
-    console.error('WA Fatal Net Error (Template):', e)
+    console.error(`[TEMPLATE] 💥 Error fatal '${templateName}':`, e)
     return { ok: false, error: e.message }
   }
 }

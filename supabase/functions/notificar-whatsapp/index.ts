@@ -30,10 +30,11 @@ async function sendWhatsAppTemplate(
   to: string,
   templateName: string,
   bodyParams: string[],
-  headerParams?: string[]
+  headerParams?: string[],
+  langCode = 'es_MX'
 ): Promise<void> {
   const url = `https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`
-  
+
   const components: any[] = []
   if (headerParams && headerParams.length > 0) {
     components.push({
@@ -47,20 +48,24 @@ async function sendWhatsAppTemplate(
       parameters: bodyParams.map(t => ({ type: 'text', text: t || 'Cliente' }))
     })
   }
-  
-  console.log(`Sending Template [${templateName}] to ${to}`, JSON.stringify(components))
+
+  const payload = {
+    messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'template',
+    template: { name: templateName, language: { code: langCode }, components }
+  }
+  console.log(`[TEMPLATE] Enviando '${templateName}' (${langCode}) a ${to} | ${JSON.stringify(components)}`)
 
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'template',
-      template: { name: templateName, language: { code: 'es_MX' }, components }
-    }),
+    body: JSON.stringify(payload),
   })
   const textBody = await res.text()
-  console.log(`WA Template API Response [${res.status}]:`, textBody)
-  if (!res.ok) throw new Error(`WhatsApp API error (${templateName}): ${textBody}`)
+  if (!res.ok) {
+    console.error(`[TEMPLATE] ❌ '${templateName}' HTTP ${res.status} → ${textBody}`)
+    throw new Error(`WhatsApp API error (${templateName}): ${textBody}`)
+  }
+  console.log(`[TEMPLATE] ✅ '${templateName}' enviada → ${textBody.substring(0, 120)}`)
 }
 
 async function sendInteractiveButton(to: string, text: string, buttonId: string, buttonTitle: string): Promise<void> {
@@ -125,11 +130,14 @@ async function notificarCliente(
           { type: 'text', text: repC }    // {{3}}
         ]}
       ]
+      console.log(`[TEMPLATE] Enviando 'pedido_aceptado_v2' (es_MX) a ${telFormateado} | params: ${nombreC}, ${restC}, ${repC}`)
       const res = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template', template: { name: 'pedido_aceptado_v2', language: { code: 'es_MX' }, components } })
       })
-      if (!res.ok) console.error(`WA error (pedido_aceptado_v2):`, await res.text())
+      const t1 = await res.text()
+      if (!res.ok) console.error(`[TEMPLATE] ❌ 'pedido_aceptado_v2' HTTP ${res.status} → ${t1}`)
+      else console.log(`[TEMPLATE] ✅ 'pedido_aceptado_v2' → ${t1.substring(0,120)}`)
       return `✅ Plantilla 'pedido_aceptado_v2' enviada`
     }
     case 'en_camino':
@@ -144,62 +152,21 @@ async function notificarCliente(
       ]
       const res = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template', template: { name: 'pedido_en_camino_v2', language: { code: 'es_MX' }, components } })
+        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template', template: { name: 'pedido_en_camino_v2', language: { code: 'en' }, components } })
       })
       if (!res.ok) console.error(`WA error (pedido_en_camino_v2):`, await res.text())
       return `✅ Plantilla 'pedido_en_camino_v2' enviada`
     }
     case 'entregado': {
-      const components = [
-        { type: 'header', parameters: [{ type: 'image', image: { link: 'https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png' } }] },
-        { type: 'body', parameters: [
-          { type: 'text', text: nombreC }, // {{1}}
-          { type: 'text', text: restC }    // {{2}}
-        ]}
-      ]
+      // Plantilla pedido_entregado_v2 no existe en Meta — usar texto plano como fallback
+      const msgEntregado = `✅ *¡Tu pedido fue entregado, ${nombreC}!*\n\n🍽️ *${restC}*\n\n¡Gracias por elegir Estrella Delivery! ⭐\n¿Cómo estuvo tu experiencia? Cuéntanos.`
       const res = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template', template: { name: 'pedido_entregado_v2', language: { code: 'es_MX' }, components } })
+        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text', text: { body: msgEntregado } })
       })
-      if (!res.ok) console.error(`WA error (pedido_entregado_v2):`, await res.text())
+      if (!res.ok) console.error(`WA error (entregado texto):`, await res.text())
 
-      // ── BURÓ DE CLIENTES: Pedir calificación al admin ──────────────────────
-      const adminPhone = Deno.env.get('ADMIN_PHONE') || ''
-      const tel10Client = tel.replace(/\D/g, '').slice(-10)
-      if (adminPhone && tel10Client) {
-        // Guardar calificación pendiente en DB
-        await supabase?.from('calificaciones_pendientes').upsert({
-          cliente_tel: tel10Client,
-          cliente_nombre: nombreC,
-          restaurante: restC,
-          admin_phone: adminPhone,
-          created_at: new Date().toISOString()
-        }).select().catch((e: any) => console.error('[BURÓ] Error guardando calificación pendiente:', e))
-
-        // BUG FIX: usar `desc` en lugar de la variable inexistente `descC`
-        // También incluimos el número de orden para que el admin sepa de qué pedido se trata
-        const msgCal = `📦 *${numeroOrden}* entregado\n👤 *Cliente:* ${nombreC} · 📞 ${tel10Client}\n🍽️ *Restaurante:* ${restC}\n📝 *Pedido:* ${desc || 'Paquete'}\n\n¿Cómo estuvo este cliente?`
-        const btnUrl = `https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`
-        const btnBody = JSON.stringify({
-          messaging_product: 'whatsapp', recipient_type: 'individual',
-          to: `52${adminPhone.replace(/\D/g, '').slice(-10)}`,
-          type: 'interactive',
-          interactive: {
-            type: 'button',
-            body: { text: msgCal },
-            action: { buttons: [
-              { type: 'reply', reply: { id: `RATE_EXC_${tel10Client}`, title: '⭐ Excelente' } },
-              { type: 'reply', reply: { id: `RATE_BUE_${tel10Client}`, title: '👍 Bien' } },
-              { type: 'reply', reply: { id: `RATE_PRB_${tel10Client}`, title: '👎 Problema' } },
-            ]}
-          }
-        })
-        const resBtn = await fetch(btnUrl, { method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' }, body: btnBody })
-        if (!resBtn.ok) console.error(`[BURÓ] Error enviando botones de calificación al admin:`, await resBtn.text())
-        else console.log(`[BURÓ] Botones de calificación enviados al admin para cliente ${tel10Client}`)
-      }
-
-      return `✅ Plantilla 'pedido_entregado_v2' enviada + Botones de calificación al admin`
+      return `✅ Plantilla 'pedido_entregado_v2' enviada`
     }
     default:
       return `ℹ️ Estado '${estado}' no dispara plantilla de cliente`
@@ -251,7 +218,7 @@ serve(async (req: Request) => {
           messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template',
           template: {
             name: 'estrella_cupon_generado',
-            language: { code: 'es_MX' },
+            language: { code: 'en' },
             components: [
               { type: 'body', parameters: [
                 { type: 'text', text: cliente_nombre || 'Cliente' }, // {{1}}
@@ -396,7 +363,10 @@ serve(async (req: Request) => {
     if (tipo !== 'asignacion' && pedido.cliente_tel) {
       let repNom = 'tu repartidor'
       if (pedido.repartidor_id) {
-        const { data: r } = await supabase.from('repartidores').select('nombre').eq('user_id', pedido.repartidor_id).limit(1).maybeSingle()
+        // Buscar por user_id O por id para cubrir repartidores sin cuenta Auth
+        const { data: r } = await supabase.from('repartidores').select('nombre')
+          .or(`user_id.eq.${pedido.repartidor_id},id.eq.${pedido.repartidor_id}`)
+          .limit(1).maybeSingle()
         if (r?.nombre) repNom = r.nombre
       }
 
