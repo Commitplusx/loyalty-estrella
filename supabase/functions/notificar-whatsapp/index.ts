@@ -5,6 +5,12 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
 const WA_TOKEN    = Deno.env.get('WHATSAPP_TOKEN')!
 const WA_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_ID')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -192,7 +198,9 @@ function buildRepartidorAsignacionText(
 // ── Handler principal ────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
-  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') return new Response('ok', { status: 200, headers: CORS_HEADERS })
+  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: CORS_HEADERS })
 
   try {
     const bodyText = await req.text()
