@@ -220,6 +220,28 @@ serve(async (req: Request) => {
         await sendWA(fromPhone, `👔 *Modo Admin activado.*\nYa tienes acceso completo al panel de administración.`)
         return new Response('OK', { status: 200 })
       }
+      if (slashText.startsWith('/usar ')) {
+        const codigo = slashText.replace('/usar ', '').trim().toUpperCase()
+        const { data, error } = await supabase.rpc('usar_cupon', { p_codigo: codigo })
+        if (error) await sendWA(fromPhone, `❌ Error interno: ${error.message}`)
+        else if (!data?.ok) await sendWA(fromPhone, `❌ Error: ${data?.error || 'Cupón no encontrado'}`)
+        else await sendWA(fromPhone, `✅ *Cupón Usado*\n\nSe ha marcado como usado el cupón *${codigo}* del cliente *${data.cliente_nombre}* (${data.cliente_tel}).\nYa puede generar uno nuevo.`)
+        return new Response('OK', { status: 200 })
+      }
+      if (slashText.startsWith('/cancelar ')) {
+        const codigo = slashText.replace('/cancelar ', '').trim().toUpperCase()
+        // Necesitamos el admin_id para el registro, como from10 no es uuid, busquemos el id del admin o mandamos null/default si no aplica
+        // En supabase el admin_id es uuid. Si el RPC acepta null, pasaremos null o buscaremos al admin.
+        const { data: adminUser } = await supabase.from('admin_users').select('id').eq('telefono', from10).maybeSingle()
+        const { data, error } = await supabase.rpc('cancelar_cupon', { 
+          p_codigo: codigo, 
+          p_admin_id: adminUser?.id || null 
+        })
+        if (error) await sendWA(fromPhone, `❌ Error interno: ${error.message}`)
+        else if (!data?.ok) await sendWA(fromPhone, `❌ Error: ${data?.error || 'Cupón no encontrado'}`)
+        else await sendWA(fromPhone, `✅ *Cupón Cancelado*\n\nSe ha cancelado el cupón *${codigo}* del cliente *${data.cliente_nombre}*.\nSe han devuelto *$${data.monto_reembolsado}* a su billetera.`)
+        return new Response('OK', { status: 200 })
+      }
     }
 
     // ── VERIFICAR MODO REPARTIDOR DEL ADMIN ──────────────────────────────────

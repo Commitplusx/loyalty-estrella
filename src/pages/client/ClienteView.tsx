@@ -640,29 +640,19 @@ export function ClienteView() {
             className="w-full"
             style={{ willChange: "transform, opacity" }}
           >
-            {/* Profile Header Card */}
-            <div className="mb-6">
-              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 text-white shadow-2xl">
-                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(251,191,36,0.15),transparent_60%)]" />
-                <div className="absolute top-0 right-0 w-40 h-40 bg-amber-500/10 rounded-full blur-3xl -mr-10 -mt-10" />
-                <div className="relative z-10 flex items-center gap-4">
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${isVip ? 'bg-gradient-to-br from-amber-400 to-yellow-500 shadow-lg shadow-amber-500/30' : 'bg-white/10 backdrop-blur-sm'}`}>
-                    {isVip ? <Crown className="w-7 h-7 text-white" /> : <Star className="w-7 h-7 text-orange-300" />}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h1 className="text-xl font-bold truncate">¡Hola, {cliente.nombre}!</h1>
-                    <p className="text-sm text-white/60 truncate">{cliente.telefono}</p>
-                  </div>
-                  <Button variant="ghost" onClick={handleReset} className="text-white/50 hover:text-white hover:bg-white/10 shrink-0">
-                    <ChevronLeft className="w-4 h-4 mr-1" /> Salir
-                  </Button>
+            {/* Profile Header — Minimalist */}
+            <div className="mb-6 pb-5 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${isVip ? 'bg-amber-100' : 'bg-orange-100'}`}>
+                  {isVip ? <Crown className="w-6 h-6 text-amber-500" /> : <Star className="w-6 h-6 text-orange-400" />}
                 </div>
-                {isVip && (
-                  <div className="relative z-10 mt-3 flex items-center gap-2">
-                    <Badge className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs">✨ VIP</Badge>
-                    <span className="text-xs text-white/40">Meta de {metaVip} envíos por ciclo</span>
-                  </div>
-                )}
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-lg font-bold text-gray-900 truncate">{cliente.nombre}</h1>
+                  <p className="text-sm text-gray-400">{cliente.telefono}{isVip && <span className="ml-2 text-amber-500 font-semibold">· VIP</span>}</p>
+                </div>
+                <button onClick={handleReset} className="text-gray-400 hover:text-gray-600 transition-colors p-1">
+                  <X className="w-5 h-5" />
+                </button>
               </div>
             </div>
 
@@ -701,56 +691,60 @@ export function ClienteView() {
                     {isVip ? (
                       <>
                         {!showWalletModal ? (
-                          <Card className="border-0 shadow-xl overflow-hidden ring-1 ring-amber-500/30">
-                            <div className="relative p-6 text-white bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 overflow-hidden">
-                              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,rgba(251,191,36,0.12),transparent_60%)]" />
-                              <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl" />
-                              <div className="relative z-10">
-                                <div className="flex items-center gap-2 mb-4">
-                                  <Wallet className="w-4 h-4 text-amber-400" />
-                                  <span className="text-xs font-semibold text-amber-400 uppercase tracking-widest">Billetera VIP</span>
+                          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+                            {/* Saldo */}
+                            <div className="p-5 border-b border-gray-50">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Wallet className="w-4 h-4 text-amber-500" />
+                                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Billetera VIP</span>
+                              </div>
+                              <p className="text-3xl font-black text-gray-900 mt-2">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">Saldo disponible</p>
+                            </div>
+
+                            {/* Cupón activo — bloquea el canje */}
+                            {cliente.cupon_activo ? (
+                              <div className="p-4">
+                                <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4 space-y-2">
+                                  <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider">🎟️ Cupón activo</p>
+                                  <p className="font-mono font-black text-amber-700 text-xl tracking-widest">{cliente.cupon_activo}</p>
+                                  <p className="text-xs text-amber-600/80">Usa este código con el repartidor. No puedes generar otro hasta que se marque como usado.</p>
+                                  <button
+                                    onClick={() => navigator.clipboard.writeText(cliente.cupon_activo!)}
+                                    className="text-xs font-bold text-amber-600 bg-amber-200/60 px-3 py-1.5 rounded-lg hover:bg-amber-300/60 transition-colors"
+                                  >
+                                    Copiar código
+                                  </button>
                                 </div>
-                                <div className="flex items-end justify-between mb-5">
-                                  <div>
-                                    <p className="text-xs text-white/40 mb-1">Saldo disponible</p>
-                                    <p className="text-4xl font-black tracking-tight">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
-                                  </div>
-                                  <div className="text-right space-y-1">
-                                    <p className="text-2xl font-bold text-white/90">{cliente.envios_totales}</p>
-                                    <p className="text-[10px] text-white/40 uppercase tracking-wider">envíos</p>
-                                  </div>
-                                </div>
+                              </div>
+                            ) : (
+                              <div className="p-4 space-y-3">
                                 {(cliente.saldo_billetera || 0) > 0 ? (
                                   <button
                                     onClick={() => { setShowWalletModal(true); setWalletMode('select'); }}
-                                    className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-900 font-bold text-sm flex items-center justify-center gap-2 hover:from-amber-400 hover:to-yellow-400 transition-all shadow-lg shadow-amber-500/20"
+                                    className="w-full py-2.5 rounded-xl bg-amber-500 text-white font-semibold text-sm flex items-center justify-center gap-2 hover:bg-amber-600 transition-colors"
                                   >
                                     <Wallet className="w-4 h-4" />
-                                    Canjear Saldo
+                                    Canjear saldo
                                   </button>
                                 ) : (
-                                  <p className="text-center text-white/30 font-medium text-xs">Acumula saldo realizando envíos</p>
+                                  <p className="text-center text-gray-400 text-xs py-1">Acumula saldo realizando envíos</p>
                                 )}
+                                <p className="text-center text-xs text-gray-400">💡 Descuento en comida o envío gratis (hasta $45)</p>
                               </div>
-                            </div>
-                            <CardContent className="p-4 bg-white dark:bg-card">
-                              <div className="p-3 bg-amber-50 dark:bg-amber-900/15 rounded-xl text-xs text-amber-700 dark:text-amber-300 text-center">
-                                💡 Canjea por <strong>descuento en comida</strong> o por <strong>envío gratis</strong> (hasta $45)
-                              </div>
-                            </CardContent>
-                          </Card>
+                            )}
+                          </div>
                         ) : (
-                          <Card className="border-0 shadow-2xl overflow-hidden ring-2 ring-amber-400 bg-white dark:bg-gray-900">
-                            {/* Header del interface de canje */}
-                            <div className="bg-gradient-to-r from-amber-400 to-yellow-500 p-6 text-white relative">
-                              <button onClick={resetWalletModal} className="absolute top-4 right-4 w-8 h-8 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30">
-                                <X className="w-4 h-4" />
-                              </button>
-                              <div className="flex items-center gap-3 mb-1">
-                                <Wallet className="w-6 h-6" />
-                                <h2 className="font-bold text-xl">Canjear Billetera</h2>
+                          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+                            {/* Header */}
+                            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                              <div>
+                                <p className="font-bold text-gray-900">Canjear saldo</p>
+                                <p className="text-sm text-gray-400">Disponible: <strong className="text-gray-700">${(cliente.saldo_billetera || 0).toFixed(2)}</strong></p>
                               </div>
-                              <p className="text-amber-100 text-sm">Disponible: <strong className="text-white">${(cliente.saldo_billetera || 0).toFixed(2)}</strong></p>
+                              <button onClick={resetWalletModal} className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors">
+                                <X className="w-5 h-5" />
+                              </button>
                             </div>
 
                             <div className="p-6 space-y-4">
@@ -911,79 +905,78 @@ export function ClienteView() {
                                 </div>
                               )}
                             </div>
-                          </Card>
+                          </div>
                         )}
                       </>
                     ) : (
                       <>
-                        <Card className="border-0 shadow-xl overflow-hidden">
-                        <div className="p-6 text-white bg-gradient-to-br from-orange-500 to-amber-500">
-                          <div className="flex items-center justify-between mb-4">
-                            <div>
-                              <p className="text-sm mb-1 text-orange-100">Tu Progreso</p>
-                              <p className="text-4xl font-bold">
-                                {cliente.puntos % metaVip} <span className="text-2xl text-orange-200">/ {metaVip}</span>
-                              </p>
+                        {/* Progress Card — minimalist */}
+                        <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+                          <div className="p-5 border-b border-gray-50">
+                            <div className="flex items-center justify-between mb-3">
+                              <div>
+                                <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-1">Tu Progreso</p>
+                                <p className="text-3xl font-black text-gray-900">
+                                  {cliente.puntos % metaVip}<span className="text-lg text-gray-300 font-medium"> / {metaVip}</span>
+                                </p>
+                              </div>
+                              <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center">
+                                <Gift className="w-6 h-6 text-orange-400" />
+                              </div>
                             </div>
-                            <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
-                              <Gift className="w-8 h-8 text-white" />
+                            <div className="bg-gray-100 rounded-full h-2 overflow-hidden">
+                              <div
+                                className="bg-orange-400 h-full rounded-full transition-all duration-1000 ease-out"
+                                style={{ width: `${progreso}%` }}
+                              />
+                            </div>
+                            <p className="text-xs text-gray-400 mt-2 text-center">
+                              {enviosRestantes === 0
+                                ? '¡Tu próximo envío es GRATIS! 🎉'
+                                : `${enviosRestantes} envío${enviosRestantes > 1 ? 's' : ''} más para envío gratis`}
+                            </p>
+                          </div>
+                          <div className="p-4">
+                            <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
+                              {Array.from({ length: metaVip }).map((_, idx) => {
+                                const filled = idx < (cliente.puntos % metaVip);
+                                return (
+                                  <div
+                                    key={idx}
+                                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500 ${
+                                      filled ? 'bg-orange-400 shadow-sm' : 'bg-gray-100'
+                                    }`}
+                                  >
+                                    <Star className={`w-5 h-5 ${filled ? 'text-white fill-white' : 'text-gray-300'}`} />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="text-center">
+                                <p className="text-xl font-black text-gray-900">{cliente.envios_totales}</p>
+                                <p className="text-[10px] text-gray-400 uppercase tracking-wider">Totales</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-xl font-black text-orange-500">{cliente.puntos % metaVip}</p>
+                                <p className="text-[10px] text-gray-400 uppercase tracking-wider">Puntos</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-xl font-black text-emerald-500">{cliente.envios_gratis_disponibles}</p>
+                                <p className="text-[10px] text-gray-400 uppercase tracking-wider">Gratis</p>
+                              </div>
                             </div>
                           </div>
-                          <div className="bg-white/20 rounded-full h-4 overflow-hidden">
-                            <div
-                              className="bg-white h-full rounded-full transition-all duration-1000 ease-out"
-                              style={{ width: `${progreso}%` }}
-                            />
-                          </div>
-                          <p className="text-center mt-3 text-orange-100">
-                            {enviosRestantes === 0
-                              ? '¡Tu próximo envío es GRATIS! 🎉'
-                              : `Te faltan ${enviosRestantes} envío${enviosRestantes > 1 ? 's' : ''} para tu envío gratis`}
-                          </p>
                         </div>
-                        <CardContent className="p-6">
-                          <div className="flex items-center justify-center gap-2 mb-6">
-                            {Array.from({ length: metaVip }).map((_, idx) => {
-                              const filled = idx < (cliente.puntos % metaVip);
-                              return (
-                                <div
-                                  key={idx}
-                                  className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center transition-all duration-500 ${
-                                    filled
-                                      ? 'bg-gradient-primary shadow-lg scale-105'
-                                      : 'bg-gray-100 border-2 border-dashed border-gray-300'
-                                  }`}
-                                >
-                                  <Star className={`w-6 h-6 ${filled ? 'text-white fill-white' : 'text-gray-400'}`} />
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <div className="grid grid-cols-3 gap-4">
-                            <div className="bg-gray-50 rounded-xl p-4 text-center">
-                              <p className="text-2xl font-bold text-gray-900">{cliente.envios_totales}</p>
-                              <p className="text-xs text-gray-500">Envíos totales</p>
-                            </div>
-                            <div className="bg-orange-50 rounded-xl p-4 text-center">
-                              <p className="text-2xl font-bold text-orange-600">{cliente.puntos % metaVip}</p>
-                              <p className="text-xs text-gray-500">Puntos actuales</p>
-                            </div>
-                            <div className="bg-green-50 rounded-xl p-4 text-center">
-                              <p className="text-2xl font-bold text-green-600">{cliente.envios_gratis_disponibles}</p>
-                              <p className="text-xs text-gray-500">Envíos gratis</p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                      
-                      {/* Botón de Canje */}
-                      <button
-                        onClick={() => setShowCanjeModal(true)}
-                        className="w-full mt-4 py-4 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold flex items-center justify-center gap-3 hover:from-orange-600 hover:to-amber-600 shadow-xl transition-all hover:scale-[1.02] hover:-translate-y-1"
-                      >
-                        <Ticket className="w-6 h-6" />
-                        Canjear Beneficio
-                      </button>
+
+                        {/* Botón de Canje */}
+                        <button
+                          onClick={() => setShowCanjeModal(true)}
+                          className="w-full mt-3 py-3 rounded-xl bg-orange-500 text-white font-semibold flex items-center justify-center gap-2 hover:bg-orange-600 transition-colors"
+                        >
+                          <Ticket className="w-5 h-5" />
+                          Canjear Beneficio
+                        </button>
                       </>
                     )}
                   </>

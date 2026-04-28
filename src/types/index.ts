@@ -5,14 +5,15 @@ export interface Cliente {
   nombre: string;
   telefono: string;
   email?: string;
-  qr_code: string;        // BD column name
+  qr_code: string;
   puntos: number;
   envios_gratis_disponibles: number;
   envios_totales: number;
-  es_vip: boolean;          // VIP level status
-  rango: 'bronce' | 'plata' | 'oro'; // Rango de fidelidad (columna agregada a BD)
-  saldo_billetera: number;  // Digital Wallet VIP
-  costo_envio?: number;     // Costo personalizado de envío
+  es_vip: boolean;
+  rango: 'bronce' | 'plata' | 'oro';
+  saldo_billetera: number;
+  cupon_activo?: string | null; // Cupón activo actual (si hay uno)
+  costo_envio?: number;
   notas_crm?: string;
   created_at: string;
   updated_at: string;

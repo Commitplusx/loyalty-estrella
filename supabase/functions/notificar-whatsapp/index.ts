@@ -270,7 +270,6 @@ serve(async (req: Request) => {
       })
       if (!resCli.ok) console.error(`WA error cliente canje template:`, await resCli.text())
 
-      // Avisar al admin
       const resAdm = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -278,9 +277,11 @@ serve(async (req: Request) => {
           text: { body: `🚨 *NUEVO CANJE DE BILLETERA*\n\n👤 Cliente: ${cliente_nombre || 'Desconocido'} (${cliente_tel})\n💰 Monto canjeado: *$${monto}*\n🎟️ Código: *${codigo_canje}*` }
         })
       })
-      if (!resAdm.ok) console.error(`WA error admin canje:`, await resAdm.text())
+      const txtAdm = await resAdm.text()
+      if (!resAdm.ok) console.error(`WA error admin canje:`, txtAdm)
+      else console.log(`WA success admin canje:`, txtAdm)
 
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
     }
 
     const { pedido_id, repartidor_tel, descripcion, minutos_total, minutos_estancado } = payload
