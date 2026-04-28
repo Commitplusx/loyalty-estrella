@@ -234,6 +234,34 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
 
+    if (tipo === 'canje_billetera') {
+      const { cliente_tel, cliente_nombre, codigo_canje, monto, saldo_restante } = payload
+      const telFormateado = formatTel(cliente_tel)
+      const adminPhoneMain = '529631539156' // Número del admin
+
+      // Avisar al cliente
+      const resCli = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text',
+          text: { body: `🌟 *¡Canje Exitoso!*\n\nHola ${cliente_nombre || 'Cliente'},\nHas canjeado *$${monto}* de tu Billetera VIP para comida.\n\n🎟️ Tu código de canje es: *${codigo_canje}*\nMuéstrale o dile este código al repartidor o al restaurante.\n\n💳 Tu saldo restante: *$${saldo_restante}*` }
+        })
+      })
+      if (!resCli.ok) console.error(`WA error cliente canje:`, await resCli.text())
+
+      // Avisar al admin
+      const resAdm = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp', recipient_type: 'individual', to: adminPhoneMain, type: 'text',
+          text: { body: `🚨 *NUEVO CANJE DE BILLETERA*\n\n👤 Cliente: ${cliente_nombre || 'Desconocido'} (${cliente_tel})\n💰 Monto canjeado: *$${monto}*\n🎟️ Código: *${codigo_canje}*` }
+        })
+      })
+      if (!resAdm.ok) console.error(`WA error admin canje:`, await resAdm.text())
+
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+
     const { pedido_id, repartidor_tel, descripcion, minutos_total, minutos_estancado } = payload
 
     if (!pedido_id) {

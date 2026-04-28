@@ -229,13 +229,25 @@ export function ClienteView() {
     const monto = parseFloat(foodAmount);
     if (!cliente || isNaN(monto) || monto <= 0 || monto > (cliente.saldo_billetera || 0)) return;
     setWalletLoading(true);
-    // Bug #2 fix: se pasa cliente.id como autor del canje (no el string literal 'cliente')
     const res = await canjearSaldoBilleteraRPC(cliente.id, cliente.id, monto);
     setWalletLoading(false);
     if (res.success) {
-      setWalletMsg(`✅ Se descontaron $${monto.toFixed(2)} de tu billetera VIP`);
+      const codigo = res.codigo || 'SIN-CODIGO';
+      setWalletMsg(`✅ Se descontaron $${monto.toFixed(2)} de tu billetera VIP.\n🎟️ Código de descuento: ${codigo}`);
       setWalletMode('success');
       setCliente(prev => prev ? { ...prev, saldo_billetera: (prev.saldo_billetera || 0) - monto } : prev);
+      
+      // Notificar por WhatsApp en segundo plano
+      supabase.functions.invoke('notificar-whatsapp', {
+        body: {
+          tipo: 'canje_billetera',
+          cliente_tel: cliente.telefono,
+          cliente_nombre: cliente.nombre,
+          codigo_canje: codigo,
+          monto: monto.toFixed(2),
+          saldo_restante: ((cliente.saldo_billetera || 0) - monto).toFixed(2)
+        }
+      }).catch(console.error);
     } else {
       setWalletMsg(`❌ ${res.message}`);
     }
@@ -254,13 +266,25 @@ export function ClienteView() {
     const res = await canjearSaldoBilleteraRPC(cliente.id, 'cliente', cobertura);
     setWalletLoading(false);
     if (res.success) {
+      const codigo = res.codigo || 'SIN-CODIGO';
       const msg = diferencia > 0
-        ? `✅ Cobertura de $${cobertura.toFixed(2)} aplicada. 
-💳 Diferencia a pagar: $${diferencia.toFixed(2)}`
-        : `✅ Envío cubierto totalmente ($${cobertura.toFixed(2)}) con tu Billetera VIP`;
+        ? `✅ Cobertura de $${cobertura.toFixed(2)} aplicada. \n💳 Diferencia a pagar: $${diferencia.toFixed(2)}\n🎟️ Código: ${codigo}`
+        : `✅ Envío cubierto totalmente ($${cobertura.toFixed(2)}) con tu Billetera VIP.\n🎟️ Código: ${codigo}`;
       setWalletMsg(msg);
       setWalletMode('success');
       setCliente(prev => prev ? { ...prev, saldo_billetera: (prev.saldo_billetera || 0) - cobertura } : prev);
+      
+      // Notificar por WhatsApp en segundo plano
+      supabase.functions.invoke('notificar-whatsapp', {
+        body: {
+          tipo: 'canje_billetera',
+          cliente_tel: cliente.telefono,
+          cliente_nombre: cliente.nombre,
+          codigo_canje: codigo,
+          monto: cobertura.toFixed(2),
+          saldo_restante: ((cliente.saldo_billetera || 0) - cobertura).toFixed(2)
+        }
+      }).catch(console.error);
     } else {
       setWalletMsg(`❌ ${res.message}`);
     }

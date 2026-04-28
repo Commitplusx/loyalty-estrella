@@ -1,15 +1,5 @@
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
-import * as postgres from 'https://deno.land/x/postgres@v0.17.0/mod.ts'
+-- update_canjear_saldo_code.sql
 
-const DB_URL = Deno.env.get('SUPABASE_DB_URL')!
-
-serve(async (_req: Request) => {
-  let result = 'OK'
-  try {
-    const pool = new postgres.Pool(DB_URL, 1, true)
-    const conn = await pool.connect()
-    
-    await conn.queryObject(`
 CREATE OR REPLACE FUNCTION canjear_saldo(
     p_cliente_id UUID,
     p_admin_id TEXT,
@@ -66,12 +56,3 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-    `)
-    
-    conn.release()
-  } catch (e) {
-    result = e.toString()
-  }
-  
-  return new Response(JSON.stringify({ result }, null, 2), { headers: { 'Content-Type': 'application/json' } })
-})

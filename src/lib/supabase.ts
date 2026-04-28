@@ -230,7 +230,7 @@ export async function canjearSaldoBilleteraRPC(
   clienteId: string,
   adminId: string,
   monto: number
-): Promise<{ success: boolean; message: string; saldo_billetera?: number }> {
+): Promise<{ success: boolean; message: string; saldo_billetera?: number; codigo?: string }> {
   try {
     const { data, error } = await supabase.rpc('canjear_saldo', {
       p_cliente_id: clienteId,
