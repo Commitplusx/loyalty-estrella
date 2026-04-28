@@ -701,49 +701,40 @@ export function ClienteView() {
                     {isVip ? (
                       <>
                         {!showWalletModal ? (
-                          <Card className="border-0 shadow-xl overflow-hidden ring-2 ring-amber-400">
-                            <div className="p-6 text-white bg-gradient-to-br from-amber-400 via-yellow-400 to-amber-600">
-                              <div className="flex items-center gap-2 mb-3 justify-center">
-                                <Crown className="w-5 h-5 text-white fill-white" />
-                                <span className="font-bold text-white tracking-widest text-sm uppercase">Mi Billetera VIP</span>
-                                <Crown className="w-5 h-5 text-white fill-white" />
-                              </div>
-                              <div className="flex items-center justify-between mb-4">
-                                <div>
-                                  <p className="text-sm mb-1 text-amber-100">Saldo a Favor</p>
-                                  <p className="text-5xl font-black">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
+                          <Card className="border-0 shadow-xl overflow-hidden ring-1 ring-amber-500/30">
+                            <div className="relative p-6 text-white bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 overflow-hidden">
+                              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,rgba(251,191,36,0.12),transparent_60%)]" />
+                              <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl" />
+                              <div className="relative z-10">
+                                <div className="flex items-center gap-2 mb-4">
+                                  <Wallet className="w-4 h-4 text-amber-400" />
+                                  <span className="text-xs font-semibold text-amber-400 uppercase tracking-widest">Billetera VIP</span>
                                 </div>
-                                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
-                                  <DollarSign className="w-8 h-8 text-white" />
+                                <div className="flex items-end justify-between mb-5">
+                                  <div>
+                                    <p className="text-xs text-white/40 mb-1">Saldo disponible</p>
+                                    <p className="text-4xl font-black tracking-tight">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
+                                  </div>
+                                  <div className="text-right space-y-1">
+                                    <p className="text-2xl font-bold text-white/90">{cliente.envios_totales}</p>
+                                    <p className="text-[10px] text-white/40 uppercase tracking-wider">envíos</p>
+                                  </div>
                                 </div>
+                                {(cliente.saldo_billetera || 0) > 0 ? (
+                                  <button
+                                    onClick={() => { setShowWalletModal(true); setWalletMode('select'); }}
+                                    className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-900 font-bold text-sm flex items-center justify-center gap-2 hover:from-amber-400 hover:to-yellow-400 transition-all shadow-lg shadow-amber-500/20"
+                                  >
+                                    <Wallet className="w-4 h-4" />
+                                    Canjear Saldo
+                                  </button>
+                                ) : (
+                                  <p className="text-center text-white/30 font-medium text-xs">Acumula saldo realizando envíos</p>
+                                )}
                               </div>
-                              {/* Botón Canjear */}
-                              {(cliente.saldo_billetera || 0) > 0 ? (
-                                <button
-                                  onClick={() => { setShowWalletModal(true); setWalletMode('select'); }}
-                                  className="w-full mt-2 py-3 rounded-xl bg-white text-amber-600 font-bold text-base flex items-center justify-center gap-2 hover:bg-amber-50 transition-colors shadow-md"
-                                >
-                                  <Wallet className="w-5 h-5" />
-                                  Canjear Saldo
-                                </button>
-                              ) : (
-                                <p className="text-center mt-3 text-amber-100 font-medium text-sm">
-                                  Acumula saldo realizando envíos
-                                </p>
-                              )}
                             </div>
-                            <CardContent className="p-6">
-                              <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 text-center">
-                                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{cliente.envios_totales}</p>
-                                  <p className="text-xs text-gray-500">Envíos totales</p>
-                                </div>
-                                <div className="bg-amber-50 dark:bg-amber-900/30 rounded-xl p-4 text-center">
-                                  <p className="text-2xl font-bold text-amber-600">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
-                                  <p className="text-xs text-gray-500">Saldo Disponible</p>
-                                </div>
-                              </div>
-                              <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-xs text-amber-700 dark:text-amber-300 text-center">
+                            <CardContent className="p-4 bg-white dark:bg-card">
+                              <div className="p-3 bg-amber-50 dark:bg-amber-900/15 rounded-xl text-xs text-amber-700 dark:text-amber-300 text-center">
                                 💡 Canjea por <strong>descuento en comida</strong> o por <strong>envío gratis</strong> (hasta $45)
                               </div>
                             </CardContent>
@@ -1018,30 +1009,22 @@ export function ClienteView() {
               </div>
 
               {/* ── CENTER COLUMN: QR (desktop only) ── */}
-              <div className="hidden lg:flex flex-col items-center gap-4">
-                <div className="flex items-center gap-2 text-gray-500 text-sm font-medium mb-1">
-                  <QrCode className="w-4 h-4 text-orange-500" />
-                  Tu Código QR Personal
-                </div>
-                <div className="p-5 bg-white rounded-3xl shadow-xl border border-gray-100 dark:bg-white">
+              <div className="hidden lg:flex flex-col items-center gap-3">
+                <div className="p-5 bg-white rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 dark:bg-card">
                   {qrDataUrl ? (
-                    <img src={qrDataUrl} alt="Tu QR" className="w-48 h-48 rounded-xl" />
+                    <img src={qrDataUrl} alt="Tu QR" className="w-44 h-44 rounded-lg" />
                   ) : (
-                    <div className="w-48 h-48 bg-gray-100 rounded-2xl flex items-center justify-center animate-pulse">
-                      <QrCode className="w-16 h-16 text-gray-300" />
+                    <div className="w-44 h-44 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center animate-pulse">
+                      <QrCode className="w-12 h-12 text-gray-300" />
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-center text-gray-400 max-w-[180px]">
-                  Muéstraselo al repartidor para registrar tu envío
+                <p className="text-[11px] text-center text-gray-400 dark:text-gray-500 max-w-[180px]">
+                  Muéstrale este QR al repartidor para registrar tu envío
                 </p>
-                <div className="w-full p-2 bg-orange-50 dark:bg-orange-900/20 rounded-xl text-center">
-                  <p className="text-xs font-mono text-orange-500 break-all">{cliente.nombre}</p>
+                <div className="w-full p-2.5 bg-gray-50 dark:bg-card rounded-xl text-center space-y-0.5">
+                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">{cliente.nombre}</p>
                   <p className="text-[10px] text-gray-400">{cliente.telefono}</p>
-                </div>
-                <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl w-full">
-                  <MapPin className="w-4 h-4 text-blue-500 shrink-0" />
-                  <p className="text-xs text-blue-700 dark:text-blue-300">Cobertura en toda la ciudad</p>
                 </div>
               </div>
 
