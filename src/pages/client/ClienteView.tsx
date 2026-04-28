@@ -59,8 +59,13 @@ export function ClienteView() {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setCliente(parsed);
         setViewState('result');
-        // También recargamos el historial actualizado
+        // También recargamos el historial actualizado y los datos frescos del cliente
         getHistorialCliente(parsed.id).then(setHistorial).catch(() => {});
+        getClienteByTelefono(parsed.telefono).then(freshData => {
+          if (freshData && !('found' in freshData)) {
+            setCliente(freshData);
+          }
+        }).catch(() => {});
       } catch {
         localStorage.removeItem('estrella_cliente');
       }
