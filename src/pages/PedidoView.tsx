@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MapPin, Package, Phone, Loader2, Navigation, CheckCircle2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast-native';
 
 interface Pedido {
   id: string;

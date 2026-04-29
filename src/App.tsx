@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { Home } from '@/pages/Home';
 import { ClienteView } from '@/pages/client/ClienteView';
 import { Terminos } from '@/pages/Terminos';
-import { Toaster } from '@/components/ui/sonner';
+import { ToastProvider } from '@/components/ui/toast-native';
 import { FlashBanner } from '@/components/FlashBanner';
 import { AnimatePresence } from 'framer-motion';
 import './App.css';
@@ -40,13 +40,14 @@ function App() {
   };
 
   return (
-    <BrowserRouter>
-      {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
-      
-      <FlashBanner />
-      <AnimatedRoutes />
-      <Toaster position="top-center" />
-    </BrowserRouter>
+    <ToastProvider>
+      <BrowserRouter>
+        {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
+        
+        <FlashBanner />
+        <AnimatedRoutes />
+      </BrowserRouter>
+    </ToastProvider>
   );
 }
 

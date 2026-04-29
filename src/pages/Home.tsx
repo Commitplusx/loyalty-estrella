@@ -38,7 +38,7 @@ export function Home() {
       exit={{ opacity: 0, scale: 1.02, y: -10 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
       style={{ willChange: "transform, opacity" }}
-      className="min-h-screen bg-[#0a0a0f] overflow-x-hidden text-white"
+      className="min-h-screen bg-white overflow-x-hidden text-black"
     >
 
       {/* ══ HERO ═══════════════════════════════════════════════════════════ */}
@@ -46,7 +46,7 @@ export function Home() {
 
         {/* Backgrounds */}
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute inset-0 bg-gradient-to-br from-[#0a0a0f] via-[#120e1e] to-[#0a0a0f]" />
+          <div className="absolute inset-0 bg-gradient-to-br from-white via-slate-50 to-white" />
           <motion.div
             style={{ willChange: "transform, opacity", background: 'radial-gradient(circle, #ff6b35 0%, transparent 70%)' }}
             animate={{ scale: [1, 1.15, 1], opacity: [0.25, 0.45, 0.25] }}
@@ -62,7 +62,7 @@ export function Home() {
           {/* Grid overlay */}
           <div
             className="absolute inset-0 opacity-[0.03]"
-            style={{ backgroundImage: 'repeating-linear-gradient(0deg,#fff 0px,transparent 1px,transparent 80px,#fff 80px),repeating-linear-gradient(90deg,#fff 0px,transparent 1px,transparent 80px,#fff 80px)' }}
+            style={{ backgroundImage: 'repeating-linear-gradient(0deg,#000 0px,transparent 1px,transparent 80px,#000 80px),repeating-linear-gradient(90deg,#000 0px,transparent 1px,transparent 80px,#000 80px)' }}
           />
         </div>
 
@@ -77,14 +77,14 @@ export function Home() {
                 className="flex items-center gap-2"
               >
                 <div className="relative">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-lg shadow-orange-500/30">
-                    <Truck className="w-5 h-5 text-white" />
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-lg shadow-blue-500/30">
+                    <Truck className="w-5 h-5 text-black" />
                   </div>
-                  <Star className="w-3 h-3 text-amber-400 fill-amber-400 absolute -top-1 -right-1" />
+                  <Star className="w-3 h-3 text-red-500 fill-amber-400 absolute -top-1 -right-1" />
                 </div>
                 <span className="text-lg font-bold">
                   Estrella{' '}
-                  <span className="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">
+                  <span className="bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
                     Delivery
                   </span>
                 </span>
@@ -99,7 +99,7 @@ export function Home() {
                 <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
                   storeState.isOpen
                     ? storeState.isHappyHour
-                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                      ? 'bg-red-100 text-red-500 border border-red-300'
                       : 'bg-green-500/20 text-green-400 border border-green-500/30'
                     : 'bg-red-500/20 text-red-400 border border-red-500/30'
                 }`}>
@@ -111,7 +111,7 @@ export function Home() {
                 <Button
                   size="sm"
                   onClick={() => navigate('/cliente')}
-                  className="bg-white/10 hover:bg-white/20 text-white border border-white/20 text-sm backdrop-blur-sm"
+                  className="bg-white shadow-md hover:bg-white/20 text-black border border-gray-300 text-sm backdrop-blur-sm"
                 >
                   Mis Puntos
                 </Button>
@@ -130,10 +130,10 @@ export function Home() {
                 <motion.div
                   variants={fadeUp} initial="hidden" animate="visible"
                   transition={{ ...slowTransition, delay: 0.1 }}
-                  className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-2 mb-6 backdrop-blur-sm"
+                  className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-full px-4 py-2 mb-6 backdrop-blur-sm"
                 >
-                  <Sparkles className="w-4 h-4 text-orange-400" />
-                  <span className="text-sm font-medium text-orange-300">¡5 envíos = 1 gratis!</span>
+                  <Sparkles className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-500">¡5 envíos = 1 gratis!</span>
                 </motion.div>
 
                 <motion.h1
@@ -142,7 +142,7 @@ export function Home() {
                   className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-black leading-tight mb-6"
                 >
                   Tus envíos{' '}
-                  <span className="bg-gradient-to-r from-orange-400 via-amber-400 to-orange-500 bg-clip-text text-transparent">
+                  <span className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-700 bg-clip-text text-transparent">
                     con recompensa
                   </span>
                 </motion.h1>
@@ -150,11 +150,11 @@ export function Home() {
                 <motion.p
                   variants={fadeUp} initial="hidden" animate="visible"
                   transition={{ ...slowTransition, delay: 0.35 }}
-                  className="text-lg sm:text-xl text-gray-400 mb-8 max-w-xl mx-auto lg:mx-0 leading-relaxed"
+                  className="text-lg sm:text-xl text-gray-500 mb-8 max-w-xl mx-auto lg:mx-0 leading-relaxed"
                 >
-                  En <strong className="text-white">Estrella Delivery</strong> cada envío cuenta.
-                  Por cada <span className="text-orange-400 font-semibold">5 que hagas</span>,
-                  el <span className="text-orange-400 font-semibold">6to es completamente GRATIS</span>.
+                  En <strong className="text-black">Estrella Delivery</strong> cada envío cuenta.
+                  Por cada <span className="text-blue-600 font-semibold">5 que hagas</span>,
+                  el <span className="text-blue-600 font-semibold">6to es completamente GRATIS</span>.
                 </motion.p>
 
                 <motion.div
@@ -166,7 +166,7 @@ export function Home() {
                     <Button
                       onClick={() => navigate('/cliente')}
                       size="lg"
-                      className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold px-8 py-6 text-lg shadow-xl shadow-orange-500/30 border-0 rounded-2xl w-full"
+                      className="bg-gradient-to-r from-blue-700 to-blue-500 hover:from-blue-800 hover:to-blue-600 text-black font-bold px-8 py-6 text-lg shadow-xl shadow-blue-500/30 border-0 rounded-2xl w-full"
                     >
                       Ver Mis Puntos
                       <ArrowRight className="w-5 h-5 ml-2" />
@@ -180,7 +180,7 @@ export function Home() {
                         const cleanNumber = contacto.whatsapp.replace(/\D/g, '');
                         window.open(`https://wa.me/${cleanNumber}`, '_blank', 'noopener,noreferrer');
                       }}
-                      className="border border-white/20 text-white hover:bg-white/10 bg-transparent font-semibold px-8 py-6 text-lg rounded-2xl backdrop-blur-sm w-full"
+                      className="border border-gray-300 text-black hover:bg-white shadow-md bg-transparent font-semibold px-8 py-6 text-lg rounded-2xl backdrop-blur-sm w-full"
                     >
                       <Phone className="w-5 h-5 mr-2" />
                       Pedir Ahora
@@ -202,17 +202,17 @@ export function Home() {
                   className="flex flex-wrap justify-center lg:justify-start gap-6 mt-6"
                 >
                   {[
-                    { icon: Gift, label: '6to gratis', value: '5 = 1', color: 'text-orange-400' },
+                    { icon: Gift, label: '6to gratis', value: '5 = 1', color: 'text-blue-600' },
                     { icon: MapPin, label: 'Cobertura', value: 'Local', color: 'text-blue-400' },
-                    { icon: Clock, label: 'Respuesta', value: 'Rápida', color: 'text-amber-400' },
+                    { icon: Clock, label: 'Respuesta', value: 'Rápida', color: 'text-red-500' },
                   ].map((stat) => (
                     <div key={stat.label} className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center">
+                      <div className="w-10 h-10 bg-white shadow-sm border border-gray-200 rounded-xl flex items-center justify-center">
                         <stat.icon className={`w-5 h-5 ${stat.color}`} />
                       </div>
                       <div className="text-left">
-                        <p className="text-base font-bold text-white">{stat.value}</p>
-                        <p className="text-xs text-gray-400">{stat.label}</p>
+                        <p className="text-base font-bold text-black">{stat.value}</p>
+                        <p className="text-xs text-gray-500">{stat.label}</p>
                       </div>
                     </div>
                   ))}
@@ -228,24 +228,24 @@ export function Home() {
                   className="relative"
                 >
                   {/* Main card */}
-                  <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 w-80 shadow-2xl">
+                  <div className="bg-white shadow-sm backdrop-blur-xl border border-gray-200 rounded-3xl p-6 w-80 shadow-2xl">
                     <div className="flex items-center justify-between mb-6">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/30">
-                          <Truck className="w-6 h-6 text-white" />
+                        <div className="w-12 h-12 bg-gradient-to-br from-blue-700 to-blue-500 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+                          <Truck className="w-6 h-6 text-black" />
                         </div>
                         <div>
-                          <p className="font-bold text-white text-sm">Estrella Delivery</p>
-                          <p className="text-xs text-gray-400">Tu delivery de confianza</p>
+                          <p className="font-bold text-black text-sm">Estrella Delivery</p>
+                          <p className="text-xs text-gray-500">Tu delivery de confianza</p>
                         </div>
                       </div>
                       <span className="text-xs font-semibold text-green-400 bg-green-400/10 border border-green-400/20 px-2 py-1 rounded-full">● Activo</span>
                     </div>
 
-                    <div className="bg-gradient-to-br from-orange-500/10 to-amber-500/10 border border-orange-500/20 rounded-2xl p-5 mb-4">
+                    <div className="bg-gradient-to-br from-orange-500/10 to-amber-500/10 border border-blue-200 rounded-2xl p-5 mb-4">
                       <div className="flex items-center justify-between mb-3">
-                        <p className="font-semibold text-white text-sm">Tu progreso</p>
-                        <Gift className="w-5 h-5 text-orange-400" />
+                        <p className="font-semibold text-black text-sm">Tu progreso</p>
+                        <Gift className="w-5 h-5 text-blue-600" />
                       </div>
                       <div className="flex items-center justify-between mb-4">
                         {[1, 2, 3, 4, 5].map((i) => (
@@ -256,8 +256,8 @@ export function Home() {
                             transition={{ delay: 0.7 + i * 0.1, duration: 0.4 }}
                             className={`w-10 h-10 rounded-full flex items-center justify-center ${
                               i <= 3
-                                ? 'bg-gradient-to-br from-orange-500 to-amber-500 shadow-lg shadow-orange-500/30'
-                                : 'bg-white/10 border border-white/10'
+                                ? 'bg-gradient-to-br from-blue-700 to-blue-500 shadow-lg shadow-blue-500/30'
+                                : 'bg-white shadow-md border border-gray-200'
                             }`}
                           >
                             <Star className={`w-5 h-5 ${i <= 3 ? 'text-white fill-white' : 'text-gray-600'}`} />
@@ -272,25 +272,25 @@ export function Home() {
                           className="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full"
                         />
                       </div>
-                      <p className="text-center text-xs text-gray-300 mt-2">
-                        <span className="font-bold text-orange-400">2 envíos más</span> para tu delivery gratis
+                      <p className="text-center text-xs text-gray-600 mt-2">
+                        <span className="font-bold text-blue-600">2 envíos más</span> para tu delivery gratis
                       </p>
                     </div>
 
                     {/* Review widget */}
-                    <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/10">
+                    <div className="flex items-center gap-3 p-3 bg-white shadow-sm rounded-xl border border-gray-200">
                       <div className="flex -space-x-2">
                         {['MG', 'CR', 'SM'].map((initials) => (
-                          <div key={initials} className="w-7 h-7 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-[9px] font-bold text-white border-2 border-[#0a0a0f]">
+                          <div key={initials} className="w-7 h-7 rounded-full bg-gradient-to-br from-black to-gray-800 flex items-center justify-center text-[9px] font-bold text-black border-2 border-white">
                             {initials}
                           </div>
                         ))}
                       </div>
                       <div>
                         <div className="flex items-center gap-0.5 mb-0.5">
-                          {[...Array(5)].map((_, i) => <Star key={i} className="w-3 h-3 text-amber-400 fill-amber-400" />)}
+                          {[...Array(5)].map((_, i) => <Star key={i} className="w-3 h-3 text-red-500 fill-amber-400" />)}
                         </div>
-                        <p className="text-xs text-gray-300">+500 clientes felices</p>
+                        <p className="text-xs text-gray-600">+500 clientes felices</p>
                       </div>
                     </div>
                   </div>
@@ -299,13 +299,13 @@ export function Home() {
                   <motion.div
                     animate={{ y: [0, -10, 0] }}
                     transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
-                    className="absolute -bottom-5 -left-6 bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl p-4"
+                    className="absolute -bottom-5 -left-6 bg-white shadow-md backdrop-blur-xl border border-gray-300 rounded-2xl shadow-2xl p-4"
                   >
                     <div className="flex items-center gap-2">
-                      <Star className="w-6 h-6 text-amber-400 fill-amber-400" />
+                      <Star className="w-6 h-6 text-red-500 fill-amber-400" />
                       <div>
-                        <p className="text-sm font-bold text-white">+1 punto</p>
-                        <p className="text-xs text-gray-300">Acumulado</p>
+                        <p className="text-sm font-bold text-black">+1 punto</p>
+                        <p className="text-xs text-gray-600">Acumulado</p>
                       </div>
                     </div>
                   </motion.div>
@@ -314,15 +314,15 @@ export function Home() {
                   <motion.div
                     animate={{ y: [0, -6, 0] }}
                     transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 1.5 }}
-                    className="absolute -top-4 -right-6 bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl p-3"
+                    className="absolute -top-4 -right-6 bg-white shadow-md backdrop-blur-xl border border-gray-300 rounded-2xl shadow-2xl p-3"
                   >
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 bg-green-500/20 border border-green-500/30 rounded-full flex items-center justify-center">
                         <CheckCircle2 className="w-4 h-4 text-green-400" />
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-white">Entregado ✓</p>
-                        <p className="text-xs text-gray-300">Hace 2 min</p>
+                        <p className="text-xs font-bold text-black">Entregado ✓</p>
+                        <p className="text-xs text-gray-600">Hace 2 min</p>
                       </div>
                     </div>
                   </motion.div>
@@ -335,16 +335,16 @@ export function Home() {
       </section>
 
       {/* ══ SOCIAL PROOF ════════════════════════════════════════════════════ */}
-      <section className="py-12 bg-black/40 border-y border-white/5">
+      <section className="py-12 bg-slate-50 border-y border-gray-200">
         <div className="max-w-5xl mx-auto px-4">
           <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16">
             {[
-              { icon: Users, label: '+1,200 clientes activos', color: 'text-orange-400' },
-              { icon: Package, label: 'Entregas diarias garantizadas', color: 'text-amber-400' },
+              { icon: Users, label: '+1,200 clientes activos', color: 'text-blue-600' },
+              { icon: Package, label: 'Entregas diarias garantizadas', color: 'text-red-500' },
               { icon: Star, label: '4.9 estrellas promedio', color: 'text-yellow-400' },
               { icon: Flame, label: 'Hora Feliz 2x por semana', color: 'text-red-400' },
             ].map((item) => (
-              <div key={item.label} className="flex items-center gap-2 text-gray-400">
+              <div key={item.label} className="flex items-center gap-2 text-gray-500">
                 <item.icon className={`w-5 h-5 ${item.color} shrink-0`} />
                 <span className="text-sm font-medium whitespace-nowrap">{item.label}</span>
               </div>
@@ -354,21 +354,21 @@ export function Home() {
       </section>
 
       {/* ══ BENEFICIOS ══════════════════════════════════════════════════════ */}
-      <section className="py-24 bg-[#0a0a0f]">
+      <section className="py-24 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             variants={fadeUp} initial="hidden" whileInView="visible"
             viewport={{ once: true, amount: 0.3 }} transition={slowTransition}
             className="text-center mb-16"
           >
-            <p className="text-orange-400 font-semibold text-sm uppercase tracking-widest mb-3">¿Por qué elegirnos?</p>
-            <h2 className="text-3xl sm:text-4xl font-black text-white mb-4">
+            <p className="text-blue-600 font-semibold text-sm uppercase tracking-widest mb-3">¿Por qué elegirnos?</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-black mb-4">
               Más que un delivery,{' '}
-              <span className="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
                 una experiencia
               </span>
             </h2>
-            <p className="text-lg text-gray-400 max-w-2xl mx-auto">Somos tu aliado de confianza en cada entrega</p>
+            <p className="text-lg text-gray-500 max-w-2xl mx-auto">Somos tu aliado de confianza en cada entrega</p>
           </motion.div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -384,12 +384,12 @@ export function Home() {
                 viewport={{ once: true, amount: 0.2 }}
                 transition={{ ...slowTransition, delay: f.delay }}
               >
-                <motion.div whileHover={{ scale: 1.05, y: -5 }} className="group bg-white/5 border border-white/10 hover:border-white/20 rounded-3xl p-6 h-full cursor-default" style={{ willChange: "transform" }}>
+                <motion.div whileHover={{ scale: 1.05, y: -5 }} className="group bg-white shadow-sm border border-gray-200 hover:border-gray-300 rounded-3xl p-6 h-full cursor-default" style={{ willChange: "transform" }}>
                   <div className={`w-14 h-14 bg-gradient-to-br ${f.from} ${f.to} rounded-2xl flex items-center justify-center mb-5 shadow-lg group-hover:scale-110 transition-transform duration-300`}>
-                    <f.icon className="w-7 h-7 text-white" />
+                    <f.icon className="w-7 h-7 text-black" />
                   </div>
-                  <h3 className="font-bold text-white mb-2 text-lg">{f.title}</h3>
-                  <p className="text-gray-300 text-sm leading-relaxed">{f.desc}</p>
+                  <h3 className="font-bold text-black mb-2 text-lg">{f.title}</h3>
+                  <p className="text-gray-600 text-sm leading-relaxed">{f.desc}</p>
                 </motion.div>
               </motion.div>
             ))}
@@ -399,7 +399,7 @@ export function Home() {
 
       {/* ══ HORA FELIZ ══════════════════════════════════════════════════════ */}
       <section className="py-24 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-amber-900/20 via-orange-900/10 to-[#0a0a0f]" />
+        <div className="absolute inset-0 bg-gradient-to-br from-orange-50 via-white to-amber-50" />
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-0 right-0 w-96 h-96 rounded-full blur-3xl opacity-20" style={{ background: 'radial-gradient(circle, #f59e0b, transparent)' }} />
         </div>
@@ -411,16 +411,16 @@ export function Home() {
               variants={fadeUp} initial="hidden" whileInView="visible"
               viewport={{ once: true, amount: 0.3 }} transition={slowTransition}
             >
-              <div className="inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-full px-4 py-2 mb-6">
+              <div className="inline-flex items-center gap-2 bg-red-50 border border-red-200 text-red-500 rounded-full px-4 py-2 mb-6">
                 <Flame className="w-4 h-4" />
                 <span className="text-sm font-semibold">Promoción Especial</span>
               </div>
 
-              <h2 className="text-3xl sm:text-4xl font-black text-white mb-4">¡Hora Feliz! 🎉</h2>
+              <h2 className="text-3xl sm:text-4xl font-black text-black mb-4">¡Hora Feliz! 🎉</h2>
 
-              <p className="text-lg text-gray-400 mb-8 leading-relaxed">
+              <p className="text-lg text-gray-500 mb-8 leading-relaxed">
                 Lunes, Miércoles y Sábados de{' '}
-                <strong className="text-amber-400">5:00 PM a 8:00 PM</strong>,
+                <strong className="text-red-500">5:00 PM a 8:00 PM</strong>,
                 todos los envíos cuestan solo{' '}
                 <strong className="text-5xl font-black bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">$35</strong>
               </p>
@@ -435,16 +435,16 @@ export function Home() {
                       variants={fadeUp} initial="hidden" whileInView="visible"
                       viewport={{ once: true }}
                       transition={{ ...slowTransition, delay: 0.15 * hora.dia }}
-                      className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-2xl"
+                      className="flex items-center gap-4 p-4 bg-white shadow-sm border border-gray-200 rounded-2xl"
                     >
-                      <div className="w-12 h-12 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-center shrink-0">
-                        <Clock className="w-6 h-6 text-amber-400" />
+                      <div className="w-12 h-12 bg-red-50 border border-red-200 rounded-xl flex items-center justify-center shrink-0">
+                        <Clock className="w-6 h-6 text-red-500" />
                       </div>
                       <div>
-                        <p className="font-bold text-white">{hora.nombre}</p>
-                        <p className="text-gray-400 text-sm">{formatTime(hora.hora_inicio)} – {formatTime(hora.hora_fin)}</p>
+                        <p className="font-bold text-black">{hora.nombre}</p>
+                        <p className="text-gray-500 text-sm">{formatTime(hora.hora_inicio)} – {formatTime(hora.hora_fin)}</p>
                       </div>
-                      <div className="ml-auto bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold text-sm px-3 py-1 rounded-full">
+                      <div className="ml-auto bg-red-50 text-red-500 border border-red-200 font-bold text-sm px-3 py-1 rounded-full">
                         ${hora.precio_promocional}
                       </div>
                     </motion.div>
@@ -455,7 +455,7 @@ export function Home() {
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="inline-block mt-4">
                 <Button
                   onClick={() => navigate('/cliente')}
-                  className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold px-8 py-6 rounded-2xl shadow-xl shadow-amber-500/20 border-0"
+                  className="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-black font-bold px-8 py-6 rounded-2xl shadow-xl shadow-red-500/20 border-0"
                 >
                   Ver Mis Puntos
                   <ChevronRight className="w-5 h-5 ml-1" />
@@ -471,32 +471,32 @@ export function Home() {
               className="flex justify-center"
             >
               <div className="relative">
-                <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-10 text-center w-72 shadow-2xl">
+                <div className="bg-white shadow-sm backdrop-blur-xl border border-gray-200 rounded-3xl p-10 text-center w-72 shadow-2xl">
                   <motion.div
                     animate={{ rotate: [0, 5, -5, 0] }}
                     transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-                    className="w-24 h-24 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-amber-500/30"
+                    className="w-24 h-24 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-red-500/30"
                   >
-                    <Sparkles className="w-12 h-12 text-white" />
+                    <Sparkles className="w-12 h-12 text-black" />
                   </motion.div>
                   <motion.p
                     initial={{ scale: 0.5, opacity: 0 }}
                     whileInView={{ scale: 1, opacity: 1 }}
                     viewport={{ once: true }}
                     transition={{ duration: 0.8, ease: 'easeOut', delay: 0.4 }}
-                    className="text-7xl font-black bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent mb-1"
+                    className="text-7xl font-black bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent mb-1"
                   >
                     $35
                   </motion.p>
-                  <p className="text-gray-300 mb-6">Precio en Hora Feliz</p>
-                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4">
-                    <p className="text-amber-200 font-medium text-sm">¡Aprovecha y acumula puntos más rápido!</p>
+                  <p className="text-gray-600 mb-6">Precio en Hora Feliz</p>
+                  <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+                    <p className="text-red-700 font-medium text-sm">¡Aprovecha y acumula puntos más rápido!</p>
                   </div>
                 </div>
                 <motion.div
                   animate={{ y: [0, -6, 0], rotate: [0, 3, 0] }}
                   transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                  className="absolute -top-4 -right-4 bg-red-500 text-white font-black text-sm px-3 py-1.5 rounded-full shadow-lg"
+                  className="absolute -top-4 -right-4 bg-red-500 text-black font-black text-sm px-3 py-1.5 rounded-full shadow-lg"
                 >
                   -30% OFF
                 </motion.div>
@@ -508,17 +508,17 @@ export function Home() {
       </section>
 
       {/* ══ CÓMO FUNCIONA ═══════════════════════════════════════════════════ */}
-      <section className="py-24 bg-[#0a0a0f]">
+      <section className="py-24 bg-white">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             variants={fadeUp} initial="hidden" whileInView="visible"
             viewport={{ once: true, amount: 0.3 }} transition={slowTransition}
             className="text-center mb-16"
           >
-            <p className="text-orange-400 font-semibold text-sm uppercase tracking-widest mb-3">Así de sencillo</p>
-            <h2 className="text-3xl sm:text-4xl font-black text-white">
+            <p className="text-blue-600 font-semibold text-sm uppercase tracking-widest mb-3">Así de sencillo</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-black">
               Cómo{' '}
-              <span className="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
                 ganar envíos gratis
               </span>
             </h2>
@@ -527,7 +527,7 @@ export function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               { num: '1', title: 'Pide tu envío', desc: 'Contacta a tu repartidor de siempre y realiza tu pedido normalmente.', icon: Phone, color: 'from-orange-500 to-red-500' },
-              { num: '2', title: 'Muestra tu QR', desc: 'Abre la app, muestra tu código QR personal. El repartidor lo escanea.', icon: Star, color: 'from-amber-500 to-orange-500' },
+              { num: '2', title: 'Muestra tu QR', desc: 'Abre la app, muestra tu código QR personal. El repartidor lo escanea.', icon: Star, color: 'from-red-600 to-red-500' },
               { num: '3', title: 'Acumula y canjea', desc: 'Con cada 5 envíos acumulas uno gratis. ¡Se aplica automáticamente!', icon: Gift, color: 'from-emerald-500 to-teal-500' },
             ].map((step, i) => (
               <motion.div
@@ -539,17 +539,17 @@ export function Home() {
               >
                 <div className="relative inline-block mb-6">
                   <div className={`w-20 h-20 bg-gradient-to-br ${step.color} rounded-2xl flex items-center justify-center mx-auto shadow-xl group-hover:scale-110 transition-transform duration-300`}>
-                    <step.icon className="w-9 h-9 text-white" />
+                    <step.icon className="w-9 h-9 text-black" />
                   </div>
-                  <div className="absolute -top-3 -right-3 w-8 h-8 bg-white text-[#0a0a0f] rounded-full flex items-center justify-center text-sm font-black shadow-lg">
+                  <div className="absolute -top-3 -right-3 w-8 h-8 bg-gray-900 text-white rounded-full flex items-center justify-center text-sm font-black shadow-lg">
                     {step.num}
                   </div>
                   {i < 2 && (
                     <div className="hidden sm:block absolute top-1/2 left-full w-16 h-px bg-gradient-to-r from-orange-500/40 to-transparent -translate-y-1/2 ml-2" />
                   )}
                 </div>
-                <h3 className="font-bold text-white text-lg mb-2">{step.title}</h3>
-                <p className="text-gray-300 text-sm leading-relaxed">{step.desc}</p>
+                <h3 className="font-bold text-black text-lg mb-2">{step.title}</h3>
+                <p className="text-gray-600 text-sm leading-relaxed">{step.desc}</p>
               </motion.div>
             ))}
           </div>
@@ -557,17 +557,17 @@ export function Home() {
       </section>
 
       {/* ══ TESTIMONIOS ═════════════════════════════════════════════════════ */}
-      <section className="py-24 bg-white/[0.02] border-y border-white/5">
+      <section className="py-24 bg-slate-50 border-y border-gray-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             variants={fadeUp} initial="hidden" whileInView="visible"
             viewport={{ once: true, amount: 0.3 }} transition={slowTransition}
             className="text-center mb-14"
           >
-            <p className="text-orange-400 font-semibold text-sm uppercase tracking-widest mb-3">Lo que dicen nuestros clientes</p>
-            <h2 className="text-3xl sm:text-4xl font-black text-white">
+            <p className="text-blue-600 font-semibold text-sm uppercase tracking-widest mb-3">Lo que dicen nuestros clientes</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-black">
               Miles de clientes{' '}
-              <span className="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">confían en nosotros</span>
+              <span className="bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">confían en nosotros</span>
             </h2>
           </motion.div>
 
@@ -579,20 +579,20 @@ export function Home() {
                 viewport={{ once: true, amount: 0.2 }}
                 transition={{ ...slowTransition, delay: i * 0.15 }}
               >
-                <div className="bg-white/5 border border-white/10 rounded-3xl p-6 h-full hover:border-orange-500/20 hover:bg-white/8 transition-all duration-300">
+                <div className="bg-white shadow-sm border border-gray-200 rounded-3xl p-6 h-full hover:border-blue-200 hover:bg-white/8 transition-all duration-300">
                   <div className="flex items-center gap-0.5 mb-4">
                     {[...Array(review.stars)].map((_, si) => (
-                      <Star key={si} className="w-4 h-4 text-amber-400 fill-amber-400" />
+                      <Star key={si} className="w-4 h-4 text-red-500 fill-amber-400" />
                     ))}
                   </div>
-                  <p className="text-gray-200 leading-relaxed mb-5 text-sm">"{review.text}"</p>
+                  <p className="text-gray-800 leading-relaxed mb-5 text-sm">"{review.text}"</p>
                   <div className="flex items-center gap-3 mt-auto">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-sm font-bold text-white shadow-lg">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-700 to-blue-500 flex items-center justify-center text-sm font-bold text-black shadow-lg">
                       {review.name.charAt(0)}
                     </div>
                     <div>
-                      <p className="font-semibold text-white text-sm">{review.name}</p>
-                      <p className="text-xs text-gray-400">Cliente verificado</p>
+                      <p className="font-semibold text-black text-sm">{review.name}</p>
+                      <p className="text-xs text-gray-500">Cliente verificado</p>
                     </div>
                   </div>
                 </div>
@@ -605,7 +605,7 @@ export function Home() {
       {/* ══ CTA FINAL ═══════════════════════════════════════════════════════ */}
       <section className="py-24 relative overflow-hidden">
         <div className="absolute inset-0">
-          <div className="absolute inset-0 bg-gradient-to-br from-orange-900/30 via-[#0a0a0f] to-amber-900/20" />
+          <div className="absolute inset-0 bg-gradient-to-br from-orange-50 via-white to-amber-50" />
           <motion.div
             animate={{ scale: [1, 1.15, 1], opacity: [0.15, 0.3, 0.15] }}
             transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
@@ -625,17 +625,17 @@ export function Home() {
             variants={fadeUp} initial="hidden" whileInView="visible"
             viewport={{ once: true, amount: 0.3 }} transition={slowTransition}
           >
-            <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full px-4 py-2 mb-6">
+            <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-600 rounded-full px-4 py-2 mb-6">
               <Sparkles className="w-4 h-4" />
               <span className="text-sm font-semibold">Únete hoy</span>
             </div>
-            <h2 className="text-3xl sm:text-5xl font-black text-white mb-6 leading-tight">
+            <h2 className="text-3xl sm:text-5xl font-black text-black mb-6 leading-tight">
               ¿Listo para empezar{' '}
-              <span className="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
                 a acumular?
               </span>
             </h2>
-            <p className="text-gray-300 text-xl mb-12 max-w-xl mx-auto leading-relaxed">
+            <p className="text-gray-600 text-xl mb-12 max-w-xl mx-auto leading-relaxed">
               Regístrate hoy y comienza a ganar envíos gratis con cada pedido que hagas.
             </p>
 
@@ -644,7 +644,7 @@ export function Home() {
                 <Button
                   onClick={() => navigate('/cliente')}
                   size="lg"
-                  className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold w-full sm:w-auto px-12 py-7 text-xl rounded-2xl shadow-2xl shadow-orange-500/30 border-0"
+                  className="bg-gradient-to-r from-blue-700 to-blue-500 hover:from-blue-800 hover:to-blue-600 text-black font-bold w-full sm:w-auto px-12 py-7 text-xl rounded-2xl shadow-2xl shadow-blue-500/30 border-0"
                 >
                   Ver Mis Puntos
                   <ArrowRight className="w-6 h-6 ml-2" />
@@ -658,7 +658,7 @@ export function Home() {
                   }}
                   variant="outline"
                   size="lg"
-                  className="border border-white/20 hover:bg-white/10 text-white bg-transparent font-semibold w-full sm:w-auto px-12 py-7 text-xl rounded-2xl backdrop-blur-sm"
+                  className="border border-gray-300 hover:bg-white shadow-md text-black bg-transparent font-semibold w-full sm:w-auto px-12 py-7 text-xl rounded-2xl backdrop-blur-sm"
                 >
                   <Phone className="w-6 h-6 mr-2" />
                   WhatsApp
@@ -670,7 +670,7 @@ export function Home() {
       </section>
 
       {/* ══ FOOTER ══════════════════════════════════════════════════════════ */}
-      <footer className="bg-black/60 border-t border-white/5 text-gray-400 py-12">
+      <footer className="bg-slate-50 border-t border-gray-200 text-gray-500 py-12">
         <motion.div 
           className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
           variants={fadeUp} initial="hidden" whileInView="visible"
@@ -679,12 +679,12 @@ export function Home() {
         >
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-amber-500 rounded-lg flex items-center justify-center">
-                <Truck className="w-4 h-4 text-white" />
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-700 to-blue-500 rounded-lg flex items-center justify-center">
+                <Truck className="w-4 h-4 text-black" />
               </div>
-              <span className="text-white font-bold">
+              <span className="text-black font-bold">
                 Estrella{' '}
-                <span className="text-orange-400">Delivery</span>
+                <span className="text-blue-600">Delivery</span>
               </span>
             </div>
 
@@ -693,18 +693,18 @@ export function Home() {
                 <Clock className="w-4 h-4" />
                 Lunes a Domingo: 9AM – 10PM
               </span>
-              <span className="hidden sm:inline text-gray-700">|</span>
-              <a href={`tel:${contacto.telefono}`} className="hover:text-white transition-colors whitespace-nowrap">
+              <span className="hidden sm:inline text-gray-800">|</span>
+              <a href={`tel:${contacto.telefono}`} className="hover:text-black transition-colors whitespace-nowrap">
                 {contacto.telefono}
               </a>
             </div>
 
-            <a href="/login" className="text-sm hover:text-white transition-colors">
+            <a href="/login" className="text-sm hover:text-black transition-colors">
               Acceso Creador
             </a>
           </div>
 
-          <div className="mt-8 pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-center sm:text-left">
+          <div className="mt-8 pt-8 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-center sm:text-left">
             <p>© {new Date().getFullYear()} Estrella Delivery. Todos los derechos reservados.</p>
             <p className="flex items-center justify-center gap-1 text-gray-500">
               Hecho con <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500 mx-1" /> para nuestros clientes

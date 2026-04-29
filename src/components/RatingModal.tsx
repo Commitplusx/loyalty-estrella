@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Star, Send, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { submitRating } from '@/lib/supabase';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast-native';
 
 interface RatingModalProps {
   registroId: string;
