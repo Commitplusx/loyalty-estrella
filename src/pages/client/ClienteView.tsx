@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Star, Phone, Search, Gift, DollarSign, Ticket,
   TrendingUp, Clock, MapPin, Sparkles,
-  ChevronLeft, QrCode, AlertCircle, History, Crown, Sun, Moon,
+  ChevronLeft, QrCode, AlertCircle, Loader2, History, Crown, Sun, Moon,
   Wallet, Truck, Utensils, X, CheckCircle2
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast-native';
