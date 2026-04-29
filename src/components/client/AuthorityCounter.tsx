@@ -77,7 +77,6 @@ export default function AuthorityCounter() {
           initial={{ opacity: 0, y: 20 }}
           animate={inView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: splashExtraDelay / 1000 + i * 0.1 }}
-          style={{ willChange: 'transform, opacity' }}
           className={`relative overflow-hidden rounded-xl sm:rounded-2xl p-3 sm:p-5 ${s.bg} shadow-xl ${s.glow}`}
         >
           <div className="absolute -top-4 -right-4 w-16 h-16 sm:w-20 sm:h-20 rounded-full blur-2xl bg-white/15 pointer-events-none" />
@@ -93,3 +92,4 @@ export default function AuthorityCounter() {
     </div>
   );
 }
+

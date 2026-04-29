@@ -406,14 +406,12 @@ export function ClienteView() {
                   className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-600 border-r-blue-400"
                   animate={{ rotate: 360 }}
                   transition={{ duration: 0.9, repeat: Infinity, ease: 'linear' }}
-                  style={{ willChange: 'transform' }}
                 />
                 {/* Middle ring — spins slow, opposite */}
                 <motion.div
                   className="absolute inset-2 rounded-full border-4 border-transparent border-b-blue-300 border-l-blue-500"
                   animate={{ rotate: -360 }}
                   transition={{ duration: 1.6, repeat: Infinity, ease: 'linear' }}
-                  style={{ willChange: 'transform' }}
                 />
                 {/* Center pulse dot */}
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -421,7 +419,6 @@ export function ClienteView() {
                     className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/40"
                     animate={{ scale: [1, 1.12, 1] }}
                     transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
-                    style={{ willChange: 'transform' }}
                   >
                     <Search className="w-4 h-4 text-white" />
                   </motion.div>
@@ -455,7 +452,6 @@ export function ClienteView() {
                   initial={{ opacity: 0, x: -16 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.07, duration: 0.4, ease: 'easeOut' }}
-                  style={{ willChange: 'transform, opacity' }}
                   className={`${s.w} ${s.h} rounded-2xl relative overflow-hidden bg-gray-100`}
                 >
                   {/* Shimmer sweep */}
@@ -463,7 +459,6 @@ export function ClienteView() {
                     className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent"
                     animate={{ x: ['-100%', '200%'] }}
                     transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut', delay: i * 0.15 }}
-                    style={{ willChange: 'transform' }}
                   />
                 </motion.div>
               ))}
@@ -477,7 +472,6 @@ export function ClienteView() {
                   className="w-1.5 h-1.5 rounded-full bg-blue-400"
                   animate={{ scale: [1, 1.6, 1], opacity: [0.4, 1, 0.4] }}
                   transition={{ duration: 1, repeat: Infinity, delay: i * 0.2, ease: 'easeInOut' }}
-                  style={{ willChange: 'transform, opacity' }}
                 />
               ))}
             </div>
@@ -550,7 +544,6 @@ export function ClienteView() {
             exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.3 }}
             className="grid lg:grid-cols-[1fr_minmax(auto,450px)_1fr] gap-6 lg:gap-8 items-start"
-            style={{ willChange: "transform, opacity" }}
           >
             {/* Left Column (PC) / Bottom (Mobile): Authority Counter y Promos */}
             <div className="space-y-6 order-2 lg:order-1 pt-2 lg:pt-0">
@@ -723,7 +716,6 @@ export function ClienteView() {
             initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
             className="w-full"
-            style={{ willChange: "transform, opacity" }}
           >
             {/* Profile Header — Minimalist */}
             <div className="mb-6 pb-5 border-b border-gray-100">
@@ -1226,3 +1218,4 @@ export function ClienteView() {
     </motion.div>
   );
 }
+
