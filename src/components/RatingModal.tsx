@@ -22,7 +22,7 @@ export function RatingModal({ registroId, onClose }: RatingModalProps) {
 
   const handleSubmit = async () => {
     if (rating === 0) {
-      toast.error('Por favor selecciona una calificación');
+      toast.error('Calificación requerida', 'Por favor selecciona entre 1 y 5 estrellas');
       return;
     }
 
@@ -36,10 +36,10 @@ export function RatingModal({ registroId, onClose }: RatingModalProps) {
     setIsSubmitting(false);
 
     if (success) {
-      toast.success('¡Gracias por tu comentario!');
+      toast.success('¡Gracias!', 'Tu comentario fue enviado con éxito');
       onClose();
     } else {
-      toast.error('Ocurrió un error al enviar tu calificación');
+      toast.error('Error al enviar', 'Ocurrió un problema al guardar tu calificación');
     }
   };
 

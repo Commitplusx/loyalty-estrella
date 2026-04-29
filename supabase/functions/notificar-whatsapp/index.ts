@@ -158,7 +158,7 @@ async function notificarCliente(
       ]
       const res = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template', template: { name: 'pedido_en_camino_v2', language: { code: 'en' }, components } })
+        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template', template: { name: 'pedido_en_camino_v2', language: { code: 'es_MX' }, components } })
       })
       if (!res.ok) console.error(`WA error (pedido_en_camino_v2):`, await res.text())
       return `✅ Plantilla 'pedido_en_camino_v2' enviada`
@@ -245,7 +245,7 @@ serve(async (req: Request) => {
     if (tipo === 'canje_billetera') {
       const { cliente_tel, cliente_nombre, codigo_canje, monto, saldo_restante } = payload
       const telFormateado = formatTel(cliente_tel)
-      const adminPhoneMain = '529631539156' // Número del admin
+      const adminPhoneMain = Deno.env.get('ADMIN_PHONE_BILLETERA') || '529631539156'
 
       // Avisar al cliente (USANDO PLANTILLA estrella_cupon_generado en INGLES)
       const fExp = 'Válido hoy'

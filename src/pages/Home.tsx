@@ -1,25 +1,8 @@
 import { useNavigate } from 'react-router-dom';
-import { motion, type Transition } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import {
-  Truck, Star, Gift, ArrowRight, Phone, Clock,
-  MapPin, Sparkles, Shield, Zap, ChevronRight, Heart,
-  Package, CheckCircle2, Flame, Users
-} from 'lucide-react';
+import { motion } from 'framer-motion';
+import { ArrowRight, Phone, Star, Gift, Zap, Shield, Clock, Flame, Heart, Truck, MapPin, Sparkles, Users, Package, ChevronRight } from 'lucide-react';
 import { useSchedule } from '@/hooks/useSchedule';
 import AuthorityCounter from '@/components/client/AuthorityCounter';
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 40 },
-  visible: { opacity: 1, y: 0 },
-};
-
-const fadeIn = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1 },
-};
-
-const slowTransition: Transition = { duration: 0.8, ease: 'easeOut' };
 
 const REVIEWS = [
   { name: 'María G.', text: '¡Llevan más de un año siendo mi delivery! El trato es increíble y el 6to gratis es real 🎉', stars: 5 },
@@ -27,692 +10,358 @@ const REVIEWS = [
   { name: 'Sofía M.', text: 'Me encanta que puedo ver mis puntos en la app. Super transparente y profesional.', stars: 5 },
 ];
 
+const fadeUp = {
+  hidden: { opacity: 0, y: 24 },
+  visible: (i = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, ease: 'easeOut', delay: i * 0.1 },
+  }),
+};
+
 export function Home() {
   const navigate = useNavigate();
   const { storeState, horasFelices, formatTime, contacto } = useSchedule();
 
+  const whatsappUrl = `https://wa.me/${contacto.whatsapp.replace(/\D/g, '')}`;
+
   return (
-    <motion.div 
-      initial={{ opacity: 0, scale: 0.98, y: 10 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 1.02, y: -10 }}
-      transition={{ duration: 0.3, ease: 'easeOut' }}
-      style={{ willChange: "transform, opacity" }}
-      className="min-h-screen bg-white overflow-x-hidden text-black"
-    >
+    <div className="min-h-screen bg-white text-gray-950 antialiased">
 
-      {/* ══ HERO ═══════════════════════════════════════════════════════════ */}
-      <section className="relative min-h-screen overflow-hidden flex flex-col">
-
-        {/* Backgrounds */}
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute inset-0 bg-gradient-to-br from-white via-slate-50 to-white" />
-          <motion.div
-            style={{ willChange: "transform, opacity", background: 'radial-gradient(circle, #ff6b35 0%, transparent 70%)' }}
-            animate={{ scale: [1, 1.15, 1], opacity: [0.25, 0.45, 0.25] }}
-            transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute -top-32 -right-32 w-[600px] h-[600px] rounded-full"
-          />
-          <motion.div
-            style={{ willChange: "transform, opacity", background: 'radial-gradient(circle, #f59e0b 0%, transparent 70%)' }}
-            animate={{ scale: [1, 1.2, 1], opacity: [0.15, 0.30, 0.15] }}
-            transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-            className="absolute -bottom-32 -left-32 w-[500px] h-[500px] rounded-full"
-          />
-          {/* Grid overlay */}
-          <div
-            className="absolute inset-0 opacity-[0.03]"
-            style={{ backgroundImage: 'repeating-linear-gradient(0deg,#000 0px,transparent 1px,transparent 80px,#000 80px),repeating-linear-gradient(90deg,#000 0px,transparent 1px,transparent 80px,#000 80px)' }}
-          />
-        </div>
-
-        {/* ─── Header ─── */}
-        <header className="relative z-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-20">
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6 }}
-                className="flex items-center gap-2"
-              >
-                <div className="relative">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-lg shadow-blue-500/30">
-                    <Truck className="w-5 h-5 text-black" />
-                  </div>
-                  <Star className="w-3 h-3 text-red-500 fill-amber-400 absolute -top-1 -right-1" />
-                </div>
-                <span className="text-lg font-bold">
-                  Estrella{' '}
-                  <span className="bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
-                    Delivery
-                  </span>
-                </span>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6 }}
-                className="flex items-center gap-3"
-              >
-                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
-                  storeState.isOpen
-                    ? storeState.isHappyHour
-                      ? 'bg-red-100 text-red-500 border border-red-300'
-                      : 'bg-green-500/20 text-green-400 border border-green-500/30'
-                    : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-                    storeState.isOpen ? storeState.isHappyHour ? 'bg-amber-400' : 'bg-green-400' : 'bg-red-400'
-                  }`} />
-                  {storeState.isOpen ? storeState.isHappyHour ? '¡HORA FELIZ!' : 'ABIERTO' : 'CERRADO'}
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => navigate('/cliente')}
-                  className="bg-white shadow-md hover:bg-white/20 text-black border border-gray-300 text-sm backdrop-blur-sm"
-                >
-                  Mis Puntos
-                </Button>
-              </motion.div>
+      {/* ─── NAV ─────────────────────────────────────────────────────────── */}
+      <nav className="fixed top-0 inset-x-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100">
+        <div className="max-w-5xl mx-auto px-5 h-16 flex items-center justify-between">
+          {/* Logo */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+              <Truck className="w-4 h-4 text-white" />
             </div>
+            <span className="font-bold text-gray-900">
+              Estrella<span className="text-blue-600">.</span>
+            </span>
           </div>
-        </header>
 
-        {/* ─── Hero Content ─── */}
-        <div className="relative z-10 flex-1 flex items-center py-16">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
-            <div className="grid lg:grid-cols-2 gap-16 items-center">
-
-              {/* Left Column */}
-              <div className="text-center lg:text-left">
-                <motion.div
-                  variants={fadeUp} initial="hidden" animate="visible"
-                  transition={{ ...slowTransition, delay: 0.1 }}
-                  className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-full px-4 py-2 mb-6 backdrop-blur-sm"
-                >
-                  <Sparkles className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-500">¡5 envíos = 1 gratis!</span>
-                </motion.div>
-
-                <motion.h1
-                  variants={fadeUp} initial="hidden" animate="visible"
-                  transition={{ ...slowTransition, delay: 0.2 }}
-                  className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-black leading-tight mb-6"
-                >
-                  Tus envíos{' '}
-                  <span className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-700 bg-clip-text text-transparent">
-                    con recompensa
-                  </span>
-                </motion.h1>
-
-                <motion.p
-                  variants={fadeUp} initial="hidden" animate="visible"
-                  transition={{ ...slowTransition, delay: 0.35 }}
-                  className="text-lg sm:text-xl text-gray-500 mb-8 max-w-xl mx-auto lg:mx-0 leading-relaxed"
-                >
-                  En <strong className="text-black">Estrella Delivery</strong> cada envío cuenta.
-                  Por cada <span className="text-blue-600 font-semibold">5 que hagas</span>,
-                  el <span className="text-blue-600 font-semibold">6to es completamente GRATIS</span>.
-                </motion.p>
-
-                <motion.div
-                  variants={fadeUp} initial="hidden" animate="visible"
-                  transition={{ ...slowTransition, delay: 0.5 }}
-                  className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-10"
-                >
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                    <Button
-                      onClick={() => navigate('/cliente')}
-                      size="lg"
-                      className="bg-gradient-to-r from-blue-700 to-blue-500 hover:from-blue-800 hover:to-blue-600 text-black font-bold px-8 py-6 text-lg shadow-xl shadow-blue-500/30 border-0 rounded-2xl w-full"
-                    >
-                      Ver Mis Puntos
-                      <ArrowRight className="w-5 h-5 ml-2" />
-                    </Button>
-                  </motion.div>
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      onClick={() => {
-                        const cleanNumber = contacto.whatsapp.replace(/\D/g, '');
-                        window.open(`https://wa.me/${cleanNumber}`, '_blank', 'noopener,noreferrer');
-                      }}
-                      className="border border-gray-300 text-black hover:bg-white shadow-md bg-transparent font-semibold px-8 py-6 text-lg rounded-2xl backdrop-blur-sm w-full"
-                    >
-                      <Phone className="w-5 h-5 mr-2" />
-                      Pedir Ahora
-                    </Button>
-                  </motion.div>
-                </motion.div>
-
-                <motion.div
-                  variants={fadeUp} initial="hidden" animate="visible"
-                  transition={{ ...slowTransition, delay: 0.65 }}
-                >
-                  <AuthorityCounter />
-                </motion.div>
-
-                {/* Mini stats */}
-                <motion.div
-                  variants={fadeUp} initial="hidden" animate="visible"
-                  transition={{ ...slowTransition, delay: 0.8 }}
-                  className="flex flex-wrap justify-center lg:justify-start gap-6 mt-6"
-                >
-                  {[
-                    { icon: Gift, label: '6to gratis', value: '5 = 1', color: 'text-blue-600' },
-                    { icon: MapPin, label: 'Cobertura', value: 'Local', color: 'text-blue-400' },
-                    { icon: Clock, label: 'Respuesta', value: 'Rápida', color: 'text-red-500' },
-                  ].map((stat) => (
-                    <div key={stat.label} className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-white shadow-sm border border-gray-200 rounded-xl flex items-center justify-center">
-                        <stat.icon className={`w-5 h-5 ${stat.color}`} />
-                      </div>
-                      <div className="text-left">
-                        <p className="text-base font-bold text-black">{stat.value}</p>
-                        <p className="text-xs text-gray-500">{stat.label}</p>
-                      </div>
-                    </div>
-                  ))}
-                </motion.div>
-              </div>
-
-              {/* Right Column — Floating card */}
-              <div className="hidden lg:flex items-center justify-center">
-                <motion.div
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
-                  className="relative"
-                >
-                  {/* Main card */}
-                  <div className="bg-white shadow-sm backdrop-blur-xl border border-gray-200 rounded-3xl p-6 w-80 shadow-2xl">
-                    <div className="flex items-center justify-between mb-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-blue-700 to-blue-500 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30">
-                          <Truck className="w-6 h-6 text-black" />
-                        </div>
-                        <div>
-                          <p className="font-bold text-black text-sm">Estrella Delivery</p>
-                          <p className="text-xs text-gray-500">Tu delivery de confianza</p>
-                        </div>
-                      </div>
-                      <span className="text-xs font-semibold text-green-400 bg-green-400/10 border border-green-400/20 px-2 py-1 rounded-full">● Activo</span>
-                    </div>
-
-                    <div className="bg-gradient-to-br from-orange-500/10 to-amber-500/10 border border-blue-200 rounded-2xl p-5 mb-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <p className="font-semibold text-black text-sm">Tu progreso</p>
-                        <Gift className="w-5 h-5 text-blue-600" />
-                      </div>
-                      <div className="flex items-center justify-between mb-4">
-                        {[1, 2, 3, 4, 5].map((i) => (
-                          <motion.div
-                            key={i}
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ delay: 0.7 + i * 0.1, duration: 0.4 }}
-                            className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                              i <= 3
-                                ? 'bg-gradient-to-br from-blue-700 to-blue-500 shadow-lg shadow-blue-500/30'
-                                : 'bg-white shadow-md border border-gray-200'
-                            }`}
-                          >
-                            <Star className={`w-5 h-5 ${i <= 3 ? 'text-white fill-white' : 'text-gray-600'}`} />
-                          </motion.div>
-                        ))}
-                      </div>
-                      <div className="bg-black/30 rounded-full h-2 overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: '60%' }}
-                          transition={{ duration: 1.2, ease: 'easeOut', delay: 1.2 }}
-                          className="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full"
-                        />
-                      </div>
-                      <p className="text-center text-xs text-gray-600 mt-2">
-                        <span className="font-bold text-blue-600">2 envíos más</span> para tu delivery gratis
-                      </p>
-                    </div>
-
-                    {/* Review widget */}
-                    <div className="flex items-center gap-3 p-3 bg-white shadow-sm rounded-xl border border-gray-200">
-                      <div className="flex -space-x-2">
-                        {['MG', 'CR', 'SM'].map((initials) => (
-                          <div key={initials} className="w-7 h-7 rounded-full bg-gradient-to-br from-black to-gray-800 flex items-center justify-center text-[9px] font-bold text-black border-2 border-white">
-                            {initials}
-                          </div>
-                        ))}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-0.5 mb-0.5">
-                          {[...Array(5)].map((_, i) => <Star key={i} className="w-3 h-3 text-red-500 fill-amber-400" />)}
-                        </div>
-                        <p className="text-xs text-gray-600">+500 clientes felices</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Floating badge: point earned */}
-                  <motion.div
-                    animate={{ y: [0, -10, 0] }}
-                    transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
-                    className="absolute -bottom-5 -left-6 bg-white shadow-md backdrop-blur-xl border border-gray-300 rounded-2xl shadow-2xl p-4"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Star className="w-6 h-6 text-red-500 fill-amber-400" />
-                      <div>
-                        <p className="text-sm font-bold text-black">+1 punto</p>
-                        <p className="text-xs text-gray-600">Acumulado</p>
-                      </div>
-                    </div>
-                  </motion.div>
-
-                  {/* Floating badge: delivery done */}
-                  <motion.div
-                    animate={{ y: [0, -6, 0] }}
-                    transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 1.5 }}
-                    className="absolute -top-4 -right-6 bg-white shadow-md backdrop-blur-xl border border-gray-300 rounded-2xl shadow-2xl p-3"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 bg-green-500/20 border border-green-500/30 rounded-full flex items-center justify-center">
-                        <CheckCircle2 className="w-4 h-4 text-green-400" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-black">Entregado ✓</p>
-                        <p className="text-xs text-gray-600">Hace 2 min</p>
-                      </div>
-                    </div>
-                  </motion.div>
-                </motion.div>
-              </div>
-
-            </div>
+          {/* Status pill */}
+          <div className="hidden sm:flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200 text-gray-600">
+            <span className={`w-1.5 h-1.5 rounded-full ${storeState.isOpen ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} />
+            {storeState.isOpen ? (storeState.isHappyHour ? 'Hora Feliz activa' : 'Abierto') : 'Cerrado'}
           </div>
-        </div>
-      </section>
 
-      {/* ══ SOCIAL PROOF ════════════════════════════════════════════════════ */}
-      <section className="py-12 bg-slate-50 border-y border-gray-200">
-        <div className="max-w-5xl mx-auto px-4">
-          <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16">
-            {[
-              { icon: Users, label: '+1,200 clientes activos', color: 'text-blue-600' },
-              { icon: Package, label: 'Entregas diarias garantizadas', color: 'text-red-500' },
-              { icon: Star, label: '4.9 estrellas promedio', color: 'text-yellow-400' },
-              { icon: Flame, label: 'Hora Feliz 2x por semana', color: 'text-red-400' },
-            ].map((item) => (
-              <div key={item.label} className="flex items-center gap-2 text-gray-500">
-                <item.icon className={`w-5 h-5 ${item.color} shrink-0`} />
-                <span className="text-sm font-medium whitespace-nowrap">{item.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ══ BENEFICIOS ══════════════════════════════════════════════════════ */}
-      <section className="py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <motion.div
-            variants={fadeUp} initial="hidden" whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }} transition={slowTransition}
-            className="text-center mb-16"
+          {/* CTA */}
+          <button
+            onClick={() => navigate('/cliente')}
+            className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors"
           >
-            <p className="text-blue-600 font-semibold text-sm uppercase tracking-widest mb-3">¿Por qué elegirnos?</p>
-            <h2 className="text-3xl sm:text-4xl font-black text-black mb-4">
-              Más que un delivery,{' '}
-              <span className="bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
-                una experiencia
-              </span>
-            </h2>
-            <p className="text-lg text-gray-500 max-w-2xl mx-auto">Somos tu aliado de confianza en cada entrega</p>
-          </motion.div>
+            Mis Puntos →
+          </button>
+        </div>
+      </nav>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              { icon: Gift, title: '6to Envío Gratis', desc: 'Por cada 5 envíos acumulados, el siguiente es completamente gratis.', from: 'from-orange-500', to: 'to-amber-500', delay: 0.1 },
-              { icon: Zap, title: 'Sin Trámites', desc: 'Tu código QR lo hace todo. Acumulación automática en cada entrega.', from: 'from-amber-500', to: 'to-yellow-500', delay: 0.2 },
-              { icon: Shield, title: 'Tu Pedido Seguro', desc: 'Cada entrega monitoreada. Tu mercancía protegida de principio a fin.', from: 'from-emerald-500', to: 'to-teal-500', delay: 0.3 },
-              { icon: Heart, title: 'Clientes VIP', desc: 'Asciende de rango y desbloquea beneficios exclusivos con cada pedido.', from: 'from-rose-500', to: 'to-pink-500', delay: 0.4 },
-            ].map((f) => (
-              <motion.div
-                key={f.title}
-                variants={fadeUp} initial="hidden" whileInView="visible"
-                viewport={{ once: true, amount: 0.2 }}
-                transition={{ ...slowTransition, delay: f.delay }}
-              >
-                <motion.div whileHover={{ scale: 1.05, y: -5 }} className="group bg-white shadow-sm border border-gray-200 hover:border-gray-300 rounded-3xl p-6 h-full cursor-default" style={{ willChange: "transform" }}>
-                  <div className={`w-14 h-14 bg-gradient-to-br ${f.from} ${f.to} rounded-2xl flex items-center justify-center mb-5 shadow-lg group-hover:scale-110 transition-transform duration-300`}>
-                    <f.icon className="w-7 h-7 text-black" />
-                  </div>
-                  <h3 className="font-bold text-black mb-2 text-lg">{f.title}</h3>
-                  <p className="text-gray-600 text-sm leading-relaxed">{f.desc}</p>
-                </motion.div>
-              </motion.div>
-            ))}
-          </div>
+      {/* ─── HERO ────────────────────────────────────────────────────────── */}
+      <section className="pt-40 pb-28 px-5 max-w-5xl mx-auto text-center">
+        <motion.div
+          variants={fadeUp} initial="hidden" animate="visible" custom={0}
+          className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-4 py-2 mb-8"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          Programa de Lealtad
+        </motion.div>
+
+        <motion.h1
+          variants={fadeUp} initial="hidden" animate="visible" custom={1}
+          className="text-5xl sm:text-7xl font-black tracking-tight leading-[1.05] mb-6"
+        >
+          5 envíos,<br />
+          <span className="text-blue-600">1 gratis.</span>
+        </motion.h1>
+
+        <motion.p
+          variants={fadeUp} initial="hidden" animate="visible" custom={2}
+          className="text-lg text-gray-500 max-w-md mx-auto mb-10 leading-relaxed"
+        >
+          Acumula puntos con cada envío y el 6to es completamente gratis.
+          Sin apps, sin trámites.
+        </motion.p>
+
+        <motion.div
+          variants={fadeUp} initial="hidden" animate="visible" custom={3}
+          className="flex flex-col sm:flex-row gap-3 justify-center items-center"
+        >
+          <button
+            onClick={() => navigate('/cliente')}
+            className="flex items-center gap-2 bg-gray-950 text-white font-semibold px-7 py-3.5 rounded-xl hover:bg-gray-800 transition-colors text-sm shadow-lg shadow-gray-950/10"
+          >
+            Ver mis puntos
+            <ArrowRight className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => window.open(whatsappUrl, '_blank', 'noopener')}
+            className="flex items-center gap-2 bg-white text-gray-700 font-semibold px-7 py-3.5 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all text-sm"
+          >
+            <Phone className="w-4 h-4" />
+            Pedir ahora
+          </button>
+        </motion.div>
+
+        {/* Authority Counter */}
+        <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={4} className="mt-14">
+          <AuthorityCounter />
+        </motion.div>
+      </section>
+
+      {/* ─── DIVIDER ─────────────────────────────────────────────────────── */}
+      <div className="max-w-5xl mx-auto px-5">
+        <div className="border-t border-gray-100" />
+      </div>
+
+      {/* ─── STATS BAR ───────────────────────────────────────────────────── */}
+      <section className="py-10 px-5 max-w-5xl mx-auto">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+          {[
+            { icon: Users, label: '+1,200 clientes', color: 'text-blue-600' },
+            { icon: Package, label: 'Entregas diarias', color: 'text-red-500' },
+            { icon: Star, label: '4.9 estrellas', color: 'text-yellow-500' },
+            { icon: Flame, label: 'Hora Feliz semanal', color: 'text-red-600' },
+          ].map((s, i) => (
+            <motion.div
+              key={s.label}
+              variants={fadeUp} initial="hidden" whileInView="visible" custom={i}
+              viewport={{ once: true }}
+              className="flex flex-col items-center gap-2"
+            >
+              <s.icon className={`w-5 h-5 ${s.color}`} />
+              <p className="text-sm font-medium text-gray-600">{s.label}</p>
+            </motion.div>
+          ))}
         </div>
       </section>
 
-      {/* ══ HORA FELIZ ══════════════════════════════════════════════════════ */}
-      <section className="py-24 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-orange-50 via-white to-amber-50" />
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 right-0 w-96 h-96 rounded-full blur-3xl opacity-20" style={{ background: 'radial-gradient(circle, #f59e0b, transparent)' }} />
-        </div>
+      {/* ─── FEATURES ────────────────────────────────────────────────────── */}
+      <section className="py-20 px-5 max-w-5xl mx-auto">
+        <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }} className="mb-14 text-center">
+          <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-3">Por qué elegirnos</p>
+          <h2 className="text-3xl sm:text-4xl font-black tracking-tight">Más que un delivery</h2>
+        </motion.div>
 
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
-
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { icon: Gift, title: '6to Envío Gratis', desc: 'Cada 5 envíos te ganás uno completamente gratis.', accent: 'bg-blue-50 text-blue-600' },
+            { icon: Zap, title: 'Sin Trámites', desc: 'Tu QR lo hace todo. Acumulación automática e instantánea.', accent: 'bg-red-50 text-red-500' },
+            { icon: Shield, title: 'Pedidos Seguros', desc: 'Cada entrega monitoreada de principio a fin.', accent: 'bg-gray-900 text-white' },
+            { icon: Heart, title: 'Clientes VIP', desc: 'Asciende de rango y desbloquea beneficios exclusivos.', accent: 'bg-blue-600 text-white' },
+          ].map((f, i) => (
             <motion.div
-              variants={fadeUp} initial="hidden" whileInView="visible"
-              viewport={{ once: true, amount: 0.3 }} transition={slowTransition}
+              key={f.title}
+              variants={fadeUp} initial="hidden" whileInView="visible" custom={i}
+              viewport={{ once: true }}
+              className="group bg-white border border-gray-100 rounded-2xl p-6 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300"
             >
-              <div className="inline-flex items-center gap-2 bg-red-50 border border-red-200 text-red-500 rounded-full px-4 py-2 mb-6">
-                <Flame className="w-4 h-4" />
-                <span className="text-sm font-semibold">Promoción Especial</span>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 ${f.accent}`}>
+                <f.icon className="w-5 h-5" />
               </div>
+              <h3 className="font-bold text-gray-900 mb-1.5">{f.title}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
+            </motion.div>
+          ))}
+        </div>
+      </section>
 
-              <h2 className="text-3xl sm:text-4xl font-black text-black mb-4">¡Hora Feliz! 🎉</h2>
-
-              <p className="text-lg text-gray-500 mb-8 leading-relaxed">
+      {/* ─── HORA FELIZ ──────────────────────────────────────────────────── */}
+      <section className="py-20 px-5 max-w-5xl mx-auto">
+        <div className="bg-gray-950 rounded-3xl overflow-hidden">
+          <div className="grid lg:grid-cols-2 gap-0">
+            {/* Left */}
+            <div className="p-10 lg:p-14">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-red-400 mb-6">
+                <Flame className="w-3.5 h-3.5" /> Promoción Especial
+              </span>
+              <h2 className="text-3xl sm:text-4xl font-black text-white mb-4 tracking-tight">
+                ¡Hora Feliz!
+              </h2>
+              <p className="text-gray-400 mb-8 leading-relaxed">
                 Lunes, Miércoles y Sábados de{' '}
-                <strong className="text-red-500">5:00 PM a 8:00 PM</strong>,
-                todos los envíos cuestan solo{' '}
-                <strong className="text-5xl font-black bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">$35</strong>
+                <span className="text-white font-semibold">5 PM a 8 PM</span>.
+                Todos los envíos a solo{' '}
+                <span className="text-red-400 font-black text-2xl">$35</span>.
               </p>
 
-              <div className="space-y-3 mb-8">
-                {horasFelices.filter((h) => h.activo).length === 0 ? (
-                  <p className="text-gray-600 italic text-sm">Cargando horarios...</p>
+              <div className="space-y-2 mb-8">
+                {horasFelices.filter(h => h.activo).length === 0 ? (
+                  <p className="text-gray-600 text-sm">Cargando horarios...</p>
                 ) : (
-                  horasFelices.filter((h) => h.activo).map((hora) => (
-                    <motion.div
-                      key={hora.dia}
-                      variants={fadeUp} initial="hidden" whileInView="visible"
-                      viewport={{ once: true }}
-                      transition={{ ...slowTransition, delay: 0.15 * hora.dia }}
-                      className="flex items-center gap-4 p-4 bg-white shadow-sm border border-gray-200 rounded-2xl"
-                    >
-                      <div className="w-12 h-12 bg-red-50 border border-red-200 rounded-xl flex items-center justify-center shrink-0">
-                        <Clock className="w-6 h-6 text-red-500" />
+                  horasFelices.filter(h => h.activo).map(hora => (
+                    <div key={hora.dia} className="flex items-center justify-between py-3 border-b border-white/5">
+                      <div className="flex items-center gap-3">
+                        <Clock className="w-4 h-4 text-gray-500" />
+                        <span className="text-sm font-medium text-gray-300">{hora.nombre}</span>
                       </div>
-                      <div>
-                        <p className="font-bold text-black">{hora.nombre}</p>
-                        <p className="text-gray-500 text-sm">{formatTime(hora.hora_inicio)} – {formatTime(hora.hora_fin)}</p>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500">{formatTime(hora.hora_inicio)} – {formatTime(hora.hora_fin)}</span>
+                        <span className="text-xs font-black text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full">${hora.precio_promocional}</span>
                       </div>
-                      <div className="ml-auto bg-red-50 text-red-500 border border-red-200 font-bold text-sm px-3 py-1 rounded-full">
-                        ${hora.precio_promocional}
-                      </div>
-                    </motion.div>
+                    </div>
                   ))
                 )}
               </div>
 
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="inline-block mt-4">
-                <Button
-                  onClick={() => navigate('/cliente')}
-                  className="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-black font-bold px-8 py-6 rounded-2xl shadow-xl shadow-red-500/20 border-0"
-                >
-                  Ver Mis Puntos
-                  <ChevronRight className="w-5 h-5 ml-1" />
-                </Button>
-              </motion.div>
-            </motion.div>
+              <button
+                onClick={() => navigate('/cliente')}
+                className="inline-flex items-center gap-2 bg-white text-gray-950 font-semibold px-6 py-3 rounded-xl text-sm hover:bg-gray-100 transition-colors"
+              >
+                Ver mis puntos <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
 
-            {/* Price card */}
-            <motion.div
-              variants={fadeIn} initial="hidden" whileInView="visible"
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 1.2, ease: 'easeOut' }}
-              className="flex justify-center"
-            >
-              <div className="relative">
-                <div className="bg-white shadow-sm backdrop-blur-xl border border-gray-200 rounded-3xl p-10 text-center w-72 shadow-2xl">
+            {/* Right — Price Card */}
+            <div className="flex items-center justify-center p-10 border-t lg:border-t-0 lg:border-l border-white/5">
+              <div className="text-center">
+                <div className="inline-flex w-24 h-24 bg-red-500/10 rounded-full items-center justify-center mb-6">
                   <motion.div
                     animate={{ rotate: [0, 5, -5, 0] }}
                     transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-                    className="w-24 h-24 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-red-500/30"
                   >
-                    <Sparkles className="w-12 h-12 text-black" />
+                    <Sparkles className="w-10 h-10 text-red-400" />
                   </motion.div>
-                  <motion.p
-                    initial={{ scale: 0.5, opacity: 0 }}
-                    whileInView={{ scale: 1, opacity: 1 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.8, ease: 'easeOut', delay: 0.4 }}
-                    className="text-7xl font-black bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent mb-1"
-                  >
-                    $35
-                  </motion.p>
-                  <p className="text-gray-600 mb-6">Precio en Hora Feliz</p>
-                  <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
-                    <p className="text-red-700 font-medium text-sm">¡Aprovecha y acumula puntos más rápido!</p>
-                  </div>
                 </div>
-                <motion.div
-                  animate={{ y: [0, -6, 0], rotate: [0, 3, 0] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                  className="absolute -top-4 -right-4 bg-red-500 text-black font-black text-sm px-3 py-1.5 rounded-full shadow-lg"
-                >
-                  -30% OFF
-                </motion.div>
+                <p className="text-8xl font-black text-white tracking-tighter leading-none">$35</p>
+                <p className="text-gray-500 mt-3 text-sm">precio en hora feliz</p>
+                <span className="inline-block mt-4 text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1 rounded-full">
+                  -30% de descuento
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── CÓMO FUNCIONA ───────────────────────────────────────────────── */}
+      <section className="py-20 px-5 max-w-5xl mx-auto">
+        <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }} className="mb-14 text-center">
+          <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-3">Así de simple</p>
+          <h2 className="text-3xl sm:text-4xl font-black tracking-tight">Cómo ganar envíos gratis</h2>
+        </motion.div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          {[
+            { num: '01', icon: Phone, title: 'Pide tu envío', desc: 'Contacta al repartidor y realiza tu pedido como siempre.' },
+            { num: '02', icon: Star, title: 'Muestra tu QR', desc: 'Abre la app y muestra tu código personal. El repartidor lo escanea.' },
+            { num: '03', icon: Gift, title: 'Canjea tu gratis', desc: 'Cada 5 envíos acumulas uno gratis. Se aplica automáticamente.' },
+          ].map((step, i) => (
+            <motion.div
+              key={step.num}
+              variants={fadeUp} initial="hidden" whileInView="visible" custom={i}
+              viewport={{ once: true }}
+              className="relative"
+            >
+              <p className="text-6xl font-black text-gray-100 mb-4 select-none">{step.num}</p>
+              <h3 className="font-bold text-gray-900 text-lg mb-2">{step.title}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{step.desc}</p>
+              {i < 2 && (
+                <div className="hidden md:block absolute top-8 -right-3 w-6 border-t-2 border-dashed border-gray-200" />
+              )}
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* ─── TESTIMONIOS ─────────────────────────────────────────────────── */}
+      <section className="py-20 px-5 max-w-5xl mx-auto">
+        <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }} className="mb-14 text-center">
+          <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-3">Testimonios</p>
+          <h2 className="text-3xl sm:text-4xl font-black tracking-tight">Lo que dicen nuestros clientes</h2>
+        </motion.div>
+
+        <div className="grid sm:grid-cols-3 gap-4">
+          {REVIEWS.map((r, i) => (
+            <motion.div
+              key={r.name}
+              variants={fadeUp} initial="hidden" whileInView="visible" custom={i}
+              viewport={{ once: true }}
+              className="bg-gray-50 rounded-2xl p-6 border border-gray-100"
+            >
+              <div className="flex gap-0.5 mb-4">
+                {Array.from({ length: r.stars }).map((_, si) => (
+                  <Star key={si} className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                ))}
+              </div>
+              <p className="text-sm text-gray-700 leading-relaxed mb-5">"{r.text}"</p>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600">
+                  {r.name.charAt(0)}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{r.name}</p>
+                  <p className="text-xs text-gray-400">Cliente verificado</p>
+                </div>
               </div>
             </motion.div>
-
-          </div>
+          ))}
         </div>
       </section>
 
-      {/* ══ CÓMO FUNCIONA ═══════════════════════════════════════════════════ */}
-      <section className="py-24 bg-white">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <motion.div
-            variants={fadeUp} initial="hidden" whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }} transition={slowTransition}
-            className="text-center mb-16"
-          >
-            <p className="text-blue-600 font-semibold text-sm uppercase tracking-widest mb-3">Así de sencillo</p>
-            <h2 className="text-3xl sm:text-4xl font-black text-black">
-              Cómo{' '}
-              <span className="bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
-                ganar envíos gratis
-              </span>
-            </h2>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              { num: '1', title: 'Pide tu envío', desc: 'Contacta a tu repartidor de siempre y realiza tu pedido normalmente.', icon: Phone, color: 'from-orange-500 to-red-500' },
-              { num: '2', title: 'Muestra tu QR', desc: 'Abre la app, muestra tu código QR personal. El repartidor lo escanea.', icon: Star, color: 'from-red-600 to-red-500' },
-              { num: '3', title: 'Acumula y canjea', desc: 'Con cada 5 envíos acumulas uno gratis. ¡Se aplica automáticamente!', icon: Gift, color: 'from-emerald-500 to-teal-500' },
-            ].map((step, i) => (
-              <motion.div
-                key={step.num}
-                variants={fadeUp} initial="hidden" whileInView="visible"
-                viewport={{ once: true, amount: 0.2 }}
-                transition={{ ...slowTransition, delay: i * 0.2 }}
-                className="text-center group"
-              >
-                <div className="relative inline-block mb-6">
-                  <div className={`w-20 h-20 bg-gradient-to-br ${step.color} rounded-2xl flex items-center justify-center mx-auto shadow-xl group-hover:scale-110 transition-transform duration-300`}>
-                    <step.icon className="w-9 h-9 text-black" />
-                  </div>
-                  <div className="absolute -top-3 -right-3 w-8 h-8 bg-gray-900 text-white rounded-full flex items-center justify-center text-sm font-black shadow-lg">
-                    {step.num}
-                  </div>
-                  {i < 2 && (
-                    <div className="hidden sm:block absolute top-1/2 left-full w-16 h-px bg-gradient-to-r from-orange-500/40 to-transparent -translate-y-1/2 ml-2" />
-                  )}
-                </div>
-                <h3 className="font-bold text-black text-lg mb-2">{step.title}</h3>
-                <p className="text-gray-600 text-sm leading-relaxed">{step.desc}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ══ TESTIMONIOS ═════════════════════════════════════════════════════ */}
-      <section className="py-24 bg-slate-50 border-y border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <motion.div
-            variants={fadeUp} initial="hidden" whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }} transition={slowTransition}
-            className="text-center mb-14"
-          >
-            <p className="text-blue-600 font-semibold text-sm uppercase tracking-widest mb-3">Lo que dicen nuestros clientes</p>
-            <h2 className="text-3xl sm:text-4xl font-black text-black">
-              Miles de clientes{' '}
-              <span className="bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">confían en nosotros</span>
-            </h2>
-          </motion.div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-            {REVIEWS.map((review, i) => (
-              <motion.div
-                key={review.name}
-                variants={fadeUp} initial="hidden" whileInView="visible"
-                viewport={{ once: true, amount: 0.2 }}
-                transition={{ ...slowTransition, delay: i * 0.15 }}
-              >
-                <div className="bg-white shadow-sm border border-gray-200 rounded-3xl p-6 h-full hover:border-blue-200 hover:bg-white/8 transition-all duration-300">
-                  <div className="flex items-center gap-0.5 mb-4">
-                    {[...Array(review.stars)].map((_, si) => (
-                      <Star key={si} className="w-4 h-4 text-red-500 fill-amber-400" />
-                    ))}
-                  </div>
-                  <p className="text-gray-800 leading-relaxed mb-5 text-sm">"{review.text}"</p>
-                  <div className="flex items-center gap-3 mt-auto">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-700 to-blue-500 flex items-center justify-center text-sm font-bold text-black shadow-lg">
-                      {review.name.charAt(0)}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-black text-sm">{review.name}</p>
-                      <p className="text-xs text-gray-500">Cliente verificado</p>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ══ CTA FINAL ═══════════════════════════════════════════════════════ */}
-      <section className="py-24 relative overflow-hidden">
-        <div className="absolute inset-0">
-          <div className="absolute inset-0 bg-gradient-to-br from-orange-50 via-white to-amber-50" />
-          <motion.div
-            animate={{ scale: [1, 1.15, 1], opacity: [0.15, 0.3, 0.15] }}
-            transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute top-0 right-0 w-96 h-96 rounded-full blur-3xl"
-            style={{ background: 'radial-gradient(circle, #ff6b35, transparent)' }}
-          />
-          <motion.div
-            animate={{ scale: [1, 1.2, 1], opacity: [0.1, 0.2, 0.1] }}
-            transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-            className="absolute bottom-0 left-0 w-80 h-80 rounded-full blur-3xl"
-            style={{ background: 'radial-gradient(circle, #f59e0b, transparent)' }}
-          />
-        </div>
-
-        <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <motion.div
-            variants={fadeUp} initial="hidden" whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }} transition={slowTransition}
-          >
-            <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-600 rounded-full px-4 py-2 mb-6">
-              <Sparkles className="w-4 h-4" />
-              <span className="text-sm font-semibold">Únete hoy</span>
-            </div>
-            <h2 className="text-3xl sm:text-5xl font-black text-black mb-6 leading-tight">
-              ¿Listo para empezar{' '}
-              <span className="bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
-                a acumular?
-              </span>
-            </h2>
-            <p className="text-gray-600 text-xl mb-12 max-w-xl mx-auto leading-relaxed">
-              Regístrate hoy y comienza a ganar envíos gratis con cada pedido que hagas.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center mt-4">
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} style={{ willChange: "transform" }}>
-                <Button
-                  onClick={() => navigate('/cliente')}
-                  size="lg"
-                  className="bg-gradient-to-r from-blue-700 to-blue-500 hover:from-blue-800 hover:to-blue-600 text-black font-bold w-full sm:w-auto px-12 py-7 text-xl rounded-2xl shadow-2xl shadow-blue-500/30 border-0"
-                >
-                  Ver Mis Puntos
-                  <ArrowRight className="w-6 h-6 ml-2" />
-                </Button>
-              </motion.div>
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} style={{ willChange: "transform" }}>
-                <Button
-                  onClick={() => {
-                    const cleanNumber = contacto.whatsapp.replace(/\D/g, '');
-                    window.open(`https://wa.me/${cleanNumber}`, '_blank', 'noopener,noreferrer');
-                  }}
-                  variant="outline"
-                  size="lg"
-                  className="border border-gray-300 hover:bg-white shadow-md text-black bg-transparent font-semibold w-full sm:w-auto px-12 py-7 text-xl rounded-2xl backdrop-blur-sm"
-                >
-                  <Phone className="w-6 h-6 mr-2" />
-                  WhatsApp
-                </Button>
-              </motion.div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ══ FOOTER ══════════════════════════════════════════════════════════ */}
-      <footer className="bg-slate-50 border-t border-gray-200 text-gray-500 py-12">
-        <motion.div 
-          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
-          variants={fadeUp} initial="hidden" whileInView="visible"
-          viewport={{ once: true, amount: 0.1 }} transition={slowTransition}
-          style={{ willChange: "transform, opacity" }}
+      {/* ─── CTA FINAL ───────────────────────────────────────────────────── */}
+      <section className="py-20 px-5 max-w-5xl mx-auto">
+        <motion.div
+          variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }}
+          className="bg-blue-600 rounded-3xl p-12 sm:p-16 text-center text-white relative overflow-hidden"
         >
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-700 to-blue-500 rounded-lg flex items-center justify-center">
-                <Truck className="w-4 h-4 text-black" />
-              </div>
-              <span className="text-black font-bold">
-                Estrella{' '}
-                <span className="text-blue-600">Delivery</span>
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-4 text-sm">
-              <span className="flex items-center gap-1.5 whitespace-nowrap">
-                <Clock className="w-4 h-4" />
-                Lunes a Domingo: 9AM – 10PM
-              </span>
-              <span className="hidden sm:inline text-gray-800">|</span>
-              <a href={`tel:${contacto.telefono}`} className="hover:text-black transition-colors whitespace-nowrap">
-                {contacto.telefono}
-              </a>
-            </div>
-
-            <a href="/login" className="text-sm hover:text-black transition-colors">
-              Acceso Creador
-            </a>
-          </div>
-
-          <div className="mt-8 pt-8 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-center sm:text-left">
-            <p>© {new Date().getFullYear()} Estrella Delivery. Todos los derechos reservados.</p>
-            <p className="flex items-center justify-center gap-1 text-gray-500">
-              Hecho con <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500 mx-1" /> para nuestros clientes
+          {/* Subtle pattern */}
+          <div className="absolute inset-0 opacity-10"
+            style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 20%, white 1px, transparent 1px)', backgroundSize: '60px 60px' }}
+          />
+          <div className="relative z-10">
+            <p className="text-blue-100 text-xs font-bold uppercase tracking-widest mb-4">Únete hoy</p>
+            <h2 className="text-3xl sm:text-5xl font-black mb-5 tracking-tight">
+              ¿Listo para empezar<br />a acumular?
+            </h2>
+            <p className="text-blue-100 text-lg mb-10 max-w-md mx-auto">
+              Comienza a ganar envíos gratis con tu próximo pedido.
             </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button
+                onClick={() => navigate('/cliente')}
+                className="inline-flex items-center justify-center gap-2 bg-white text-blue-700 font-bold px-8 py-4 rounded-xl text-sm hover:bg-blue-50 transition-colors shadow-lg"
+              >
+                Ver mis puntos <ArrowRight className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => window.open(whatsappUrl, '_blank', 'noopener')}
+                className="inline-flex items-center justify-center gap-2 bg-white/10 text-white font-semibold px-8 py-4 rounded-xl text-sm hover:bg-white/20 border border-white/20 transition-all"
+              >
+                <Phone className="w-4 h-4" /> WhatsApp
+              </button>
+            </div>
           </div>
         </motion.div>
+      </section>
+
+      {/* ─── FOOTER ──────────────────────────────────────────────────────── */}
+      <footer className="border-t border-gray-100 py-10 px-5 max-w-5xl mx-auto">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-5 text-sm text-gray-400">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center">
+              <Truck className="w-3.5 h-3.5 text-white" />
+            </div>
+            <span className="font-semibold text-gray-700">Estrella Delivery</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5" />
+            Lun – Dom: 9 AM – 10 PM
+          </div>
+          <div className="flex items-center gap-4">
+            <a href={`tel:${contacto.telefono}`} className="hover:text-gray-600 transition-colors">
+              {contacto.telefono}
+            </a>
+            <span className="text-gray-200">|</span>
+            <a href="/login" className="hover:text-gray-600 transition-colors">Acceso Creador</a>
+          </div>
+        </div>
+        <div className="mt-6 pt-6 border-t border-gray-50 text-center text-xs text-gray-300">
+          © {new Date().getFullYear()} Estrella Delivery — Hecho con{' '}
+          <Heart className="w-3 h-3 text-red-400 fill-red-400 inline mx-0.5" /> para nuestros clientes
+        </div>
       </footer>
 
-    </motion.div>
+    </div>
   );
 }

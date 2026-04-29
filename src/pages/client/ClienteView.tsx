@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
-  Star, Phone, Search, Gift, DollarSign,
+  Star, Phone, Search, Gift, DollarSign, Ticket,
   TrendingUp, Clock, MapPin, Sparkles,
   ChevronLeft, QrCode, AlertCircle, Loader2, History, Crown, Sun, Moon,
   Wallet, Truck, Utensils, X, CheckCircle2
 } from 'lucide-react';
+import { toast } from '@/components/ui/toast-native';
 import QRCode from 'qrcode';
 import { supabase, getClienteByTelefono, subscribeToCliente, getHistorialCliente, canjearSaldoBilleteraRPC } from '@/lib/supabase';
 import { PromosBanner } from '@/components/client/PromosBanner';
@@ -31,7 +32,7 @@ export function ClienteView() {
   const [viewState, setViewState] = useState<ViewState>('search');
   const [showQR, setShowQR] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const [historial, setHistorial] = useState<RegistroMovimiento[]>([]);;
+  const [historial, setHistorial] = useState<RegistroMovimiento[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [showRating, setShowRating] = useState(false);
@@ -86,7 +87,10 @@ export function ClienteView() {
     if (telParam && telParam.length >= 10) {
       const cleanTel = telParam.replace(/\D/g, '').slice(-10);
       setTelefono(cleanTel);
-      
+      // BUG-03 fix: clear localStorage before deep-link search to avoid race condition
+      // with the restore-session useEffect that runs simultaneously
+      localStorage.removeItem('estrella_cliente');
+      setCliente(null);
       // Ejecutar búsqueda automática
       setViewState('loading');
       getClienteByTelefono(cleanTel).then(async (data) => {
@@ -114,35 +118,18 @@ export function ClienteView() {
       localStorage.setItem('estrella_cliente', JSON.stringify(updated));
     });
 
-    // Suscripción al historial: cuando se añade un nuevo registro para este
-    // cliente, recargamos la lista de movimientos automáticamente
-    const histChannel = supabase
-      .channel(`historial_${clienteId}`)
+    // BUG-02 fix: Unified single channel instead of two separate ones
+    // listening to the same table/filter — avoids duplicate WebSocket connections
+    const eventsChannel = supabase
+      .channel(`events_${clienteId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'registros_puntos', filter: `cliente_id=eq.${clienteId}` },
-        async () => {
+        async (payload: { new: { id: string; tipo: string } }) => {
+          // Reload history
           const fresh = await getHistorialCliente(clienteId);
           setHistorial(fresh);
-        }
-      )
-      .subscribe();
-
-    // Canal para el modal de calificación — solo se activa en acumulaciones,
-    // NO en canjes de billetera ni envíos gratis (Bug #3 fix)
-    const channelName = `realtime_ratings_${clienteId}`;
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'registros_puntos',
-          filter: `cliente_id=eq.${clienteId}`,
-        },
-        (payload: { new: { id: string; tipo: string } }) => {
-          // Solo mostrar el modal cuando es una acumulación de punto real
+          // Show rating modal only for real point accumulations
           if (payload.new.tipo === 'acumulacion') {
             setActiveRegistroId(payload.new.id);
             setShowRating(true);
@@ -153,8 +140,7 @@ export function ClienteView() {
 
     return () => {
       unsubscribe();
-      supabase.removeChannel(channel);
-      supabase.removeChannel(histChannel);
+      supabase.removeChannel(eventsChannel);
     };
   }, [clienteId]);
 
@@ -238,7 +224,10 @@ export function ClienteView() {
 
     if (res.ok) {
       const codigo = res.codigo || 'SIN-CODIGO';
-      const nuevoSaldo = res.nuevo_saldo ?? ((cliente.saldo_billetera || 0) - monto);
+      // BUG-01 fix: ensure nuevoSaldo is always a valid number before calling .toFixed()
+      const nuevoSaldo = typeof res.nuevo_saldo === 'number'
+        ? res.nuevo_saldo
+        : Math.max(0, (cliente.saldo_billetera || 0) - monto);
       setWalletMsg(`✅ Se descontaron $${monto.toFixed(2)} de tu billetera VIP.\n🎟️ Código de descuento: ${codigo}`);
       setWalletMode('success');
       // Actualizar estado local con datos reales del DB (incluye cupon_activo)
@@ -279,7 +268,10 @@ export function ClienteView() {
 
     if (res.ok) {
       const codigo = res.codigo || 'SIN-CODIGO';
-      const nuevoSaldo = res.nuevo_saldo ?? ((cliente.saldo_billetera || 0) - cobertura);
+      // BUG-01 fix: ensure nuevoSaldo is always a valid number
+      const nuevoSaldo = typeof res.nuevo_saldo === 'number'
+        ? res.nuevo_saldo
+        : Math.max(0, (cliente.saldo_billetera || 0) - cobertura);
       const msg = diferencia > 0
         ? `✅ Cobertura de $${cobertura.toFixed(2)} aplicada.\n💳 Diferencia a pagar: $${diferencia.toFixed(2)}\n🎟️ Código: ${codigo}`
         : `✅ Envío cubierto totalmente ($${cobertura.toFixed(2)}) con tu Billetera VIP.\n🎟️ Código: ${codigo}`;
@@ -313,21 +305,9 @@ export function ClienteView() {
     setWalletLoading(false);
   };
 
-  // Generar QR cuando se muesre y exista cliente
-  useEffect(() => {
-    if (showQR && cliente?.qr_code) {
-      QRCode.toDataURL(cliente.qr_code, {
-        width: 300,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#ffffff'
-        }
-      })
-      .then(url => setQrDataUrl(url))
-      .catch(err => console.error('Error al generar QR:', err));
-    }
-  }, [showQR, cliente?.qr_code]);
+  // BUG-14 fix: removed duplicate QR generation useEffect.
+  // QR is already generated by the useEffect above (lines 162-170) whenever
+  // cliente.qr_code changes, making this second one redundant.
 
   return (
     <motion.div 
@@ -521,7 +501,7 @@ export function ClienteView() {
                           type="tel"
                           inputMode="numeric"
                           pattern="[0-9]*"
-                          maxLength={15}
+                          maxLength={10}
                           required
                         />
                       </div>
@@ -529,7 +509,7 @@ export function ClienteView() {
                     <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                       <Button
                         type="submit"
-                        disabled={telefono.length < 7}
+                        disabled={telefono.length < 10}
                         className="w-full h-14 bg-gradient-primary hover:opacity-90 text-white font-semibold text-lg disabled:opacity-50"
                       >
                         <Search className="w-5 h-5 mr-2" />
@@ -767,7 +747,7 @@ export function ClienteView() {
                                   <p className="text-gray-600 dark:text-gray-400 text-sm text-center">¿Cómo quieres usar tu saldo?</p>
                                   {/* Opción 1: Descuento en comida */}
                                   <button
-                                    onClick={() => setWalletMode('food')}
+                                    onClick={() => { setWalletMode('food'); setWalletMsg(''); }}
                                     className="w-full p-4 rounded-2xl border-2 border-orange-200 hover:border-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all text-left group"
                                   >
                                     <div className="flex items-center gap-3">
@@ -782,7 +762,7 @@ export function ClienteView() {
                                   </button>
                                   {/* Opción 2: Envío gratis */}
                                   <button
-                                    onClick={() => setWalletMode('delivery')}
+                                    onClick={() => { setWalletMode('delivery'); setWalletMsg(''); }}
                                     className="w-full p-4 rounded-2xl border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-left group"
                                   >
                                     <div className="flex items-center gap-3">
@@ -898,7 +878,7 @@ export function ClienteView() {
                                         <p className="font-mono font-black text-2xl text-amber-700 dark:text-amber-300 tracking-[0.25em]">{code}</p>
                                         <p className="text-[11px] text-amber-600/70 dark:text-amber-400/70">Muestra o dicta este código al repartidor</p>
                                         <button
-                                          onClick={() => navigator.clipboard.writeText(code)}
+                                          onClick={() => navigator.clipboard.writeText(code).then(() => toast.success('¡Copiado!', 'Código listo para usar')).catch(() => toast.error('Error', 'No se pudo copiar al portapapeles'))}
                                           className="mt-2 text-xs font-bold text-amber-600 bg-amber-200/60 dark:bg-amber-800/40 dark:text-amber-300 px-4 py-2 rounded-lg hover:bg-amber-300/60 transition-colors"
                                         >
                                           📋 Copiar código
@@ -1099,7 +1079,7 @@ export function ClienteView() {
                                       </div>
                                     </div>
                                     <button
-                                      onClick={() => { navigator.clipboard.writeText(couponCode); }}
+                                      onClick={() => navigator.clipboard.writeText(couponCode).then(() => toast.success('¡Copiado!', 'Código listo para usar')).catch(() => toast.error('Error', 'No se pudo copiar'))}
                                       className="shrink-0 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-200/60 dark:bg-amber-800/40 px-2.5 py-1.5 rounded-lg hover:bg-amber-300/60 transition-colors"
                                     >
                                       Copiar
