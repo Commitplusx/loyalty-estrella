@@ -148,20 +148,18 @@ async function notificarCliente(
     }
     case 'en_camino':
     case 'recibido': {
-      const components = [
-        { type: 'header', parameters: [{ type: 'image', image: { link: 'https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png' } }] },
-        { type: 'body', parameters: [
-          { type: 'text', text: nombreC }, // {{1}}
-          { type: 'text', text: repC },    // {{2}}
-          { type: 'text', text: restC }   // {{3}}
-        ]}
-      ]
+      // Uso de texto plano gratuito en lugar de plantilla (aprovechando ventana 24h)
+      const emoji = estado === 'en_camino' ? '🚀' : '🛍️';
+      const estadoStr = estado === 'en_camino' ? 'va en camino a tu domicilio' : 'ha recogido tu pedido';
+      
+      const msgTexto = `${emoji} *¡Actualización de tu pedido, ${nombreC}!*\n\nTu repartidor *${repC}* ${estadoStr} desde *${restC}*.\n\n¡Gracias por preferir Estrella Delivery! ⭐`;
+      
       const res = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template', template: { name: 'pedido_en_camino_v2', language: { code: 'es_MX' }, components } })
+        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text', text: { body: msgTexto } })
       })
-      if (!res.ok) console.error(`WA error (pedido_en_camino_v2):`, await res.text())
-      return `✅ Plantilla 'pedido_en_camino_v2' enviada`
+      if (!res.ok) console.error(`WA error (${estado} texto plano):`, await res.text())
+      return `✅ Mensaje de texto plano '${estado}' enviado (Ventana 24h)`
     }
     case 'entregado': {
       // Plantilla pedido_entregado_v2 no existe en Meta — usar texto plano como fallback

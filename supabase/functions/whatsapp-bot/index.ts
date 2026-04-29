@@ -102,21 +102,21 @@ serve(async (req: Request) => {
     const { data: rlData } = await supabase.from('bot_memory').select('history').eq('phone', rateLimitKey).maybeSingle()
     let timestamps = (rlData?.history as number[]) || []
     const ventanaTiempo = Date.now() - 60000 // 1 minuto
-    
+
     // Filtrar marcas de tiempo más viejas de 1 min
     timestamps = timestamps.filter(t => t > ventanaTiempo)
-    
+
     if (timestamps.length >= 12) {
       console.warn(`[RATE LIMIT] Bloqueo activo para ${fromPhone}. (${timestamps.length} msgs/min)`)
       // Solo avisamos 1 vez cuando cruza exactamente el límite para no gastar API respondiendo el spam
       if (timestamps.length === 12) {
-         await sendWA(fromPhone, `⚠️ *[SISTEMA]*: Estás enviando demasiados mensajes muy rápido. Por protección del sistema, espera 1 minuto antes de continuar.`)
+        await sendWA(fromPhone, `⚠️ *[SISTEMA]*: Estás enviando demasiados mensajes muy rápido. Por protección del sistema, espera 1 minuto antes de continuar.`)
       }
       timestamps.push(Date.now())
       await supabase.from('bot_memory').upsert({ phone: rateLimitKey, history: timestamps, updated_at: new Date().toISOString() })
       return new Response('OK', { status: 200 })
     }
-    
+
     timestamps.push(Date.now())
     await supabase.from('bot_memory').upsert({ phone: rateLimitKey, history: timestamps, updated_at: new Date().toISOString() })
 
@@ -155,10 +155,10 @@ serve(async (req: Request) => {
       const buttonTitle = msg.interactive?.button_reply?.title || 'Botón presionado'
       cwConvIdPromise = syncToChatwoot(fromPhone, `[Clic Botón] ${buttonTitle}`, profileName, userLabel)
     }
-    
+
     // Disparar sincronización de Atributos Personalizados en segundo plano
     if (userLabel === 'cliente') {
-       updateChatwootProfile(supabase, fromPhone).catch(e => console.error('[CW Sync] Error actualizando perfil:', e))
+      updateChatwootProfile(supabase, fromPhone).catch(e => console.error('[CW Sync] Error actualizando perfil:', e))
     }
 
     // ── COMANDO SECRETO SANEAMIENTO (ahora sí después de esAdmin) ──
@@ -236,9 +236,9 @@ serve(async (req: Request) => {
         // Necesitamos el admin_id para el registro, como from10 no es uuid, busquemos el id del admin o mandamos null/default si no aplica
         // En supabase el admin_id es uuid. Si el RPC acepta null, pasaremos null o buscaremos al admin.
         const { data: adminUser } = await supabase.from('admin_users').select('id').eq('telefono', from10).maybeSingle()
-        const { data, error } = await supabase.rpc('cancelar_cupon', { 
-          p_codigo: codigo, 
-          p_admin_id: adminUser?.id || null 
+        const { data, error } = await supabase.rpc('cancelar_cupon', {
+          p_codigo: codigo,
+          p_admin_id: adminUser?.id || null
         })
         if (error) await sendWA(fromPhone, `❌ Error interno: ${error.message}`)
         else if (!data?.ok) await sendWA(fromPhone, `❌ Error: ${data?.error || 'Cupón no encontrado'}`)
@@ -346,7 +346,27 @@ serve(async (req: Request) => {
       if (cachedRepData) return await handleRepMessage(supabase, fromPhone, from10, msg.text.body as string, cachedRepData)
     }
 
-    // 5. PUBLICO BIENVENIDA O REPARTIDOR MULTIMEDIA ──
+    // 5. CLIENT INTERACTIVE BUTTONS (Aceptar / Rechazar orden)
+    if (!cachedRepData && (!esAdmin || adminEnModoRepartidor)) {
+      const buttonText = msgType === 'interactive' 
+        ? (msg.interactive?.button_reply?.title || msg.interactive?.button_reply?.id || '')
+        : (msgType === 'text' ? (msg.text?.body as string || '') : '')
+      
+      const normalizedText = buttonText.trim().toLowerCase()
+      
+      if (normalizedText === 'aceptar') {
+        await sendWA(fromPhone, `✅ ¡Excelente! Tu orden sigue su curso.\nTe avisaremos por aquí cuando el repartidor vaya en camino. 🛵💨`)
+        return new Response('OK', { status: 200 })
+      } else if (normalizedText === 'rechazar') {
+        await sendWA(fromPhone, `❌ Lamentamos el inconveniente. Un administrador ha sido notificado y se pondrá en contacto contigo a la brevedad.`)
+        if (admin10) {
+          await sendWA(`52${admin10}`, `🚨 *ALERTA CLIENTE RECHAZÓ PEDIDO*\n\nEl cliente acaba de presionar "Rechazar" en la notificación de su pedido.\nComunícate de inmediato: wa.me/${fromPhone}`)
+        }
+        return new Response('OK', { status: 200 })
+      }
+    }
+
+    // 6. PUBLICO BIENVENIDA O REPARTIDOR MULTIMEDIA ──
     if (!esAdmin || adminEnModoRepartidor) {
       // Reuse cached repartidor lookup from above (BUG-24 fix)
       if (cachedRepData) {
@@ -372,7 +392,7 @@ serve(async (req: Request) => {
       try {
         // Mensaje suave para el usuario/restaurante
         await sendWA(errorNotifyPhone, `⚠️ *[SISTEMA]*: Tuvimos un problema técnico procesando tu mensaje. El administrador ha sido notificado y lo revisará de inmediato.`)
-        
+
         // Notificación DLQ (Dead Letter Queue) para el Administrador
         const mainAdmin10 = ADMIN_PHONES_ENV.split(',')[0]?.replace(/\D/g, '').slice(-10)
         if (mainAdmin10) {
@@ -380,8 +400,8 @@ serve(async (req: Request) => {
           const errorMsg = `🚨 *CRITICAL ERROR (DLQ)* 🚨\n\n*De:* ${errorNotifyPhone}\n*Error:* ${e instanceof Error ? e.message : String(e)}\n\n*Payload:*\n\`\`\`${truncBody}\`\`\``
           await sendWA(`52${mainAdmin10}`, errorMsg)
         }
-      } catch (err2) { 
-        console.error('Fallback fail:', err2) 
+      } catch (err2) {
+        console.error('Fallback fail:', err2)
       }
     }
     // Siempre retornar 200 a Meta para evitar reintentos masivos
