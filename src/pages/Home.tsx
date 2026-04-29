@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useInView } from 'framer-motion';
 import { ArrowRight, Phone, Star, Gift, Zap, Shield, Clock, Flame, Heart, Truck, MapPin, Sparkles, ChevronRight } from 'lucide-react';
@@ -56,39 +56,138 @@ const STEPS = [
   { num: '03', icon: Gift,  title: 'Canjea tu gratis', desc: 'Cada 5 envíos acumulas uno gratis. Se aplica automáticamente.' },
 ];
 
+/* ── StepCard: extracted so we can use hooks legally (not inside map) ── */
+function StepCard({ step, index }: { step: { num: string; icon: React.ElementType; title: string; desc: string }; index: number }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: '-50px' });
+
+  // Each step animates in from a different direction
+  const directions = [
+    { x: -50, y: 0 },    // 01 ← from left
+    { x: 0,   y: 50 },  // 02 ↑ from below
+    { x: 50,  y: 0 },   // 03 → from right
+  ];
+  const dir = directions[index] ?? { x: 0, y: 40 };
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, x: dir.x, y: dir.y }}
+      animate={inView ? { opacity: 1, x: 0, y: 0 } : {}}
+      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1], delay: index * 0.12 }}
+      style={{ willChange: 'transform, opacity' }}
+      className="relative group"
+    >
+      <div className="bg-white border border-gray-100 rounded-2xl p-6 sm:p-7 h-full
+        hover:border-blue-200 hover:shadow-xl hover:shadow-blue-50/80 transition-all duration-300">
+
+        <div className="flex items-start justify-between mb-5">
+          {/* Step number — floats up on hover */}
+          <motion.span
+            animate={inView ? { y: [0, -4, 0] } : {}}
+            transition={{ duration: 2.5, delay: index * 0.3 + 0.8, repeat: Infinity, ease: 'easeInOut' }}
+            style={{ willChange: 'transform' }}
+            className="text-5xl sm:text-6xl font-black leading-none select-none
+              bg-gradient-to-br from-blue-200 to-blue-400 bg-clip-text text-transparent
+              group-hover:from-blue-500 group-hover:to-blue-700 transition-all duration-400"
+          >
+            {step.num}
+          </motion.span>
+
+          <motion.div
+            whileHover={{ rotate: 15, scale: 1.15 }}
+            whileTap={{ scale: 0.92 }}
+            style={{ willChange: 'transform' }}
+            className="w-11 h-11 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-center
+              group-hover:bg-blue-600 group-hover:border-blue-600 transition-all duration-300 shadow-sm group-hover:shadow-blue-600/30 group-hover:shadow-lg"
+          >
+            <step.icon className="w-5 h-5 text-blue-500 group-hover:text-white transition-colors duration-300" />
+          </motion.div>
+        </div>
+
+        <h3 className="font-bold text-gray-900 text-base sm:text-lg mb-2">{step.title}</h3>
+        <p className="text-sm text-gray-500 leading-relaxed">{step.desc}</p>
+
+        {/* Animated progress bar */}
+        <motion.div
+          className="mt-5 h-[3px] bg-gradient-to-r from-blue-500 via-blue-400 to-blue-200 rounded-full origin-left"
+          initial={{ scaleX: 0 }}
+          animate={inView ? { scaleX: 1 } : {}}
+          transition={{ duration: 0.8, delay: index * 0.18 + 0.5, ease: [0.22, 1, 0.36, 1] }}
+          style={{ willChange: 'transform' }}
+        />
+
+        {/* Animated dot at end of bar */}
+        <motion.div
+          className="w-2 h-2 rounded-full bg-blue-500 mt-1 ml-auto"
+          initial={{ opacity: 0, scale: 0 }}
+          animate={inView ? { opacity: 1, scale: 1 } : {}}
+          transition={{ duration: 0.3, delay: index * 0.18 + 1.2 }}
+          style={{ willChange: 'transform, opacity' }}
+        />
+      </div>
+
+      {index < 2 && (
+        <div className="hidden md:flex absolute top-10 -right-3 z-10 w-6 h-6 items-center justify-center">
+          <motion.div
+            animate={inView ? { x: [0, 4, 0] } : {}}
+            transition={{ duration: 1.5, delay: index * 0.15 + 1, repeat: Infinity, ease: 'easeInOut' }}
+            style={{ willChange: 'transform' }}
+          >
+            <ChevronRight className="w-4 h-4 text-blue-300" />
+          </motion.div>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
 export function Home() {
   const navigate = useNavigate();
   const { storeState, horasFelices, formatTime, contacto } = useSchedule();
   const whatsappUrl = `https://wa.me/${contacto.whatsapp.replace(/\D/g, '')}`;
 
+  // Scroll-aware nav: add shadow + stronger bg when user scrolls
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   return (
     <div className="min-h-screen bg-white text-gray-950 antialiased overflow-x-hidden">
 
-      {/* ── NAV ── */}
-      <nav className="fixed top-0 inset-x-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-100/80">
-        <div className="max-w-5xl mx-auto px-5 h-16 flex items-center justify-between">
+      {/* ── NAV — blue + scroll-aware + iOS safe-area ── */}
+      <nav
+        className={`fixed top-0 inset-x-0 z-50 bg-blue-600 transition-all duration-300
+          ${scrolled ? 'shadow-xl shadow-blue-700/40' : ''}`}
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
+        <div className="max-w-5xl mx-auto px-5 h-14 sm:h-16 flex items-center justify-between">
           <motion.div className="flex items-center gap-2.5"
             initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
             style={{ willChange: 'transform, opacity' }}>
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-600/30">
+            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm">
               <Truck className="w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-gray-900 tracking-tight">
-              Estrella<span className="text-blue-600">.</span>
+            <span className="font-bold text-white tracking-tight">
+              Estrella<span className="text-blue-200">.</span>
             </span>
           </motion.div>
 
-          <motion.div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border border-gray-200 text-gray-600"
+          <motion.div
+            className="hidden sm:flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-white/15 text-white backdrop-blur-sm"
             initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.45, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
             style={{ willChange: 'transform, opacity' }}>
-            <span className={`w-1.5 h-1.5 rounded-full ${storeState.isOpen ? 'bg-green-500 animate-pulse' : 'bg-red-400'}`} />
+            <span className={`w-1.5 h-1.5 rounded-full ${storeState.isOpen ? 'bg-green-400 animate-pulse' : 'bg-red-300'}`} />
             {storeState.isOpen ? (storeState.isHappyHour ? '🔥 Hora Feliz activa' : 'Abierto') : 'Cerrado'}
           </motion.div>
 
           <motion.button onClick={() => navigate('/cliente')}
-            className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1"
+            className="text-sm font-semibold text-white/90 hover:text-white transition-colors flex items-center gap-1"
             initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
             style={{ willChange: 'transform, opacity' }}
@@ -98,8 +197,9 @@ export function Home() {
         </div>
       </nav>
 
-      {/* ── HERO ── */}
-      <section className="pt-40 pb-24 px-5 max-w-5xl mx-auto">
+      {/* ── HERO — padded to clear nav + iOS notch ── */}
+      <section className="pt-36 sm:pt-44 pb-20 sm:pb-24 px-5 max-w-5xl mx-auto"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 9rem)' }}>
         <div className="grid lg:grid-cols-[1fr_340px] gap-16 items-center">
           <div>
             <motion.div variants={fadeUp} initial="hidden" animate="show" custom={0}
@@ -259,53 +359,9 @@ export function Home() {
         </Reveal>
 
         <div className="grid md:grid-cols-3 gap-4 sm:gap-6">
-          {STEPS.map((step, i) => {
-            const ref = useRef(null);
-            const inView = useInView(ref, { once: true, margin: '-60px' });
-            return (
-              <motion.div key={step.num} ref={ref}
-                initial={{ opacity: 0, y: 40 }}
-                animate={inView ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: i * 0.12 }}
-                style={{ willChange: 'transform, opacity' }}
-                className="relative group">
-                <div className="bg-white border border-gray-100 rounded-2xl p-6 sm:p-7 h-full
-                  hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50 transition-all duration-300">
-                  {/* Step number — now visible with blue accent */}
-                  <div className="flex items-start justify-between mb-4">
-                    <span className="text-5xl sm:text-6xl font-black leading-none
-                      bg-gradient-to-br from-blue-100 to-blue-200 bg-clip-text text-transparent
-                      group-hover:from-blue-500 group-hover:to-blue-600 transition-all duration-300">
-                      {step.num}
-                    </span>
-                    <motion.div
-                      whileHover={{ rotate: 12, scale: 1.1 }}
-                      style={{ willChange: 'transform' }}
-                      className="w-10 h-10 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-center
-                        group-hover:bg-blue-600 group-hover:border-blue-600 transition-all duration-300">
-                      <step.icon className="w-4.5 h-4.5 text-blue-600 group-hover:text-white transition-colors duration-300" />
-                    </motion.div>
-                  </div>
-                  <h3 className="font-bold text-gray-900 text-base sm:text-lg mb-2">{step.title}</h3>
-                  <p className="text-sm text-gray-500 leading-relaxed">{step.desc}</p>
-
-                  {/* Animated progress dot at bottom */}
-                  <motion.div
-                    className="mt-4 h-0.5 bg-gradient-to-r from-blue-500 to-blue-300 rounded-full origin-left"
-                    initial={{ scaleX: 0 }}
-                    animate={inView ? { scaleX: 1 } : {}}
-                    transition={{ duration: 0.7, delay: i * 0.15 + 0.4, ease: [0.22, 1, 0.36, 1] }}
-                    style={{ willChange: 'transform' }}
-                  />
-                </div>
-                {i < 2 && (
-                  <div className="hidden md:flex absolute top-8 -right-3 z-10 w-6 h-6 items-center justify-center">
-                    <ChevronRight className="w-4 h-4 text-blue-300" />
-                  </div>
-                )}
-              </motion.div>
-            );
-          })}
+          {STEPS.map((step, i) => (
+            <StepCard key={step.num} step={step} index={i} />
+          ))}
         </div>
       </section>
 

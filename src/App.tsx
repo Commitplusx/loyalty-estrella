@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { ToastProvider } from '@/components/ui/toast-native';
@@ -8,6 +8,7 @@ import { PedidoView } from '@/pages/PedidoView';
 import { Terminos } from '@/pages/Terminos';
 import { FlashBanner } from '@/components/FlashBanner';
 import { SplashScreen } from '@/components/SplashScreen';
+import { useDarkMode } from '@/hooks/useDarkMode';
 import './App.css';
 
 function AnimatedRoutes() {
@@ -28,9 +29,14 @@ function AnimatedRoutes() {
 }
 
 function App() {
-  const [showSplash, setShowSplash] = useState(() => {
-    return !sessionStorage.getItem('splashShown');
-  });
+  const [showSplash, setShowSplash] = useState(() => !sessionStorage.getItem('splashShown'));
+  const { isDark } = useDarkMode();
+
+  // Dynamic theme-color: iOS status bar color follows dark/light mode in real time
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', isDark ? '#1e40af' : '#2563eb');
+  }, [isDark]);
 
   const handleSplashComplete = () => {
     sessionStorage.setItem('splashShown', 'true');

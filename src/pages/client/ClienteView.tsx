@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Star, Phone, Search, Gift, DollarSign, Ticket,
   TrendingUp, Clock, MapPin, Sparkles,
-  ChevronLeft, QrCode, AlertCircle, Loader2, History, Crown, Sun, Moon,
+  ChevronLeft, QrCode, AlertCircle, History, Crown, Sun, Moon,
   Wallet, Truck, Utensils, X, CheckCircle2
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast-native';
@@ -50,6 +50,14 @@ export function ClienteView() {
 
   const { storeState, horasFelices, formatTime } = useSchedule();
   const { isDark, toggle } = useDarkMode();
+
+  // Scroll-aware header shadow
+  const [navScrolled, setNavScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setNavScrolled(window.scrollY > 6);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   // Al montar, restauramos la sesión del cliente desde localStorage (intencional).
   useEffect(() => {
@@ -164,16 +172,18 @@ export function ClienteView() {
     setCliente(null);
     setQrDataUrl(null);
 
-    const data = await getClienteByTelefono(tel);
+    // Run fetch + 4-second minimum timer in parallel — whichever finishes last wins
+    const MIN_LOADING_MS = 4000;
+    const [data] = await Promise.all([
+      getClienteByTelefono(tel),
+      new Promise<void>(res => setTimeout(res, MIN_LOADING_MS)),
+    ]);
 
     if (data === null) {
-      // Real DB / network error
       setViewState('error-generic');
     } else if ('found' in data) {
-      // Discriminant: number not registered
       setViewState('error-not-found');
     } else {
-      // It's a Cliente
       const histData = await getHistorialCliente(data.id);
       setHistorial(histData);
       setCliente(data);
@@ -317,10 +327,17 @@ export function ClienteView() {
       transition={{ duration: 0.3, ease: 'easeOut' }}
       className="min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-slate-100 dark:from-background dark:via-card dark:to-background transition-colors duration-300"
     >
-      {/* Header */}
-      <header className="bg-white/90 dark:bg-background/90 backdrop-blur-md shadow-sm dark:shadow-none sticky top-0 z-50 border-b border-transparent dark:border-border">
+      {/* Header — sticky with iOS safe-area and scroll-aware shadow */}
+      <header
+        className={`bg-white/90 dark:bg-background/90 backdrop-blur-xl sticky top-0 z-50
+          border-b transition-all duration-200
+          ${navScrolled
+            ? 'border-gray-200 dark:border-border shadow-sm dark:shadow-none'
+            : 'border-transparent dark:border-border'}`}
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-14 sm:h-16">
             <div className="flex items-center gap-2">
               <div className="relative mr-2">
                 <img src="/logo.png" className="w-10 h-10 object-contain drop-shadow-md" alt="Estrella Delivery" />
@@ -368,29 +385,103 @@ export function ClienteView() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Main — bottom safe-area for iPhone home bar */}
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 2rem)' }}>
 
-        {/* ── LOADING ── */}
+        {/* ── LOADING — premium ── */}
         {viewState === 'loading' && (
-          <div className="space-y-6">
-            <div className="text-center">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-orange-100 mb-4 animate-pulse">
-                <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            className="max-w-md mx-auto pt-10 space-y-8"
+          >
+            {/* Orbital spinner */}
+            <div className="flex flex-col items-center gap-5">
+              <div className="relative w-24 h-24">
+                {/* Outer ring — spins fast */}
+                <motion.div
+                  className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-600 border-r-blue-400"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 0.9, repeat: Infinity, ease: 'linear' }}
+                  style={{ willChange: 'transform' }}
+                />
+                {/* Middle ring — spins slow, opposite */}
+                <motion.div
+                  className="absolute inset-2 rounded-full border-4 border-transparent border-b-blue-300 border-l-blue-500"
+                  animate={{ rotate: -360 }}
+                  transition={{ duration: 1.6, repeat: Infinity, ease: 'linear' }}
+                  style={{ willChange: 'transform' }}
+                />
+                {/* Center pulse dot */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <motion.div
+                    className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/40"
+                    animate={{ scale: [1, 1.12, 1] }}
+                    transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+                    style={{ willChange: 'transform' }}
+                  >
+                    <Search className="w-4 h-4 text-white" />
+                  </motion.div>
+                </div>
               </div>
-              <h2 className="text-xl font-bold text-gray-800 mb-1">Consultando tu cuenta…</h2>
-              <p className="text-gray-500 text-sm">Buscando el número {telefono}</p>
+
+              <div className="text-center">
+                <motion.h2
+                  className="text-xl font-bold text-gray-900 mb-1"
+                  animate={{ opacity: [0.7, 1, 0.7] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  Buscando tu cuenta…
+                </motion.h2>
+                <p className="text-sm text-gray-400 font-mono tracking-wide">
+                  +52 {telefono.slice(0, 3)} {telefono.slice(3, 6)} {telefono.slice(6)}
+                </p>
+              </div>
             </div>
-            {/* Skeleton cards */}
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div
+
+            {/* Shimmer skeleton cards — staggered */}
+            <div className="space-y-3">
+              {[
+                { w: 'w-full', h: 'h-28' },
+                { w: 'w-full', h: 'h-20' },
+                { w: 'w-full', h: 'h-20' },
+                { w: 'w-3/4',  h: 'h-14' },
+              ].map((s, i) => (
+                <motion.div
                   key={i}
-                  className="h-24 rounded-2xl bg-gray-200 animate-pulse"
-                  style={{ opacity: 1 - i * 0.2 }}
+                  initial={{ opacity: 0, x: -16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.07, duration: 0.4, ease: 'easeOut' }}
+                  style={{ willChange: 'transform, opacity' }}
+                  className={`${s.w} ${s.h} rounded-2xl relative overflow-hidden bg-gray-100`}
+                >
+                  {/* Shimmer sweep */}
+                  <motion.div
+                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent"
+                    animate={{ x: ['-100%', '200%'] }}
+                    transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut', delay: i * 0.15 }}
+                    style={{ willChange: 'transform' }}
+                  />
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Progress dots */}
+            <div className="flex justify-center gap-1.5">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  className="w-1.5 h-1.5 rounded-full bg-blue-400"
+                  animate={{ scale: [1, 1.6, 1], opacity: [0.4, 1, 0.4] }}
+                  transition={{ duration: 1, repeat: Infinity, delay: i * 0.2, ease: 'easeInOut' }}
+                  style={{ willChange: 'transform, opacity' }}
                 />
               ))}
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* ── ERROR: NOT REGISTERED ── */}

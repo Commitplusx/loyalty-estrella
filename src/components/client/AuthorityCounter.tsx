@@ -38,6 +38,11 @@ export default function AuthorityCounter() {
   const containerRef = useRef(null);
   const inView = useInView(containerRef, { once: true, margin: '-60px' });
 
+  // If the splash screen is showing on first load, the counters are already
+  // "in view" behind the splash overlay — useInView fires but the user can't
+  // see it. Detect first-load and add extra delay so animation runs AFTER splash.
+  const splashExtraDelay = !sessionStorage.getItem('splashShown') ? 3200 : 0;
+
   useEffect(() => {
     const fetchCount = async () => {
       const { count, error } = await supabase
@@ -56,8 +61,8 @@ export default function AuthorityCounter() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const deliveries = useCountUp(inView ? deliveryTarget : 0, 1600, 0);
-  const years = useCountUp(inView ? YEARS_OF_EXPERIENCE : 0, 1200, 150);
+  const deliveries = useCountUp(inView ? deliveryTarget : 0, 1600, splashExtraDelay);
+  const years = useCountUp(inView ? YEARS_OF_EXPERIENCE : 0, 1200, splashExtraDelay + 150);
 
   const stats = [
     { icon: Truck,  value: `+${deliveries.toLocaleString()}`, label: 'Entregas exitosas', sub: 'y contando...', bg: 'bg-blue-600', glow: 'shadow-blue-600/25' },
@@ -71,26 +76,17 @@ export default function AuthorityCounter() {
         <motion.div key={s.label}
           initial={{ opacity: 0, y: 20 }}
           animate={inView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: i * 0.1 }}
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: splashExtraDelay / 1000 + i * 0.1 }}
           style={{ willChange: 'transform, opacity' }}
           className={`relative overflow-hidden rounded-xl sm:rounded-2xl p-3 sm:p-5 ${s.bg} shadow-xl ${s.glow}`}
         >
-          {/* Glow blob */}
           <div className="absolute -top-4 -right-4 w-16 h-16 sm:w-20 sm:h-20 rounded-full blur-2xl bg-white/15 pointer-events-none" />
-
-          {/* Icon */}
           <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg bg-white/15 flex items-center justify-center mb-2 sm:mb-3 backdrop-blur-sm">
-            <s.icon className="w-3.5 h-3.5 sm:w-4.5 sm:h-4.5 text-white" />
+            <s.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
           </div>
-
-          {/* Value */}
-          <p className="text-lg sm:text-3xl font-black text-white tracking-tight leading-none">
-            {s.value}
-          </p>
+          <p className="text-lg sm:text-3xl font-black text-white tracking-tight leading-none">{s.value}</p>
           <p className="text-[10px] sm:text-xs font-semibold text-white/70 mt-0.5 sm:mt-1 leading-tight">{s.label}</p>
           <p className="hidden sm:block text-[10px] text-white/40 mt-0.5">{s.sub}</p>
-
-          {/* Shimmer */}
           <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
         </motion.div>
       ))}
