@@ -12,9 +12,10 @@ export interface Cliente {
   es_vip: boolean;
   rango: 'bronce' | 'plata' | 'oro';
   saldo_billetera: number;
-  cupon_activo?: string | null; // Cupón activo actual (si hay uno)
+  cupon_activo?: string | null;
   costo_envio?: number;
   notas_crm?: string;
+  foto_fachada_url?: string | null; // BUG-28 fix: used in notificar-whatsapp for delivery photos
   created_at: string;
   updated_at: string;
 }

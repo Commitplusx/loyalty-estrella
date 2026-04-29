@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react';
 import type { Cliente } from '@/types';
-import { 
-  getClienteById, 
+import {
+  getClienteById,
   acumularPuntoRPC,
   canjearEnvioGratisRPC,
-  subscribeToCliente 
+  subscribeToCliente
 } from '@/lib/supabase';
 
 const ENVIOS_PARA_GRATIS = 5;
@@ -30,7 +30,7 @@ export function usePuntos(): UsePuntosReturn {
   const cargarCliente = useCallback(async (clienteId: string) => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const data = await getClienteById(clienteId);
       if (data) {
@@ -51,10 +51,10 @@ export function usePuntos(): UsePuntosReturn {
     }
 
     setIsLoading(true);
-    
+
     try {
       const result = await acumularPuntoRPC(cliente.id, adminId);
-      
+
       if (!result.success) {
         return { success: false, message: result.message };
       }
@@ -80,7 +80,7 @@ export function usePuntos(): UsePuntosReturn {
     }
 
     setIsLoading(true);
-    
+
     try {
       const result = await canjearEnvioGratisRPC(cliente.id, adminId);
 

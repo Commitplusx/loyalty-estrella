@@ -16,7 +16,9 @@ export function ClientStats({ cliente, historial }: ClientStatsProps) {
   }).length;
 
   const canjesTotales = historial.filter(h => h.tipo === 'canje').length;
-  const ahorroEstimado = canjesTotales * 35;
+  // BUG-23 fix: use $50 (actual delivery price) not hardcoded $35 (happy hour price)
+  const VALOR_CANJE_ESTIMADO = 50;
+  const ahorroEstimado = canjesTotales * VALOR_CANJE_ESTIMADO;
 
   const rangoEmoji = (cliente.rango ?? 'bronce') === 'oro' ? '👑' : (cliente.rango ?? 'bronce') === 'plata' ? '🥈' : '🥉';
   const rangoNext = (cliente.rango ?? 'bronce') === 'bronce' ? 'Plata' : (cliente.rango ?? 'bronce') === 'plata' ? 'Oro' : null;

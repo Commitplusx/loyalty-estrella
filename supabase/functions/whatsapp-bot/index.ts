@@ -90,7 +90,10 @@ serve(async (req: Request) => {
         console.log(`⚠️ Mensaje duplicado ignorado (Optimistic): ${messageId}`)
         return new Response('OK', { status: 200 })
       }
+      // BUG-29 fix: don't continue processing if idempotency insert failed for other reasons
+      // This prevents double-processing messages when the DB is under stress
       console.error(`[IDEMPOTENCY DB ERROR]`, idempError)
+      return new Response('Service Unavailable', { status: 503 })
     }
 
     // ── RATE LIMITING ANTI-SPAM (Protección de Costos API y Base de Datos) ──
@@ -330,17 +333,24 @@ serve(async (req: Request) => {
       if (portalResponse) return portalResponse
     }
 
-    // 4. REP FLOW O PUBLICO ──
+    // BUG-24 fix: cache repartidor lookup to avoid two identical DB queries
+    let cachedRepData: { id: string; user_id: string; nombre: string; alias: string } | null = null
+    if (!esAdmin || adminEnModoRepartidor) {
+      const { data } = await supabase.from('repartidores')
+        .select('id, user_id, nombre, alias').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
+      cachedRepData = data
+    }
+
+    // 4. REP FLOW — only for text messages
     if ((!esAdmin || adminEnModoRepartidor) && msgType === 'text') {
-      const { data: isRep } = await supabase.from('repartidores').select('id, user_id, nombre, alias').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
-      if (isRep) return await handleRepMessage(supabase, fromPhone, from10, msg.text.body as string, isRep)
+      if (cachedRepData) return await handleRepMessage(supabase, fromPhone, from10, msg.text.body as string, cachedRepData)
     }
 
     // 5. PUBLICO BIENVENIDA O REPARTIDOR MULTIMEDIA ──
     if (!esAdmin || adminEnModoRepartidor) {
-      const { data: isRep } = await supabase.from('repartidores').select('nombre').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
-      if (isRep) {
-        await sendWA(fromPhone, `🤖 Hola ${isRep.nombre}.\nRecuerda usar los botones para avanzar pedidos o enviarme mensajes de texto sin emojis.`)
+      // Reuse cached repartidor lookup from above (BUG-24 fix)
+      if (cachedRepData) {
+        await sendWA(fromPhone, `🤖 Hola ${cachedRepData.nombre}.\nRecuerda usar los botones para avanzar pedidos o enviarme mensajes de texto sin emojis.`)
       } else {
         const profileName = body?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.profile?.name
         // Si el cliente está registrado, mostrar sus puntos en lugar de redirigir al admin

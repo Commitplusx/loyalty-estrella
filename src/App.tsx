@@ -1,13 +1,14 @@
+import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
+import { ToastProvider } from '@/components/ui/toast-native';
 import { Home } from '@/pages/Home';
 import { ClienteView } from '@/pages/client/ClienteView';
-import { Terminos } from '@/pages/Terminos';
-import { ToastProvider } from '@/components/ui/toast-native';
-import { FlashBanner } from '@/components/FlashBanner';
-import { AnimatePresence } from 'framer-motion';
-import './App.css';
-
 import { PedidoView } from '@/pages/PedidoView';
+import { Terminos } from '@/pages/Terminos';
+import { FlashBanner } from '@/components/FlashBanner';
+import { SplashScreen } from '@/components/SplashScreen';
+import './App.css';
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -26,9 +27,6 @@ function AnimatedRoutes() {
   );
 }
 
-import { useState } from 'react';
-import { SplashScreen } from '@/components/SplashScreen';
-
 function App() {
   const [showSplash, setShowSplash] = useState(() => {
     return !sessionStorage.getItem('splashShown');
@@ -43,7 +41,6 @@ function App() {
     <ToastProvider>
       <BrowserRouter>
         {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
-        
         <FlashBanner />
         <AnimatedRoutes />
       </BrowserRouter>

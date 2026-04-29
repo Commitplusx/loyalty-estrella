@@ -43,9 +43,11 @@ const HORAS_FELICES: HoraFeliz[] = [
 
 const PRECIO_NORMAL_DEFAULT = 50; // Precio regular de envío
 
+// BUG-21 fix: use empty strings so contact buttons are disabled during loading
+// instead of directing users to '1234567890' (a fake number)
 const CONTACTO_DEFAULT: AppContacto = {
-  whatsapp: '1234567890',
-  telefono: '+1 234 567 890',
+  whatsapp: '',
+  telefono: '',
   precio_normal: PRECIO_NORMAL_DEFAULT
 };
 

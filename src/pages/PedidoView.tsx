@@ -31,6 +31,9 @@ export function PedidoView() {
   const [aceptando, setAceptando] = useState(false);
 
   useEffect(() => {
+    // BUG-20 fix: guard at the top so cleanup always runs when id changes
+    if (!id) return;
+
     const fetchPedido = async () => {
       try {
         const { data, error } = await supabase
@@ -47,32 +50,31 @@ export function PedidoView() {
         setLoading(false);
       }
     };
-    if (id) fetchPedido();
+
+    fetchPedido();
 
     // Sincronización en tiempo real
-    if (id) {
-      const channel = supabase
-        .channel(`pedido-${id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'pedidos',
-            filter: `id=eq.${id}`,
-          },
-          (payload) => {
-            console.log('Pedido actualizado remoto:', payload.new);
-            setPedido(payload.new as Pedido);
-            toast.info(`El pedido ahora está: ${payload.new.estado.replace('_', ' ')}`);
-          }
-        )
-        .subscribe();
+    const channel = supabase
+      .channel(`pedido-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'pedidos',
+          filter: `id=eq.${id}`,
+        },
+        (payload) => {
+          console.log('Pedido actualizado remoto:', payload.new);
+          setPedido(payload.new as Pedido);
+          toast.info(`El pedido ahora está: ${payload.new.estado.replace('_', ' ')}`);
+        }
+      )
+      .subscribe();
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [id]);
 
   const handleActualizarEstado = async (nuevoEstado: string) => {
@@ -86,6 +88,12 @@ export function PedidoView() {
       if (error) throw error;
       toast.success(`Pedido actualizado a: ${nuevoEstado.replace('_', ' ')}`);
       setPedido((prev) => prev ? { ...prev, estado: nuevoEstado as any } : null);
+
+      // BUG-26 fix: notify client via WhatsApp when state changes from web
+      // Previously only the WhatsApp bot triggered these notifications
+      supabase.functions.invoke('notificar-whatsapp', {
+        body: { tipo: nuevoEstado, pedido_id: id }
+      }).catch(console.error);
     } catch (err: any) {
       toast.error('Error al actualizar el estado');
     } finally {
@@ -98,6 +106,9 @@ export function PedidoView() {
       window.open(`https://www.google.com/maps/dir/?api=1&destination=${pedido.lat},${pedido.lng}&travelmode=driving`, '_blank');
     } else if (pedido?.direccion) {
       window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pedido.direccion + ', Comitan')}&travelmode=driving`, '_blank');
+    } else {
+      // BUG-31 fix: show feedback instead of silently doing nothing
+      toast.warning('Sin datos de ubicación', 'Este pedido no tiene dirección ni coordenadas GPS');
     }
   };
 

@@ -13,6 +13,7 @@ export function FlashBanner() {
         .from('anuncios_flash')
         .select('mensaje')
         .eq('activo', true)
+        .order('created_at', { ascending: false }) // BUG-27 fix: always show newest active banner
         .limit(1)
         .maybeSingle();
 
