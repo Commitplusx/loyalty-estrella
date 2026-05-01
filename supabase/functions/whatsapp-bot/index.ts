@@ -355,7 +355,7 @@ serve(async (req: Request) => {
       const normalizedText = buttonText.trim().toLowerCase()
       
       if (normalizedText === 'aceptar') {
-        await sendWA(fromPhone, `✅ ¡Excelente! Tu orden sigue su curso.\nTe avisaremos por aquí cuando el repartidor vaya en camino. 🛵💨`)
+        await sendWA(fromPhone, `✅ **¡Confirmado!** Hemos validado tu pedido.\n\nPrepara la mesa 🍽️, te avisaremos por este medio en cuanto tu repartidor inicie la ruta hacia tu domicilio. 🛵💨`)
         return new Response('OK', { status: 200 })
       } else if (normalizedText === 'rechazar') {
         await sendWA(fromPhone, `❌ Lamentamos el inconveniente. Un administrador ha sido notificado y se pondrá en contacto contigo a la brevedad.`)

@@ -11,7 +11,7 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const WA_TOKEN    = Deno.env.get('WHATSAPP_TOKEN')!
+const WA_TOKEN = Deno.env.get('WHATSAPP_TOKEN')!
 const WA_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_ID')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -92,7 +92,7 @@ async function sendInteractiveButton(to: string, text: string, buttonId: string,
         type: 'button',
         body: { text },
         action: {
-          buttons: [ { type: 'reply', reply: { id: buttonId, title: buttonTitle } } ]
+          buttons: [{ type: 'reply', reply: { id: buttonId, title: buttonTitle } }]
         }
       }
     }),
@@ -111,7 +111,7 @@ async function notificarCliente(
   const restC = restaurante || 'Restaurante'
   const repC = repartidorNombre || 'tu repartidor'
   const numeroOrden = generarNumeroOrden(pedidoId)
-  
+
   switch (estado) {
     case 'creado': {
       const res0 = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
@@ -130,11 +130,13 @@ async function notificarCliente(
     case 'aceptado': {
       const components = [
         { type: 'header', parameters: [{ type: 'image', image: { link: 'https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png' } }] },
-        { type: 'body', parameters: [
-          { type: 'text', text: nombreC }, // {{1}}
-          { type: 'text', text: restC },   // {{2}}
-          { type: 'text', text: repC }    // {{3}}
-        ]}
+        {
+          type: 'body', parameters: [
+            { type: 'text', text: nombreC }, // {{1}}
+            { type: 'text', text: restC },   // {{2}}
+            { type: 'text', text: repC }    // {{3}}
+          ]
+        }
       ]
       console.log(`[TEMPLATE] Enviando 'pedido_aceptado_v2' (es_MX) a ${telFormateado} | params: ${nombreC}, ${restC}, ${repC}`)
       const res = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
@@ -143,17 +145,17 @@ async function notificarCliente(
       })
       const t1 = await res.text()
       if (!res.ok) console.error(`[TEMPLATE] ❌ 'pedido_aceptado_v2' HTTP ${res.status} → ${t1}`)
-      else console.log(`[TEMPLATE] ✅ 'pedido_aceptado_v2' → ${t1.substring(0,120)}`)
+      else console.log(`[TEMPLATE] ✅ 'pedido_aceptado_v2' → ${t1.substring(0, 120)}`)
       return `✅ Plantilla 'pedido_aceptado_v2' enviada`
     }
     case 'en_camino':
     case 'recibido': {
       // Uso de texto plano gratuito en lugar de plantilla (aprovechando ventana 24h)
-      const emoji = estado === 'en_camino' ? '🚀' : '🛍️';
-      const estadoStr = estado === 'en_camino' ? 'va en camino a tu domicilio' : 'ha recogido tu pedido';
-      
-      const msgTexto = `${emoji} *¡Actualización de tu pedido, ${nombreC}!*\n\nTu repartidor *${repC}* ${estadoStr} desde *${restC}*.\n\n¡Gracias por preferir Estrella Delivery! ⭐`;
-      
+      const isEnCamino = estado === 'en_camino';
+      const msgTexto = isEnCamino
+        ? `🚀 *¡Vamos en camino, ${nombreC}!*\n\nTu repartidor *${repC}* ya salió de *${restC}* y se dirige a tu domicilio. 🛵💨\n\nPor favor, mantente al tanto para recibirlo. ⭐`
+        : `🛍️ *¡Tu pedido está en buenas manos, ${nombreC}!*\n\nTu repartidor *${repC}* acaba de recoger tu comida en *${restC}*.\n¡En breves momentos saldrá hacia tu ubicación! 📍`;
+
       const res = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text', text: { body: msgTexto } })
@@ -163,7 +165,7 @@ async function notificarCliente(
     }
     case 'entregado': {
       // Plantilla pedido_entregado_v2 no existe en Meta — usar texto plano como fallback
-      const msgEntregado = `✅ *¡Tu pedido fue entregado, ${nombreC}!*\n\n🍽️ *${restC}*\n\n¡Gracias por elegir Estrella Delivery! ⭐\n¿Cómo estuvo tu experiencia? Cuéntanos.`
+      const msgEntregado = `✅ *¡Entregado con éxito, ${nombreC}!* 🎉\n\nEsperamos que disfrutes tu pedido de *${restC}*. 🍽️\n\nGracias por confiar en Estrella Delivery. 🌟\n¿Qué tal fue nuestro servicio? ¡Nos encantaría leerte!`;
       const res = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text', text: { body: msgEntregado } })
@@ -171,6 +173,16 @@ async function notificarCliente(
       if (!res.ok) console.error(`WA error (entregado texto):`, await res.text())
 
       return `✅ Plantilla 'pedido_entregado_v2' enviada`
+    }
+    case 'punto_acumulado': {
+      // Solo se llama cuando el cliente acaba de completar un ciclo y tiene envío gratis disponible
+      const msgPunto = `🎉 *¡Felicidades, ${nombreC}!*\n\n⭐ Acabas de completar tu ciclo de puntos en *Estrella Delivery*.\n\n🎁 *¡Tienes un envío GRATIS disponible!*\nMuestra tu QR al repartidor en tu próximo pedido para canjearlo.\n\n¡Gracias por tu lealtad! 🌟`
+      const res = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text', text: { body: msgPunto } })
+      })
+      if (!res.ok) console.error(`WA error (punto_acumulado):`, await res.text())
+      return `✅ Notificación 'punto_acumulado' enviada a ${tel}`
     }
     default:
       return `ℹ️ Estado '${estado}' no dispara plantilla de cliente`
@@ -204,10 +216,10 @@ serve(async (req: Request) => {
     const bodyText = await req.text()
     console.log("NOTIFICAR_WHATSAPP INCOMING BODY:", bodyText)
     if (!bodyText) return new Response(JSON.stringify({ error: 'Body vacio' }), { status: 400 })
-    
+
     const payload = JSON.parse(bodyText)
     const { tipo } = payload
-    
+
     if (!tipo) {
       return new Response(JSON.stringify({ error: 'tipo es requerido' }), { status: 400 })
     }
@@ -217,7 +229,7 @@ serve(async (req: Request) => {
       const telFormateado = formatTel(cliente_tel)
       const f_exp = new Date(expires_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
       const strDesc = tipo_canje === 'billetera' ? `$${descuento} en pedidos/comida` : `Hasta $${descuento} en tu próximo envío`
-      
+
       const res = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -226,12 +238,14 @@ serve(async (req: Request) => {
             name: 'estrella_cupon_generado',
             language: { code: 'en' },
             components: [
-              { type: 'body', parameters: [
-                { type: 'text', text: cliente_nombre || 'Cliente' }, // {{1}}
-                { type: 'text', text: codigo_cupon }, // {{2}}
-                { type: 'text', text: strDesc }, // {{3}}
-                { type: 'text', text: f_exp } // {{4}}
-              ]}
+              {
+                type: 'body', parameters: [
+                  { type: 'text', text: cliente_nombre || 'Cliente' }, // {{1}}
+                  { type: 'text', text: codigo_cupon }, // {{2}}
+                  { type: 'text', text: strDesc }, // {{3}}
+                  { type: 'text', text: f_exp } // {{4}}
+                ]
+              }
             ]
           }
         })
@@ -256,12 +270,14 @@ serve(async (req: Request) => {
             name: 'estrella_cupon_generado',
             language: { code: 'en' },
             components: [
-              { type: 'body', parameters: [
-                { type: 'text', text: cliente_nombre || 'Cliente' }, // {{1}}
-                { type: 'text', text: codigo_canje || 'CUPON' }, // {{2}}
-                { type: 'text', text: strDesc }, // {{3}}
-                { type: 'text', text: fExp } // {{4}}
-              ]}
+              {
+                type: 'body', parameters: [
+                  { type: 'text', text: cliente_nombre || 'Cliente' }, // {{1}}
+                  { type: 'text', text: codigo_canje || 'CUPON' }, // {{2}}
+                  { type: 'text', text: strDesc }, // {{3}}
+                  { type: 'text', text: fExp } // {{4}}
+                ]
+              }
             ]
           }
         })
@@ -310,31 +326,31 @@ serve(async (req: Request) => {
     if (tipo === 'alerta_zombie') {
       const adminPhone = Deno.env.get('ADMIN_PHONE') || '529631550244'
       const msgZ = `🚨 *ALERTA CRÍTICA: PEDIDO ZOMBIE* 🚨\n\n⚠️ El siguiente pedido se ha atascado:\n\n🔢 *Orden:* ${numeroOrden}\n📦 *${descripcion || pedido.descripcion}*\n\n⏱️ *Tiempo total:* ${minutos_total} min\n⏳ *Sin moverse:* ${minutos_estancado} min\n\n👉 Por favor, revisa o reasigna el pedido.`
-      
+
       const resZ = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: formatTel(adminPhone), type: 'text', text: { body: msgZ } })
       })
       if (!resZ.ok) console.error(`Error enviando Alerta Zombie:`, await resZ.text())
-      
+
       results.push(`✅ Alerta Zombie despachada al Admin: ${adminPhone}`)
       return new Response(JSON.stringify({ ok: true, actions: results }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
 
     // A. Notificar al Repartidor (Si aplica)
     const repartidorTelPayload = repartidor_tel
-    
+
     if (tipo === 'asignacion' && (pedido.repartidor_id || repartidorTelPayload)) {
       let repTelefono = repartidorTelPayload
       let repNombre = 'Repartidor'
-      
+
       const { data: rep } = await supabase
         .from('repartidores')
         .select('telefono, nombre')
         .or(`user_id.eq.${pedido.repartidor_id},telefono.ilike.%${extract10Digits(repTelefono || '')}%`)
         .limit(1)
         .maybeSingle()
-      
+
       if (rep) {
         repTelefono = rep.telefono
         repNombre = rep.nombre || 'Repartidor'
@@ -350,7 +366,7 @@ serve(async (req: Request) => {
           .eq('activo', true)
           .limit(1)
           .maybeSingle()
-        
+
         if (rInfo) {
           if (rInfo.direccion) restLoc += `\n🏠 Origen: ${rInfo.direccion}`
           if (rInfo.lat && rInfo.lng) restLoc += `\n📍 Ubicación Origen: https://maps.google.com/?q=${rInfo.lat},${rInfo.lng}`
@@ -362,19 +378,19 @@ serve(async (req: Request) => {
         if (pedido.cliente_tel) {
           const { data: cInfo } = await supabase.from('clientes').select('foto_fachada_url').eq('telefono', extract10Digits(pedido.cliente_tel)).maybeSingle()
           if (cInfo?.foto_fachada_url) {
-             clienteFachada = `\n📸 Fachada: ${cInfo.foto_fachada_url}`
+            clienteFachada = `\n📸 Fachada: ${cInfo.foto_fachada_url}`
           }
         }
 
         const rawDesc = pedido.descripcion || 'Paquete'
         const descT = pedido.restaurante ? `🍽️ ${pedido.restaurante} - ${rawDesc}` : rawDesc
         const dirT = (pedido.direccion || 'Revisar detalles') + restLoc + clienteFachada
-        
+
         // ── VERIFICAR CUPÓN ACTIVO ──
         let cuponInfo = ''
         let cuponBtnId = `BTN_ACEPTAR_${pedido.id}`
         let cuponBtnTitle = 'Aceptar Servicio'
-        
+
         if (pedido.cliente_tel) {
           const { data: cupon } = await supabase.from('cupones')
             .select('*')
@@ -382,7 +398,7 @@ serve(async (req: Request) => {
             .eq('estado', 'activo')
             .limit(1)
             .maybeSingle()
-            
+
           if (cupon) {
             cuponInfo = `⚠️ *CUPÓN ACTIVO: ${cupon.codigo}*\n💰 *Descuento:* $${cupon.valor_pesos} pesos\n💡 Cobra $${cupon.valor_pesos} pesos MENOS de la cuenta total.`
             // Si hay cupón, cambiamos el botón para que el repartidor confirme que lo aplicó (se maneja en rep-handler)
@@ -390,14 +406,14 @@ serve(async (req: Request) => {
             // Para simplificar, le mandamos el mismo botón de aceptar.
           }
         }
-        
+
         await sendWhatsAppTemplate(
-          formatTel(repTelefono), 
-          'estrella_delivery__nueva_orden', 
+          formatTel(repTelefono),
+          'estrella_delivery__nueva_orden',
           [descT.substring(0, 1024), dirT.substring(0, 1024)],
           [repNombre]
         )
-        
+
         const msg = buildRepartidorAsignacionText(pedido.id, descT, dirT, pedido.restaurante, pedido.cliente_nombre, cuponInfo)
         try {
           await sendInteractiveButton(formatTel(repTelefono), msg, cuponBtnId, cuponBtnTitle)
@@ -407,32 +423,62 @@ serve(async (req: Request) => {
         results.push('⚠️ Repartidor sin teléfono o no encontrado')
       }
     } else {
-    // B. Notificar al Cliente
-    if (tipo !== 'asignacion' && pedido.cliente_tel) {
-      let repNom = 'tu repartidor'
-      if (pedido.repartidor_id) {
-        // Buscar por user_id O por id para cubrir repartidores sin cuenta Auth
-        const { data: r } = await supabase.from('repartidores').select('nombre')
-          .or(`user_id.eq.${pedido.repartidor_id},id.eq.${pedido.repartidor_id}`)
-          .limit(1).maybeSingle()
-        if (r?.nombre) repNom = r.nombre
-      }
+      // B. Notificar al Cliente
+      if (tipo !== 'asignacion' && pedido.cliente_tel) {
+        let repNom = 'tu repartidor'
+        if (pedido.repartidor_id) {
+          // Buscar por user_id O por id para cubrir repartidores sin cuenta Auth
+          const { data: r } = await supabase.from('repartidores').select('nombre')
+            .or(`user_id.eq.${pedido.repartidor_id},id.eq.${pedido.repartidor_id}`)
+            .limit(1).maybeSingle()
+          if (r?.nombre) repNom = r.nombre
+        }
 
-      const resCli = await notificarCliente(
-        tipo, 
-        pedido.cliente_tel, 
-        pedido.descripcion,
-        pedido.id,
-        pedido.cliente_nombre ?? undefined, 
-        pedido.direccion ?? undefined,
-        pedido.restaurante ?? undefined,
-        repNom,
-        supabase
-      )
-      results.push(resCli)
-    } else if (tipo !== 'asignacion') {
-      results.push('⚠️ Cliente sin teléfono')
-    }
+        const resCli = await notificarCliente(
+          tipo,
+          pedido.cliente_tel,
+          pedido.descripcion,
+          pedido.id,
+          pedido.cliente_nombre ?? undefined,
+          pedido.direccion ?? undefined,
+          pedido.restaurante ?? undefined,
+          repNom,
+          supabase
+        )
+        results.push(resCli)
+
+        // ── AUTO-NOTIFICAR si el cliente acaba de completar un ciclo de puntos ──
+        if (tipo === 'entregado' && pedido.cliente_tel) {
+          try {
+            const tel10 = pedido.cliente_tel.replace(/\D/g, '').slice(-10)
+            const { data: cl } = await supabase
+              .from('clientes')
+              .select('puntos, rango, es_vip, nombre')
+              .eq('telefono', tel10)
+              .maybeSingle()
+
+            if (cl) {
+              const meta = cl.rango === 'oro' ? 3 : (cl.rango === 'plata' || cl.es_vip ? 4 : 5)
+              // Si los puntos son múltiplo exacto de meta (ciclo completado) y tiene al menos 1 ciclo
+              if (cl.puntos > 0 && cl.puntos % meta === 0) {
+                await notificarCliente(
+                  'punto_acumulado',
+                  pedido.cliente_tel,
+                  '',
+                  pedido.id,
+                  cl.nombre ?? pedido.cliente_nombre ?? undefined,
+                  undefined, undefined, undefined, supabase
+                )
+                results.push(`🎉 Notificación de ciclo completo enviada a ${tel10}`)
+              }
+            }
+          } catch (eP) {
+            console.warn('Error en auto-notificación de ciclo:', eP)
+          }
+        }
+      } else if (tipo !== 'asignacion') {
+        results.push('⚠️ Cliente sin teléfono')
+      }
     }
 
     console.log("Final Actions:", results)

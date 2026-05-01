@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useMotionValue, useTransform, animate } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,7 @@ import {
   Star, Phone, Search, Gift, DollarSign, Ticket,
   TrendingUp, Clock, MapPin, Sparkles,
   ChevronLeft, QrCode, AlertCircle, Loader2, History, Crown, Sun, Moon,
-  Wallet, Truck, Utensils, X, CheckCircle2
+  Wallet, Truck, Utensils, X, CheckCircle2, Share2
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast-native';
 import QRCode from 'qrcode';
@@ -50,6 +50,13 @@ export function ClienteView() {
 
   const { storeState, horasFelices, formatTime } = useSchedule();
   const { isDark, toggle } = useDarkMode();
+  const { contacto } = useSchedule();
+  const whatsappUrl = `https://wa.me/${(contacto?.whatsapp || '529631550244').replace(/\D/g, '')}`;
+
+  // Historial tab filter
+  const [historialTab, setHistorialTab] = useState<'todo' | 'puntos' | 'canjes'>('todo');
+  // Lazy load historial
+  const [historialLimit, setHistorialLimit] = useState(10);
 
   // Scroll-aware header shadow
   const [navScrolled, setNavScrolled] = useState(false);
@@ -220,6 +227,28 @@ export function ClienteView() {
     : metaVip;
   const MAX_ENVIO_GRATIS = 45; // Tope máximo de cobertura por envío gratis
 
+  // ── Compartir tarjeta de lealtad ─────────────────────────────────────────
+  const handleShare = () => {
+    const url = `https://www.app-estrella.shop/loyalty/${cliente?.telefono}`;
+    const text = `¡Mira mi tarjeta de lealtad en Estrella Delivery! 🌟\n${url}`;
+    if (navigator.share) {
+      navigator.share({ title: 'Estrella Delivery', text, url }).catch(() => {});
+    } else {
+      const wa = `https://wa.me/?text=${encodeURIComponent(text)}`;
+      window.open(wa, '_blank');
+    }
+  };
+
+  // ── Animated points counter ───────────────────────────────────────────────
+  const displayPoints = useMotionValue(0);
+  const displayPointsRounded = useTransform(displayPoints, v => Math.round(v));
+  useEffect(() => {
+    if (viewState === 'result' && cliente) {
+      const ctrl = animate(displayPoints, puntosEnCiclo, { duration: 1.2, ease: 'easeOut' });
+      return ctrl.stop;
+    }
+  }, [viewState, cliente?.id, puntosEnCiclo]);
+
   // ── Canjeadores de billetera ──────────────────────────────────────────────
   const handleCanjeComida = async () => {
     const monto = parseFloat(foodAmount);
@@ -327,66 +356,67 @@ export function ClienteView() {
       transition={{ duration: 0.3, ease: 'easeOut' }}
       className="min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-slate-100 dark:from-background dark:via-card dark:to-background transition-colors duration-300"
     >
-      {/* Header — sticky with iOS safe-area and scroll-aware shadow */}
+      {/* Header — fixed blue like Home page */}
       <header
-        className={`bg-white/90 dark:bg-background/90 backdrop-blur-xl sticky top-0 z-50
-          border-b transition-all duration-200
-          ${navScrolled
-            ? 'border-gray-200 dark:border-border shadow-sm dark:shadow-none'
-            : 'border-transparent dark:border-border'}`}
+        className={`fixed top-0 inset-x-0 z-50 bg-blue-600 transition-all duration-300
+          ${navScrolled ? 'shadow-xl shadow-blue-700/40' : ''}`}
         style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16">
-            <div className="flex items-center gap-2">
-              <div className="relative mr-2">
-                <img src="/logo.png" className="w-10 h-10 object-contain drop-shadow-md" alt="Estrella Delivery" />
+            {/* Logo */}
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm">
+                <img src="/logo.png" className="w-6 h-6 object-contain" alt="Estrella" />
               </div>
-              <span className="text-xl font-bold text-gray-900 dark:text-white">
-                Estrella <span className="text-orange-500">Delivery</span>
+              <span className="font-bold text-white tracking-tight">
+                Estrella<span className="text-blue-200">.</span>
               </span>
             </div>
-            <Badge
-              variant={storeState.isOpen ? 'default' : 'secondary'}
-              className={storeState.isOpen
-                ? storeState.isHappyHour ? 'bg-amber-500' : 'bg-green-500'
-                : ''}
-            >
-              {storeState.isOpen
-                ? storeState.isHappyHour ? 'HORA FELIZ' : 'ABIERTO'
-                : 'CERRADO'}
-            </Badge>
 
-            {/* Botón tema claro/oscuro */}
-            <button
-              onClick={toggle}
-              aria-label="Cambiar tema"
-              className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-100 dark:bg-card hover:bg-orange-50 dark:hover:bg-muted transition-colors"
-            >
-              {isDark
-                ? <Sun className="w-4 h-4 text-amber-400" />
-                : <Moon className="w-4 h-4 text-gray-500" />
-              }
-            </button>
+            {/* Estado tienda */}
+            <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-white/15 text-white backdrop-blur-sm">
+              <span className={`w-1.5 h-1.5 rounded-full ${storeState.isOpen ? 'bg-green-400 animate-pulse' : 'bg-red-300'}`} />
+              {storeState.isOpen ? (storeState.isHappyHour ? '🔥 Hora Feliz' : 'Abierto') : 'Cerrado'}
+            </div>
 
-            {/* Botón de cerrar sesión — solo visible cuando hay cliente activo */}
-            {cliente && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleReset}
-                className="text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-destructive/10 dark:hover:text-red-400 ml-1 text-xs gap-1"
+            {/* Controles derechos */}
+            <div className="flex items-center gap-2">
+              <Badge
+                variant={storeState.isOpen ? 'default' : 'secondary'}
+                className={`sm:hidden text-[10px] px-2 py-0.5 ${storeState.isOpen
+                  ? storeState.isHappyHour ? 'bg-amber-500' : 'bg-green-500'
+                  : 'bg-white/20 text-white'}`}
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                Cerrar sesión
-              </Button>
-            )}
+                {storeState.isOpen ? (storeState.isHappyHour ? 'HORA FELIZ' : 'ABIERTO') : 'CERRADO'}
+              </Badge>
+              <button
+                onClick={toggle}
+                aria-label="Cambiar tema"
+                className="w-8 h-8 rounded-full flex items-center justify-center bg-white/15 hover:bg-white/25 transition-colors"
+              >
+                {isDark
+                  ? <Sun className="w-4 h-4 text-amber-300" />
+                  : <Moon className="w-4 h-4 text-white" />}
+              </button>
+              {cliente && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleReset}
+                  className="text-white/80 hover:text-white hover:bg-white/15 ml-1 text-xs gap-1"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  Salir
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Main — bottom safe-area for iPhone home bar */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8"
+      {/* Main — padding-top to clear fixed header + bottom safe-area for iPhone home bar */}
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pt-20 sm:pt-24"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 2rem)' }}>
 
         {/* ── LOADING — premium ── */}
@@ -544,6 +574,7 @@ export function ClienteView() {
             exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.3 }}
             className="grid lg:grid-cols-[1fr_minmax(auto,450px)_1fr] gap-6 lg:gap-8 items-start"
+          style={{ background: 'transparent' }}
           >
             {/* Left Column (PC) / Bottom (Mobile): Authority Counter y Promos */}
             <div className="space-y-6 order-2 lg:order-1 pt-2 lg:pt-0">
@@ -720,17 +751,91 @@ export function ClienteView() {
             {/* Profile Header — Minimalist */}
             <div className="mb-6 pb-5 border-b border-gray-100">
               <div className="flex items-center gap-3">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${isVip ? 'bg-amber-100' : 'bg-orange-100'}`}>
-                  {isVip ? <Crown className="w-6 h-6 text-amber-500" /> : <Star className="w-6 h-6 text-orange-400" />}
-                </div>
+                {/* Avatar con inicial del cliente */}
+                {(() => {
+                  const initial = (cliente.nombre || '?')[0].toUpperCase();
+                  const avatarColors = [
+                    'bg-blue-500', 'bg-violet-500', 'bg-emerald-500',
+                    'bg-rose-500', 'bg-amber-500', 'bg-cyan-500',
+                  ];
+                  const colorIdx = (cliente.telefono?.charCodeAt(cliente.telefono.length - 1) || 0) % avatarColors.length;
+                  return isVip ? (
+                    <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 bg-amber-100">
+                      <Crown className="w-6 h-6 text-amber-500" />
+                    </div>
+                  ) : (
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${avatarColors[colorIdx]} shadow-md`}>
+                      <span className="text-lg font-black text-white">{initial}</span>
+                    </div>
+                  );
+                })()}
                 <div className="min-w-0 flex-1">
-                  <h1 className="text-lg font-bold text-gray-900 truncate">{cliente.nombre}</h1>
+                  <h1 className="text-lg font-bold text-gray-900 dark:text-white truncate">{cliente.nombre}</h1>
                   <p className="text-sm text-gray-400">{cliente.telefono}{isVip && <span className="ml-2 text-amber-500 font-semibold">· VIP</span>}</p>
                 </div>
+                {/* Botón compartir tarjeta */}
+                <button
+                  onClick={handleShare}
+                  title="Compartir mi tarjeta"
+                  className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-500 transition-colors"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
                 <button onClick={handleReset} className="text-gray-400 hover:text-gray-600 transition-colors p-1">
                   <X className="w-5 h-5" />
                 </button>
               </div>
+
+              {/* Cupón activo — Banner prominente */}
+              {cliente.cupon_activo && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-4 relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 p-4 text-white shadow-lg shadow-orange-500/30"
+                >
+                  {/* Glow bg */}
+                  <div className="absolute -top-4 -right-4 w-24 h-24 bg-white/20 rounded-full blur-2xl pointer-events-none" />
+                  <div className="relative z-10">
+                    <div className="flex items-center gap-2 mb-2">
+                      <motion.span
+                        animate={{ rotate: [0, 10, -10, 0] }}
+                        transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                        className="text-xl"
+                      >
+                        🎟️
+                      </motion.span>
+                      <span className="text-xs font-bold uppercase tracking-widest text-white/80">Cupón activo — Lista para usar</span>
+                    </div>
+                    <p className="font-mono font-black text-3xl tracking-[0.2em] mb-2">{cliente.cupon_activo}</p>
+                    <p className="text-xs text-orange-100 mb-3">Muestra o dicta este código al repartidor. No puedes generar otro hasta que se marque como usado.</p>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(cliente.cupon_activo!);
+                        toast.success('¡Copiado!', 'Código listo para compartir');
+                      }}
+                      className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors"
+                    >
+                      📋 Copiar código
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Foto de fachada del cliente */}
+              {(cliente as any).foto_fachada_url && (
+                <div className="mt-4 rounded-2xl overflow-hidden shadow-md">
+                  <img
+                    src={(cliente as any).foto_fachada_url}
+                    alt="Fachada"
+                    className="w-full h-32 object-cover"
+                  />
+                  <div className="bg-gray-50 dark:bg-card px-3 py-1.5">
+                    <p className="text-[10px] text-gray-400 flex items-center gap-1">
+                      <MapPin className="w-3 h-3" /> Dirección de entrega registrada
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* PC: 3 columns | Mobile: single column */}
@@ -994,24 +1099,56 @@ export function ClienteView() {
                               <div>
                                 <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-1">Tu Progreso</p>
                                 <p className="text-3xl font-black text-gray-900">
-                                  {cliente.puntos % metaVip}<span className="text-lg text-gray-300 font-medium"> / {metaVip}</span>
+                                  <motion.span>{displayPointsRounded}</motion.span>
+                                  <span className="text-lg text-gray-300 font-medium"> / {metaVip}</span>
                                 </p>
                               </div>
-                              <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center">
-                                <Gift className="w-6 h-6 text-orange-400" />
+                              <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
+                                <Gift className="w-6 h-6 text-blue-500" />
                               </div>
                             </div>
                             <div className="bg-gray-100 rounded-full h-2 overflow-hidden">
-                              <div
-                                className="bg-orange-400 h-full rounded-full transition-all duration-1000 ease-out"
-                                style={{ width: `${progreso}%` }}
+                              <motion.div
+                                className="bg-blue-500 h-full rounded-full"
+                                initial={{ width: '0%' }}
+                                animate={{ width: `${progreso}%` }}
+                                transition={{ duration: 1.2, ease: 'easeOut', delay: 0.2 }}
                               />
                             </div>
-                            <p className="text-xs text-gray-400 mt-2 text-center">
-                              {enviosRestantes === 0
-                                ? '¡Tu próximo envío es GRATIS! 🎉'
-                                : `${enviosRestantes} envío${enviosRestantes > 1 ? 's' : ''} más para envío gratis`}
-                            </p>
+                            {/* Motivational alert when 1 away */}
+                            {enviosRestantes === 1 && (
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: 1.3 }}
+                                className="mt-3 flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2"
+                              >
+                                <motion.span
+                                  animate={{ scale: [1, 1.3, 1] }}
+                                  transition={{ duration: 0.8, repeat: Infinity, ease: 'easeInOut' }}
+                                  className="text-lg"
+                                >
+                                  🎉
+                                </motion.span>
+                                <p className="text-xs font-bold text-green-700">¡Solo te falta <span className="text-green-600">1 envío</span> para el gratis!</p>
+                              </motion.div>
+                            )}
+                            {enviosRestantes === 0 && (
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: 1.3 }}
+                                className="mt-3 flex items-center gap-2 bg-emerald-500 rounded-xl px-3 py-2.5"
+                              >
+                                <span className="text-lg">🎊</span>
+                                <p className="text-xs font-bold text-white">¡Tu próximo envío es COMPLETAMENTE GRATIS!</p>
+                              </motion.div>
+                            )}
+                            {enviosRestantes > 1 && (
+                              <p className="text-xs text-gray-400 mt-2 text-center">
+                                {enviosRestantes} envío{enviosRestantes > 1 ? 's' : ''} más para envío gratis
+                              </p>
+                            )}
                           </div>
                           <div className="p-4">
                             <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
@@ -1021,7 +1158,7 @@ export function ClienteView() {
                                   <div
                                     key={idx}
                                     className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500 ${
-                                      filled ? 'bg-orange-400 shadow-sm' : 'bg-gray-100'
+                                      filled ? 'bg-blue-500 shadow-sm shadow-blue-300' : 'bg-gray-100'
                                     }`}
                                   >
                                     <Star className={`w-5 h-5 ${filled ? 'text-white fill-white' : 'text-gray-300'}`} />
@@ -1035,7 +1172,7 @@ export function ClienteView() {
                                 <p className="text-[10px] text-gray-400 uppercase tracking-wider">Totales</p>
                               </div>
                               <div className="text-center">
-                                <p className="text-xl font-black text-orange-500">{cliente.puntos % metaVip}</p>
+                                <p className="text-xl font-black text-blue-500">{cliente.puntos % metaVip}</p>
                                 <p className="text-[10px] text-gray-400 uppercase tracking-wider">Puntos</p>
                               </div>
                               <div className="text-center">
@@ -1049,7 +1186,7 @@ export function ClienteView() {
                         {/* Botón de Canje */}
                         <button
                           onClick={() => setShowCanjeModal(true)}
-                          className="w-full mt-3 py-3 rounded-xl bg-orange-500 text-white font-semibold flex items-center justify-center gap-2 hover:bg-orange-600 transition-colors"
+                          className="w-full mt-3 py-3 rounded-xl bg-blue-600 text-white font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors shadow-sm"
                         >
                           <Ticket className="w-5 h-5" />
                           Canjear Beneficio
@@ -1103,17 +1240,40 @@ export function ClienteView() {
                 {/* Wrapped Stats */}
                 <ClientStats cliente={cliente} historial={historial} />
 
-                {/* Historial Estrella */}
+                {/* Historial Estrella con Tabs */}
                 <div className="mb-6">
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                    <History className="w-5 h-5 text-orange-500" />
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <History className="w-5 h-5 text-blue-500" />
                     Historial Estrella
                   </h3>
+                  {/* Tabs */}
+                  <div className="flex gap-1.5 mb-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+                    {(['todo', 'puntos', 'canjes'] as const).map(tab => (
+                      <button
+                        key={tab}
+                        onClick={() => setHistorialTab(tab)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                          historialTab === tab
+                            ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        }`}
+                      >
+                        {tab === 'todo' ? 'Todo' : tab === 'puntos' ? '⭐ Puntos' : '🎁 Canjes'}
+                      </button>
+                    ))}
+                  </div>
                   <div className="space-y-3">
                     {historial.length === 0 ? (
                       <p className="text-gray-500 italic text-center text-sm py-4">Aún no hay movimientos</p>
                     ) : (
-                      historial.map((mov: RegistroMovimiento) => {
+                      historial
+                        .filter(mov => {
+                          if (historialTab === 'puntos') return mov.tipo !== 'canje';
+                          if (historialTab === 'canjes') return mov.tipo === 'canje';
+                          return true;
+                        })
+                        .slice(0, historialLimit)
+                        .map((mov: RegistroMovimiento) => {
                         // Extract coupon code from description if present
                         const codeMatch = mov.descripcion?.match(/Código:\s*(CANJE-[A-Z0-9]+)/i);
                         const couponCode = codeMatch ? codeMatch[1] : null;
@@ -1173,7 +1333,20 @@ export function ClienteView() {
                             </Card>
                           </div>
                         );
-                      })
+                      }))
+                    )}
+                    {/* Ver más button */}
+                    {historial.filter(mov => {
+                      if (historialTab === 'puntos') return mov.tipo !== 'canje';
+                      if (historialTab === 'canjes') return mov.tipo === 'canje';
+                      return true;
+                    }).length > historialLimit && (
+                      <button
+                        onClick={() => setHistorialLimit(prev => prev + 10)}
+                        className="w-full py-2.5 text-sm font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors border border-blue-100 dark:border-blue-800"
+                      >
+                        Ver más movimientos ↓
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1215,6 +1388,25 @@ export function ClienteView() {
           />
         )}
       </AnimatePresence>
+      {/* Floating WhatsApp button */}
+      <motion.a
+        href={whatsappUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-6 right-5 z-40 w-14 h-14 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center shadow-xl shadow-green-500/40 transition-colors"
+        style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ delay: 0.8, type: 'spring', stiffness: 260, damping: 20 }}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.93 }}
+        aria-label="Contactar por WhatsApp"
+      >
+        <svg viewBox="0 0 24 24" className="w-7 h-7 fill-white" xmlns="http://www.w3.org/2000/svg">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+        </svg>
+      </motion.a>
+
     </motion.div>
   );
 }
