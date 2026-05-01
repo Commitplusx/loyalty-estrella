@@ -1397,7 +1397,7 @@ export function ClienteView() {
                             </Card>
                           </div>
                         );
-                      }))
+                      })
                     )}
                     {/* Ver más button */}
                     {historial.filter(mov => {
