@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { AnimatePresence, motion, useMotionValue, useTransform, animate } from 'framer-motion';
+import confetti from 'canvas-confetti';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Star, Phone, Search, Gift, DollarSign, Ticket,
-  TrendingUp, Clock, MapPin, Sparkles,
+  TrendingUp, Clock, MapPin, Sparkles, Download,
   ChevronLeft, QrCode, AlertCircle, Loader2, History, Crown, Sun, Moon,
-  Wallet, Truck, Utensils, X, CheckCircle2, Share2
+  Wallet, Truck, Utensils, X, CheckCircle2, Share2, Heart
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast-native';
 import QRCode from 'qrcode';
@@ -249,6 +250,28 @@ export function ClienteView() {
     }
   }, [viewState, cliente?.id, puntosEnCiclo]);
 
+  // ── Confetti when cycle is complete ──────────────────────────────────────
+  useEffect(() => {
+    if (viewState === 'result' && cliente && enviosRestantes === 0 && cliente.envios_totales > 0) {
+      const t = setTimeout(() => {
+        confetti({ particleCount: 120, spread: 80, origin: { y: 0.55 }, colors: ['#2563eb', '#f59e0b', '#10b981', '#f97316', '#8b5cf6'] });
+        setTimeout(() => confetti({ particleCount: 60, spread: 100, origin: { y: 0.4, x: 0.2 }, colors: ['#2563eb', '#fbbf24'] }), 300);
+        setTimeout(() => confetti({ particleCount: 60, spread: 100, origin: { y: 0.4, x: 0.8 }, colors: ['#10b981', '#f97316'] }), 500);
+      }, 1400);
+      return () => clearTimeout(t);
+    }
+  }, [viewState, cliente?.id, enviosRestantes]);
+
+  // ── Descargar QR ─────────────────────────────────────────────────────────
+  const handleDownloadQR = () => {
+    if (!qrDataUrl) return;
+    const a = document.createElement('a');
+    a.href = qrDataUrl;
+    a.download = `estrella-qr-${cliente?.telefono || 'mi-codigo'}.png`;
+    a.click();
+    toast.success('¡QR descargado!', 'Guardado en tu galería');
+  };
+
   // ── Canjeadores de billetera ──────────────────────────────────────────────
   const handleCanjeComida = async () => {
     const monto = parseFloat(foodAmount);
@@ -354,7 +377,7 @@ export function ClienteView() {
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 1.02, y: -10 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-slate-100 dark:from-background dark:via-card dark:to-background transition-colors duration-300"
+      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/20 transition-colors duration-300"
     >
       {/* Header — fixed blue like Home page */}
       <header
@@ -836,6 +859,38 @@ export function ClienteView() {
                   </div>
                 </div>
               )}
+
+              {/* Rango badge + progreso al siguiente nivel */}
+              {(() => {
+                const rango = cliente.rango || 'bronce';
+                const rangoConfig: Record<string, { label: string; emoji: string; color: string; nextLabel: string; nextMeta: number; currentMeta: number }> = {
+                  bronce: { label: 'Bronce', emoji: '🥉', color: 'bg-amber-700/10 text-amber-700 border-amber-700/20', nextLabel: 'Plata', nextMeta: 20, currentMeta: 0 },
+                  plata:  { label: 'Plata',  emoji: '🥈', color: 'bg-slate-400/10 text-slate-600 border-slate-400/20', nextLabel: 'Oro', nextMeta: 50, currentMeta: 20 },
+                  oro:    { label: 'Oro',    emoji: '🥇', color: 'bg-amber-400/10 text-amber-600 border-amber-400/20', nextLabel: 'Leyenda', nextMeta: 100, currentMeta: 50 },
+                };
+                const cfg = rangoConfig[rango] || rangoConfig.bronce;
+                const envTot = cliente.envios_totales || 0;
+                const pct = Math.min(100, Math.round(((envTot - cfg.currentMeta) / (cfg.nextMeta - cfg.currentMeta)) * 100));
+                return (
+                  <div className={`mt-3 flex items-center gap-3 px-3 py-2.5 rounded-xl border ${cfg.color}`}>
+                    <span className="text-xl">{cfg.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold uppercase tracking-wider">{cfg.label}</span>
+                        <span className="text-[10px] font-medium opacity-70">{envTot} envíos · Siguiente: {cfg.nextLabel}</span>
+                      </div>
+                      <div className="h-1.5 bg-black/10 rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full bg-current rounded-full opacity-60"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* PC: 3 columns | Mobile: single column */}
@@ -1233,6 +1288,15 @@ export function ClienteView() {
                   <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">{cliente.nombre}</p>
                   <p className="text-[10px] text-gray-400">{cliente.telefono}</p>
                 </div>
+                {/* Download QR */}
+                {qrDataUrl && (
+                  <button
+                    onClick={handleDownloadQR}
+                    className="w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-xl py-2 transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Guardar QR
+                  </button>
+                )}
               </div>
 
               {/* ── RIGHT COLUMN: Stats + History + Free alert ── */}
@@ -1370,8 +1434,27 @@ export function ClienteView() {
         )}
       </main>
 
-      <footer className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center">
-        <p className="text-muted-foreground text-sm">Estrella Delivery — Tu servicio de envíos de confianza</p>
+      <footer className="border-t border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center shadow-sm">
+                <Truck className="w-3.5 h-3.5 text-white" />
+              </div>
+              <span className="font-semibold text-sm text-gray-700 dark:text-gray-300">Estrella Delivery</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-gray-400">
+              <Clock className="w-3.5 h-3.5" /> Lun – Dom: 9 AM – 10 PM
+            </div>
+            <a href={whatsappUrl} target="_blank" rel="noopener noreferrer"
+              className="text-xs text-green-600 dark:text-green-400 font-semibold hover:underline flex items-center gap-1">
+              Hacer un pedido →
+            </a>
+          </div>
+          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 text-center text-[10px] text-gray-300 dark:text-gray-600">
+            © {new Date().getFullYear()} Estrella Delivery — Hecho con <Heart className="w-2.5 h-2.5 text-red-400 fill-red-400 inline mx-0.5" /> para nuestros clientes
+          </div>
+        </div>
       </footer>
       <AnimatePresence>
         {showRating && activeRegistroId && (
