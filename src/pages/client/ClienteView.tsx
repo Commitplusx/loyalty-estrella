@@ -771,132 +771,114 @@ export function ClienteView() {
             transition={{ duration: 0.4 }}
             className="w-full"
           >
-            {/* Profile Header — Minimalist */}
-            <div className="mb-6 pb-5 border-b border-gray-100">
-              <div className="flex items-center gap-3">
-                {/* Avatar con inicial del cliente */}
-                {(() => {
-                  const initial = (cliente.nombre || '?')[0].toUpperCase();
-                  const avatarColors = [
-                    'bg-blue-500', 'bg-violet-500', 'bg-emerald-500',
-                    'bg-rose-500', 'bg-amber-500', 'bg-cyan-500',
-                  ];
-                  const colorIdx = (cliente.telefono?.charCodeAt(cliente.telefono.length - 1) || 0) % avatarColors.length;
-                  return isVip ? (
-                    <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 bg-amber-100">
-                      <Crown className="w-6 h-6 text-amber-500" />
-                    </div>
-                  ) : (
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${avatarColors[colorIdx]} shadow-md`}>
-                      <span className="text-lg font-black text-white">{initial}</span>
-                    </div>
-                  );
-                })()}
-                <div className="min-w-0 flex-1">
-                  <h1 className="text-lg font-bold text-gray-900 dark:text-white truncate">{cliente.nombre}</h1>
-                  <p className="text-sm text-gray-400">{cliente.telefono}{isVip && <span className="ml-2 text-amber-500 font-semibold">· VIP</span>}</p>
-                </div>
-                {/* Botón compartir tarjeta */}
-                <button
-                  onClick={handleShare}
-                  title="Compartir mi tarjeta"
-                  className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-500 transition-colors"
-                >
-                  <Share2 className="w-4 h-4" />
-                </button>
-                <button onClick={handleReset} className="text-gray-400 hover:text-gray-600 transition-colors p-1">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+            {/* ── DESKTOP: 2-column sidebar layout | MOBILE: single column ── */}
+            <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start">
+            {/* ── LEFT SIDEBAR (Profile + Progress + QR) ── */}
+            <div className="w-full lg:w-80 xl:w-96 shrink-0 lg:sticky lg:top-24 space-y-4">
 
-              {/* Cupón activo — Banner prominente */}
-              {cliente.cupon_activo && (
-                <motion.div
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mt-4 relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 p-4 text-white shadow-lg shadow-orange-500/30"
-                >
-                  {/* Glow bg */}
-                  <div className="absolute -top-4 -right-4 w-24 h-24 bg-white/20 rounded-full blur-2xl pointer-events-none" />
-                  <div className="relative z-10">
-                    <div className="flex items-center gap-2 mb-2">
-                      <motion.span
-                        animate={{ rotate: [0, 10, -10, 0] }}
-                        transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-                        className="text-xl"
-                      >
-                        🎟️
-                      </motion.span>
-                      <span className="text-xs font-bold uppercase tracking-widest text-white/80">Cupón activo — Lista para usar</span>
+              {/* Profile Header */}
+              <Card className="border-0 shadow-lg dark:bg-card">
+                <CardContent className="p-5 space-y-4">
+                  {/* Avatar + nombre */}
+                  <div className="flex items-center gap-3">
+                    {(() => {
+                      const initial = (cliente.nombre || '?')[0].toUpperCase();
+                      const avatarColors = [
+                        'bg-blue-500', 'bg-violet-500', 'bg-emerald-500',
+                        'bg-rose-500', 'bg-amber-500', 'bg-cyan-500',
+                      ];
+                      const colorIdx = (cliente.telefono?.charCodeAt(cliente.telefono.length - 1) || 0) % avatarColors.length;
+                      return isVip ? (
+                        <div className="w-14 h-14 rounded-full flex items-center justify-center shrink-0 bg-amber-100 shadow-md">
+                          <Crown className="w-7 h-7 text-amber-500" />
+                        </div>
+                      ) : (
+                        <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 ${avatarColors[colorIdx]} shadow-md`}>
+                          <span className="text-xl font-black text-white">{initial}</span>
+                        </div>
+                      );
+                    })()}
+                    <div className="min-w-0 flex-1">
+                      <h1 className="text-base font-bold text-gray-900 dark:text-white truncate">{cliente.nombre}</h1>
+                      <p className="text-xs text-gray-400">{cliente.telefono}{isVip && <span className="ml-2 text-amber-500 font-semibold">· VIP</span>}</p>
                     </div>
-                    <p className="font-mono font-black text-3xl tracking-[0.2em] mb-2">{cliente.cupon_activo}</p>
-                    <p className="text-xs text-orange-100 mb-3">Muestra o dicta este código al repartidor. No puedes generar otro hasta que se marque como usado.</p>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(cliente.cupon_activo!);
-                        toast.success('¡Copiado!', 'Código listo para compartir');
-                      }}
-                      className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors"
-                    >
-                      📋 Copiar código
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={handleShare} title="Compartir" className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-500 transition-colors">
+                        <Share2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={handleReset} className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </motion.div>
-              )}
 
-              {/* Foto de fachada del cliente */}
-              {(cliente as any).foto_fachada_url && (
-                <div className="mt-4 rounded-2xl overflow-hidden shadow-md">
-                  <img
-                    src={(cliente as any).foto_fachada_url}
-                    alt="Fachada"
-                    className="w-full h-32 object-cover"
-                  />
-                  <div className="bg-gray-50 dark:bg-card px-3 py-1.5">
-                    <p className="text-[10px] text-gray-400 flex items-center gap-1">
-                      <MapPin className="w-3 h-3" /> Dirección de entrega registrada
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Rango badge + progreso al siguiente nivel */}
-              {(() => {
-                const rango = cliente.rango || 'bronce';
-                const rangoConfig: Record<string, { label: string; emoji: string; color: string; nextLabel: string; nextMeta: number; currentMeta: number }> = {
-                  bronce: { label: 'Bronce', emoji: '🥉', color: 'bg-amber-700/10 text-amber-700 border-amber-700/20', nextLabel: 'Plata', nextMeta: 20, currentMeta: 0 },
-                  plata:  { label: 'Plata',  emoji: '🥈', color: 'bg-slate-400/10 text-slate-600 border-slate-400/20', nextLabel: 'Oro', nextMeta: 50, currentMeta: 20 },
-                  oro:    { label: 'Oro',    emoji: '🥇', color: 'bg-amber-400/10 text-amber-600 border-amber-400/20', nextLabel: 'Leyenda', nextMeta: 100, currentMeta: 50 },
-                };
-                const cfg = rangoConfig[rango] || rangoConfig.bronce;
-                const envTot = cliente.envios_totales || 0;
-                const pct = Math.min(100, Math.round(((envTot - cfg.currentMeta) / (cfg.nextMeta - cfg.currentMeta)) * 100));
-                return (
-                  <div className={`mt-3 flex items-center gap-3 px-3 py-2.5 rounded-xl border ${cfg.color}`}>
-                    <span className="text-xl">{cfg.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold uppercase tracking-wider">{cfg.label}</span>
-                        <span className="text-[10px] font-medium opacity-70">{envTot} envíos · Siguiente: {cfg.nextLabel}</span>
+                  {/* Rango badge */}
+                  {(() => {
+                    const rango = cliente.rango || 'bronce';
+                    const rangoConfig: Record<string, { label: string; emoji: string; color: string; nextLabel: string; nextMeta: number; currentMeta: number }> = {
+                      bronce: { label: 'Bronce', emoji: '🥉', color: 'bg-amber-700/10 text-amber-700 border-amber-700/20', nextLabel: 'Plata', nextMeta: 20, currentMeta: 0 },
+                      plata:  { label: 'Plata',  emoji: '🥈', color: 'bg-slate-400/10 text-slate-600 border-slate-400/20', nextLabel: 'Oro', nextMeta: 50, currentMeta: 20 },
+                      oro:    { label: 'Oro',    emoji: '🥇', color: 'bg-amber-400/10 text-amber-600 border-amber-400/20', nextLabel: 'Leyenda', nextMeta: 100, currentMeta: 50 },
+                    };
+                    const cfg = rangoConfig[rango] || rangoConfig.bronce;
+                    const envTot = cliente.envios_totales || 0;
+                    const pct = Math.min(100, Math.round(((envTot - cfg.currentMeta) / (cfg.nextMeta - cfg.currentMeta)) * 100));
+                    return (
+                      <div className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border ${cfg.color}`}>
+                        <span className="text-lg">{cfg.emoji}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-bold uppercase tracking-wider">{cfg.label}</span>
+                            <span className="text-[10px] font-medium opacity-70">{envTot} · {cfg.nextLabel}</span>
+                          </div>
+                          <div className="h-1.5 bg-black/10 rounded-full overflow-hidden">
+                            <motion.div className="h-full bg-current rounded-full opacity-60"
+                              initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+                              transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <div className="h-1.5 bg-black/10 rounded-full overflow-hidden">
-                        <motion.div
-                          className="h-full bg-current rounded-full opacity-60"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${pct}%` }}
-                          transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
-                        />
+                    );
+                  })()}
+
+                  {/* Cupón activo */}
+                  {cliente.cupon_activo && (
+                    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+                      className="relative overflow-hidden rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 p-4 text-white shadow-md shadow-orange-500/30">
+                      <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/20 rounded-full blur-2xl pointer-events-none" />
+                      <div className="relative z-10">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <motion.span animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>🎟️</motion.span>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-white/80">Cupón activo</span>
+                        </div>
+                        <p className="font-mono font-black text-2xl tracking-[0.18em] mb-1.5">{cliente.cupon_activo}</p>
+                        <button onClick={() => { navigator.clipboard.writeText(cliente.cupon_activo!); toast.success('¡Copiado!', 'Listo para usar'); }}
+                          className="text-[11px] font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors">📋 Copiar</button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Foto de fachada */}
+                  {(cliente as any).foto_fachada_url && (
+                    <div className="rounded-xl overflow-hidden shadow-sm">
+                      <img src={(cliente as any).foto_fachada_url} alt="Fachada" className="w-full h-28 object-cover" />
+                      <div className="bg-gray-50 dark:bg-gray-800 px-3 py-1.5">
+                        <p className="text-[10px] text-gray-400 flex items-center gap-1"><MapPin className="w-3 h-3" /> Dirección registrada</p>
                       </div>
                     </div>
-                  </div>
-                );
-              })()}
-            </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>{/* end left sidebar */}
 
-            {/* PC: 3 columns | Mobile: single column */}
-            <div className="grid lg:grid-cols-[1fr_auto_1fr] gap-6 lg:gap-8 items-start">
+            {/* ── RIGHT CONTENT AREA ── */}
+            <div className="flex-1 min-w-0 space-y-6">
 
-              {/* ── LEFT COLUMN: Progress card ── */}
+              {/* Progress + QR side by side on desktop */}
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-5 items-start">
+
+              {/* Progress card — full width on mobile, left slot on desktop */}
               <div className="space-y-6">
                 {/* Mobile toggle — hidden on desktop */}
                 <div className="flex lg:hidden justify-center gap-2">
@@ -1268,38 +1250,39 @@ export function ClienteView() {
                     </CardContent>
                   </Card>
                 )}
-              </div>
+              </div>{/* end progress card column */}
 
-              {/* ── CENTER COLUMN: QR (desktop only) ── */}
-              <div className="hidden lg:flex flex-col items-center gap-3">
-                <div className="p-5 bg-white rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 dark:bg-card">
-                  {qrDataUrl ? (
-                    <img src={qrDataUrl} alt="Tu QR" className="w-44 h-44 rounded-lg" />
-                  ) : (
-                    <div className="w-44 h-44 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center animate-pulse">
-                      <QrCode className="w-12 h-12 text-gray-300" />
+              {/* ── QR column (desktop: right of progress, mobile: hidden — inside mobile toggle) ── */}
+              <div className="hidden lg:flex flex-col items-center gap-3 shrink-0">
+                <Card className="border-0 shadow-lg dark:bg-card">
+                  <CardContent className="p-4 flex flex-col items-center gap-3">
+                    <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tu QR Personal</h3>
+                    <div className="p-3 bg-white rounded-2xl shadow-inner border border-gray-100 dark:border-gray-700 dark:bg-gray-900">
+                      {qrDataUrl ? (
+                        <img src={qrDataUrl} alt="Tu QR" className="w-40 h-40 rounded-xl" />
+                      ) : (
+                        <div className="w-40 h-40 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center animate-pulse">
+                          <QrCode className="w-12 h-12 text-gray-300" />
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <p className="text-[11px] text-center text-gray-400 dark:text-gray-500 max-w-[180px]">
-                  Muéstrale este QR al repartidor para registrar tu envío
-                </p>
-                <div className="w-full p-2.5 bg-gray-50 dark:bg-card rounded-xl text-center space-y-0.5">
-                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">{cliente.nombre}</p>
-                  <p className="text-[10px] text-gray-400">{cliente.telefono}</p>
-                </div>
-                {/* Download QR */}
-                {qrDataUrl && (
-                  <button
-                    onClick={handleDownloadQR}
-                    className="w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-xl py-2 transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5" /> Guardar QR
-                  </button>
-                )}
-              </div>
+                    <div className="text-center">
+                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">{cliente.nombre}</p>
+                      <p className="text-[10px] text-gray-400">{cliente.telefono}</p>
+                    </div>
+                    {qrDataUrl && (
+                      <button onClick={handleDownloadQR}
+                        className="w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 rounded-xl py-2 transition-colors">
+                        <Download className="w-3.5 h-3.5" /> Guardar QR
+                      </button>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>{/* end QR column */}
 
-              {/* ── RIGHT COLUMN: Stats + History + Free alert ── */}
+              </div>{/* end progress+QR grid */}
+
+              {/* ── Stats + Historial (full width below progress+QR) ── */}
               <div className="space-y-5">
                 {/* Wrapped Stats */}
                 <ClientStats cliente={cliente} historial={historial} />
@@ -1427,9 +1410,11 @@ export function ClienteView() {
                     </CardContent>
                   </Card>
                 )}
-              </div>
+              </div>{/* end stats+historial */}
 
-            </div>
+            </div>{/* end right content area */}
+
+          </div>{/* end flex sidebar+right */}
           </motion.div>
         )}
       </main>
