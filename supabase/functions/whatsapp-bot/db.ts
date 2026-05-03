@@ -105,7 +105,7 @@ export async function crearPedidoDesdeBot(
   } catch (e: any) {
     const msg = e?.message || String(e)
     console.error('Error en crearPedidoDesdeBot:', e)
-    if (msg.includes('unique') || msg.includes('duplicate')) return { ok: true }
+    if (msg.includes('unique') || msg.includes('duplicate')) return { ok: false, error: 'Pedido duplicado — ya fue procesado anteriormente.' }
     return { ok: false, error: msg }
   }
 }

@@ -16,7 +16,8 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
   const [successData, setSuccessData] = useState<{codigo: string, valor_pesos: number, expires_at: string} | null>(null);
 
   const isVip = cliente?.es_vip === true;
-  const puntosNecesarios = 5; // Regla de negocio: 5 puntos
+  // Meta de puntos dinámica según rango (misma lógica que ClienteView)
+  const puntosNecesarios = cliente?.rango === 'oro' ? 3 : cliente?.rango === 'plata' ? 4 : 5;
   const puedeCanjearNormal = (cliente?.puntos || 0) >= puntosNecesarios;
   const saldoBilletera = cliente?.saldo_billetera || 0;
 

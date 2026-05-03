@@ -139,7 +139,8 @@ function StepCard({ step, index }: { step: { num: string; icon: React.ElementTyp
 export function Home() {
   const navigate = useNavigate();
   const { storeState, horasFelices, formatTime, contacto } = useSchedule();
-  const whatsappUrl = `https://wa.me/${contacto.whatsapp.replace(/\D/g, '')}`;
+  const whatsappNum = contacto.whatsapp.replace(/\D/g, '');
+  const whatsappUrl = whatsappNum ? `https://wa.me/${whatsappNum}` : '';
 
   // Scroll-aware nav: add shadow + stronger bg when user scrolls
   const [scrolled, setScrolled] = useState(false);
@@ -222,7 +223,7 @@ export function Home() {
                 Ver mis puntos <ArrowRight className="w-4 h-4" />
               </motion.button>
               <motion.button
-                onClick={() => contacto.whatsapp && window.open(whatsappUrl, '_blank', 'noopener')}
+                onClick={() => whatsappUrl && window.open(whatsappUrl, '_blank', 'noopener')}
                 whileHover={{ scale: 1.02, y: -1 }} whileTap={{ scale: 0.98 }}
                 className="flex items-center justify-center gap-2 bg-white text-gray-700 font-semibold px-7 py-3.5 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all text-sm">
                 <Phone className="w-4 h-4" /> Pedir ahora
@@ -396,7 +397,7 @@ export function Home() {
                   Ver mis puntos <ArrowRight className="w-4 h-4" />
                 </motion.button>
                 <motion.button
-                  onClick={() => contacto.whatsapp && window.open(whatsappUrl, '_blank', 'noopener')}
+                  onClick={() => whatsappUrl && window.open(whatsappUrl, '_blank', 'noopener')}
                   whileHover={{ scale: 1.03, y: -2 }} whileTap={{ scale: 0.97 }}
                   className="inline-flex items-center justify-center gap-2 bg-white/10 text-white font-semibold px-8 py-4 rounded-xl text-sm hover:bg-white/20 border border-white/20 transition-all backdrop-blur-sm">
                   <Phone className="w-4 h-4" /> WhatsApp

@@ -108,8 +108,12 @@ export function usePuntos(): UsePuntosReturn {
     return unsubscribe;
   }, []);
 
-  const progreso = cliente ? (cliente.puntos / ENVIOS_PARA_GRATIS) * 100 : 0;
-  const enviosRestantes = cliente ? ENVIOS_PARA_GRATIS - cliente.puntos : ENVIOS_PARA_GRATIS;
+  // Meta dinámica según rango (consistente con ClienteView y CanjeModal)
+  const metaPuntos = cliente
+    ? (cliente.rango === 'oro' ? 3 : cliente.rango === 'plata' ? 4 : 5)
+    : 5;
+  const progreso = cliente ? Math.min((cliente.puntos / metaPuntos) * 100, 100) : 0;
+  const enviosRestantes = cliente ? Math.max(metaPuntos - cliente.puntos, 0) : 5;
   const tieneEnvioGratis = cliente ? cliente.envios_gratis_disponibles > 0 : false;
 
   return {

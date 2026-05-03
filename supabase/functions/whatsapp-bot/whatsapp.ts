@@ -123,7 +123,7 @@ export async function sendInteractiveButton(
         type: 'interactive',
         interactive: {
           type: 'button',
-          body: { text },
+          body: { text: text.substring(0, 1024) },
           action: { buttons: [{ type: 'reply', reply: { id: buttonId, title: buttonTitle } }] },
         },
       }),
@@ -180,7 +180,8 @@ export async function sendWATemplate(
   templateName: string,
   params: string[],
   mediaUrl?: string,
-  buttonParam?: string
+  buttonParam?: string,
+  language: string = 'es_MX'
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const components: any[] = []
@@ -215,7 +216,7 @@ export async function sendWATemplate(
       messaging_product: 'whatsapp',
       to,
       type: 'template',
-      template: { name: templateName, language: { code: 'es_MX' }, components }
+      template: { name: templateName, language: { code: language }, components }
     }
     console.log(`[TEMPLATE] Enviando '${templateName}' a ${to} | componentes: ${JSON.stringify(components)}`)
 

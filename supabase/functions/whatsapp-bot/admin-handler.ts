@@ -223,14 +223,8 @@ export async function handleAdminMessage(
           return new Response('OK', { status: 200 })
         }
 
-        // Sincronizar clientes.puntos con el valor atómico del RPC
-        const { error: upErr } = await supabase.from('clientes').update({ puntos: lastRes.puntos }).eq('id', c.id)
-        if (upErr) {
-          console.error(`[SUMAR_PUNTOS] Error actualizando clientes.puntos:`, upErr)
-          await sendWA(fromPhone, `❌ No pude guardar los puntos. Error: ${upErr.message}`)
-          await limpiarMemoria(supabase, fromPhone)
-          return new Response('OK', { status: 200 })
-        }
+        // El RPC fn_registrar_entrega ya actualiza clientes.puntos atómicamente.
+        // NO hacemos update manual aquí para evitar race conditions.
 
         // Sincronizar hacia Chatwoot inmediatamente
         try {
@@ -478,7 +472,14 @@ export async function handleAdminMessage(
     case 'AGREGAR_NOTA_CLIENTE': {
       const { data: cli } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${extract10Digits(d.clienteTel)}%`).limit(1).maybeSingle()
       if (cli) {
-        await supabase.from('clientes').update({ notas_crm: d.descripcion }).eq('id', cli.id)
+        // Concatenar notas en vez de sobreescribir para mantener historial
+        const { data: cliNotas } = await supabase.from('clientes').select('notas_crm').eq('id', cli.id).single()
+        const notaExistente = cliNotas?.notas_crm || ''
+        const fecha = new Date().toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City' })
+        const nuevaNota = notaExistente
+          ? `${notaExistente}\n[${fecha}] ${d.descripcion}`
+          : `[${fecha}] ${d.descripcion}`
+        await supabase.from('clientes').update({ notas_crm: nuevaNota }).eq('id', cli.id)
         await sendWA(fromPhone, `📝 *Nota a ${cli.nombre || d.clienteTel}*\n✅ Anotado.`)
       } else { await sendWA(fromPhone, `🔍 No encontrado.`) }
       break
@@ -857,7 +858,7 @@ export async function handleTerminos(supabase: Supa, fromPhone: string, buttonId
           console.error(`[T&C PUNTOS] RPC falló para ${tel10}:`, rpcErrTerminos?.message)
           if (admin) await sendWA(admin, `⚠️ El cliente *${tel10}* aceptó términos pero no pude sumar los ${puntos} pts pendientes.\nError: ${rpcErrTerminos?.message || 'RPC ok=false'}`)
         } else {
-          await supabase.from('clientes').update({ puntos: lastRes.puntos }).eq('id', cli.id)
+          // El RPC ya actualiza clientes.puntos atómicamente — no hacemos update manual
           await sendWATemplate(`52${tel10}`, 'estrella_puntos_acumulados', [cli.nombre || 'Cliente', puntos.toString(), lastRes.puntos.toString()], undefined, tel10)
           if (admin) await sendWA(admin, `✅ El cliente *${tel10}* aceptó términos. Le sumé los ${puntos} pts pendientes. Total: *${lastRes.puntos} pts*.`)
         }
