@@ -3,6 +3,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 import { syncOutgoingToChatwoot } from './chatwoot-sync.ts'
+import { logError } from '../_shared/utils.ts'
 const WA_TOKEN    = Deno.env.get('WHATSAPP_TOKEN')!
 const WA_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_ID')!
 
@@ -51,10 +52,15 @@ export async function sendWA(to: string, body: string): Promise<void> {
         text: { preview_url: true, body },
       }),
     })
-    if (!res.ok) console.error('WA Error:', await res.text())
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('WA Error:', errText);
+      await logError('whatsapp-bot', `WhatsApp API Error (Text)`, { phone: to, error: errText }, 'error');
+    }
     else syncOutgoingToChatwoot(to, body).catch(e => console.error(e))
   } catch (e) {
     console.error('WA Fatal Net Error:', e)
+    await logError('whatsapp-bot', `WhatsApp Fatal Net Error (Text)`, { phone: to, error: String(e) }, 'critical');
   }
 }
 
@@ -229,6 +235,7 @@ export async function sendWATemplate(
     const respText = await res.text()
     if (!res.ok) {
       console.error(`[TEMPLATE] ❌ '${templateName}' HTTP ${res.status} → ${respText}`)
+      await logError('whatsapp-bot', `WhatsApp Template Error: ${templateName}`, { phone: to, error: respText }, 'critical');
       return { ok: false, error: respText }
     }
     console.log(`[TEMPLATE] ✅ '${templateName}' enviada → ${respText.substring(0, 120)}`)
@@ -236,6 +243,7 @@ export async function sendWATemplate(
     return { ok: true }
   } catch (e: any) {
     console.error(`[TEMPLATE] 💥 Error fatal '${templateName}':`, e)
+    await logError('whatsapp-bot', `WhatsApp Template Fatal Error: ${templateName}`, { phone: to, error: String(e) }, 'critical');
     return { ok: false, error: e.message }
   }
 }

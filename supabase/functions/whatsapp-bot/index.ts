@@ -247,6 +247,17 @@ serve(async (req: Request) => {
         return new Response('OK', { status: 200 })
       }
 
+      if (slashText === '/testdiscord') {
+        await logError(
+          'whatsapp-bot',
+          '🔥 Prueba manual de Webhook iniciada por el administrador',
+          { user: fromPhone, test: true, timestamp: new Date().toISOString() },
+          'critical'
+        );
+        await sendWA(fromPhone, `📡 *Test Enviado*\nAcabo de disparar un error crítico de prueba. Si configuraste bien el \`DISCORD_WEBHOOK_URL\` en Supabase, el mensaje debió llegar al canal de Discord ahora mismo.`);
+        return new Response('OK', { status: 200 })
+      }
+
       // ── COMANDOS DE EMERGENCIA (funcionan SIN DeepSeek) ──────────────────────
       // Estos comandos permiten operar el negocio cuando la IA está caída.
       if (slashText.startsWith('/pedido ')) {

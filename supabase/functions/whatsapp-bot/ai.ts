@@ -4,6 +4,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { extract10Digits, PedidoData } from './db.ts'
+import { logError } from '../_shared/utils.ts'
 
 type SupabaseClient = ReturnType<typeof createClient>
 
@@ -249,7 +250,9 @@ export async function conversacionDeepSeek(
       }
     } catch (fetchErr: any) {
       const isTimeout = fetchErr?.name === 'AbortError'
-      console.error(isTimeout ? '⏱️ Timeout 12s alcanzado, usando fallback' : '🌐 Fetch error:', String(fetchErr))
+      const msg = isTimeout ? '⏱️ Timeout 12s alcanzado, usando fallback' : '🌐 Fetch error: ' + String(fetchErr);
+      console.error(msg)
+      await logError('whatsapp-bot', `DeepSeek Fetch Failure: ${msg}`, { error: String(fetchErr), admin10 }, 'critical');
       _cbFail()
       return { errorObj: isTimeout ? 'DeepSeek no respondió a tiempo. Intente de nuevo.' : String(fetchErr) }
     }
@@ -257,6 +260,7 @@ export async function conversacionDeepSeek(
     if (!res.ok) {
       const errText = await res.text()
       console.error('DeepSeek API Error:', errText)
+      await logError('whatsapp-bot', `DeepSeek HTTP Error ${res.status}`, { response: errText, admin10 }, 'critical');
       _cbFail()
       return { errorObj: `HTTP ${res.status} - ${errText}` }
     }
@@ -269,8 +273,11 @@ export async function conversacionDeepSeek(
 
     // Respuesta vacía de DeepSeek — ocurre en picos de carga
     if (!rawContent || rawContent.length < 5) {
-      console.error('❌ DeepSeek devolvió contenido vacío. Finish reason:', data.choices?.[0]?.finish_reason)
-      return { errorObj: 'Respuesta vacía de DeepSeek.' }
+      const msg = '❌ DeepSeek devolvió contenido vacío. Finish reason: ' + (data.choices?.[0]?.finish_reason || 'unknown');
+      console.error(msg)
+      await logError('whatsapp-bot', `DeepSeek Empty Response`, { finish_reason: data.choices?.[0]?.finish_reason, admin10 }, 'error');
+      _cbFail()
+      return { errorObj: msg }
     }
 
     let cleanJSON = rawContent.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
@@ -291,9 +298,10 @@ export async function conversacionDeepSeek(
             respuesta = parsed2 as AIRespuesta
             console.warn('⚠️ JSON recuperado via regex fallback.')
           } else throw new Error('Acción inválida en fallback')
-        } catch {
+        } catch (repairErr: any) {
           console.error('❌ JSON no rescatable. Raw:', rawContent.slice(0, 500))
-          respuesta = { accion: 'RESPONDER', mensajeUsuario: 'Disculpe, fallo de conexión con el núcleo de I.A. ¿Podría repetirlo de otra forma?' }
+          await logError('whatsapp-bot', `DeepSeek malformed JSON`, { rawContent: rawContent.slice(0, 500), admin10 }, 'warn');
+          throw new Error('AI devolvió formato JSON no rescatable.')
         }
       } else {
         console.error('❌ Sin JSON en respuesta. Raw:', rawContent.slice(0, 500))
