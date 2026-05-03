@@ -4,7 +4,7 @@
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { extract10Digits, formatTel, generarNumeroOrden } from '../_shared/utils.ts'
+import { extract10Digits, formatTel, generarNumeroOrden, logError } from '../_shared/utils.ts'
 import { getMetaPuntos } from '../_shared/constants.ts'
 
 const CORS_HEADERS = {
@@ -474,8 +474,14 @@ serve(async (req: Request) => {
 
   } catch (e: any) {
     console.error("FATAL ERROR IN NOTIFICAR-WHATSAPP:", e)
+    await logError(
+      'notificar-whatsapp',
+      `Unhandled crash: ${e.message}`,
+      { stack: e.stack },
+      'critical'
+    );
     return new Response(JSON.stringify({ error: e.message }), {
-      status: 500, headers: { 'Content-Type': 'application/json' },
+      status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     })
   }
 })

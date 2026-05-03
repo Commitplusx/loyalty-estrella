@@ -5,7 +5,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 import { sendWA, sendInteractiveButton } from './whatsapp.ts'
 import { extract10Digits, guardarMemoria, crearPedidoDesdeBot } from './db.ts'
-import { pedidoLink } from '../_shared/utils.ts'
+import { pedidoLink, logError } from '../_shared/utils.ts'
 import { handleRepButtons, handleRepMessage } from './rep-handler.ts'
 import { handleAdminGPS, handleAdminAssignRest, handleAdminMessage } from './admin-handler.ts'
 import { handleRestaurantPortal } from './restaurant-portal.ts'
@@ -485,7 +485,18 @@ serve(async (req: Request) => {
 
     return new Response('OK', { status: 200 })
   } catch (e) {
+    const errorString = e instanceof Error ? e.message : String(e);
+    const stackTrace = e instanceof Error ? e.stack : undefined;
     console.error('Error root:', e)
+    
+    // Guardar en Supabase y enviar a Discord si es crítico
+    await logError(
+      'whatsapp-bot', 
+      `Unhandled crash: ${errorString}`, 
+      { phone: errorNotifyPhone, stack: stackTrace, bodyText: bodyText.substring(0, 500) }, 
+      'critical'
+    );
+
     if (errorNotifyPhone) {
       try {
         // Mensaje suave para el usuario/restaurante
@@ -494,8 +505,9 @@ serve(async (req: Request) => {
         // Notificación DLQ (Dead Letter Queue) para el Administrador
         const mainAdmin10 = ADMIN_PHONES_ENV.split(',')[0]?.replace(/\D/g, '').slice(-10)
         if (mainAdmin10) {
+           // Si falla la integración con Discord, el administrador al menos recibirá un WhatsApp
           const truncBody = bodyText.substring(0, 800)
-          const errorMsg = `🚨 *CRITICAL ERROR (DLQ)* 🚨\n\n*De:* ${errorNotifyPhone}\n*Error:* ${e instanceof Error ? e.message : String(e)}\n\n*Payload:*\n\`\`\`${truncBody}\`\`\``
+          const errorMsg = `🚨 *CRITICAL ERROR (DLQ)* 🚨\n\n*De:* ${errorNotifyPhone}\n*Error:* ${errorString}\n\n*Payload:*\n\`\`\`${truncBody}\`\`\``
           await sendWA(`52${mainAdmin10}`, errorMsg)
         }
       } catch (err2) {

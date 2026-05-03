@@ -8,6 +8,7 @@ import { Wallet, Utensils, Truck, ChevronLeft, X, Loader2, CheckCircle2 } from '
 import { toast } from '@/components/ui/toast-native';
 import { MAX_COBERTURA_ENVIO_GRATIS } from '@/lib/constants';
 import { supabase, canjearSaldoBilleteraRPC } from '@/lib/supabase';
+import { logCriticalError } from '@/lib/logger';
 import type { Cliente } from '@/types';
 
 interface WalletSectionProps {
@@ -69,6 +70,7 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
       notifyWhatsApp(codigo, monto, nuevoSaldo);
     } else {
       setWalletMsg(`❌ ${res.error || 'Error al procesar el canje'}`);
+      logCriticalError('Error en canje de comida billetera', res);
     }
   };
 
@@ -102,6 +104,7 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
       notifyWhatsApp(codigo, cobertura, nuevoSaldo);
     } else {
       setWalletMsg(`❌ ${res.error || 'Error al procesar el canje'}`);
+      logCriticalError('Error en canje de envío billetera', res);
     }
   };
 
