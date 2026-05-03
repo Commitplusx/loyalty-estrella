@@ -343,7 +343,6 @@ serve(async (req: Request) => {
           `_Estos comandos no requieren IA y siempre funcionan._`)
         return new Response('OK', { status: 200 })
       }
-      }
     }
 
     // ── VERIFICAR MODO REPARTIDOR DEL ADMIN ──────────────────────────────────
