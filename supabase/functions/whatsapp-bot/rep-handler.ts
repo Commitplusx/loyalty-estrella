@@ -244,7 +244,7 @@ export async function handleRepMessage(
         await guardarMemoria(supabase, from10, ai?.nuevoHistorial || [])
         return new Response('OK', { status: 200 })
       }
-      await supabase.from('clientes').update({ puntos: lastRes.puntos }).eq('id', c.id)
+      // RPC fn_registrar_entrega already updates puntos atomically — no manual update needed
       // Sincronizar hacia Chatwoot inmediatamente
       try {
         const { updateChatwootProfile } = await import('./chatwoot-sync.ts')

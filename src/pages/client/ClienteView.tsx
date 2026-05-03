@@ -49,9 +49,8 @@ export function ClienteView() {
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletMsg, setWalletMsg] = useState('');
 
-  const { storeState, horasFelices, formatTime } = useSchedule();
+  const { storeState, horasFelices, formatTime, contacto } = useSchedule();
   const { isDark, toggle } = useDarkMode();
-  const { contacto } = useSchedule();
   const whatsappUrl = `https://wa.me/${(contacto?.whatsapp || '529631550244').replace(/\D/g, '')}`;
 
   // Historial tab filter

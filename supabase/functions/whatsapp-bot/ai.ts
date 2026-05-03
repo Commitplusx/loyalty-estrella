@@ -116,7 +116,7 @@ function enforcerValidator(respuesta: AIRespuesta): AIRespuesta {
     d.clienteTel = num.length >= 10 ? num.slice(-10) : undefined
   }
   if (d.puntosASumar != null) d.puntosASumar = parseInt(String(d.puntosASumar), 10)
-  if (d.montoSaldo != null) d.montoSaldo = parseInt(String(d.montoSaldo), 10)
+  if (d.montoSaldo != null) d.montoSaldo = parseFloat(String(d.montoSaldo))
 
   let blocked = false
   switch (respuesta.accion) {
