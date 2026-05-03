@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { TRANSICIONES_PEDIDO } from '@/lib/constants';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MapPin, Package, Phone, Loader2, Navigation, CheckCircle2 } from 'lucide-react';
@@ -81,15 +82,7 @@ export function PedidoView() {
     if (!pedido) return;
     setAceptando(true);
     try {
-      // Validar transición de estados (misma lógica que rep-handler.ts)
-      const transicionesValidas: Record<string, string[]> = {
-        'aceptado': ['asignado'],
-        'recibido': ['aceptado', 'asignado', 'pendiente'],
-        'en_camino': ['recibido'],
-        'entregado': ['en_camino'],
-        'cancelado': ['asignado', 'aceptado', 'pendiente', 'recibido', 'en_camino'],
-      };
-      const estadosPrevios = transicionesValidas[nuevoEstado];
+      const estadosPrevios = TRANSICIONES_PEDIDO[nuevoEstado];
       
       let query = supabase.from('pedidos').update({ estado: nuevoEstado }).eq('id', id);
       if (estadosPrevios) {

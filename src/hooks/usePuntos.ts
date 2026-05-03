@@ -6,8 +6,7 @@ import {
   canjearEnvioGratisRPC,
   subscribeToCliente
 } from '@/lib/supabase';
-
-const ENVIOS_PARA_GRATIS = 5;
+import { getMetaPuntos, PUNTOS_META } from '@/lib/constants';
 
 interface UsePuntosReturn {
   cliente: Cliente | null;
@@ -108,12 +107,10 @@ export function usePuntos(): UsePuntosReturn {
     return unsubscribe;
   }, []);
 
-  // Meta dinámica según rango (consistente con ClienteView y CanjeModal)
-  const metaPuntos = cliente
-    ? (cliente.rango === 'oro' ? 3 : cliente.rango === 'plata' ? 4 : 5)
-    : 5;
+  // Meta dinámica según rango (centralizado en constants.ts)
+  const metaPuntos = getMetaPuntos(cliente?.rango, cliente?.es_vip);
   const progreso = cliente ? Math.min((cliente.puntos / metaPuntos) * 100, 100) : 0;
-  const enviosRestantes = cliente ? Math.max(metaPuntos - cliente.puntos, 0) : 5;
+  const enviosRestantes = cliente ? Math.max(metaPuntos - cliente.puntos, 0) : PUNTOS_META.bronce;
   const tieneEnvioGratis = cliente ? cliente.envios_gratis_disponibles > 0 : false;
 
   return {

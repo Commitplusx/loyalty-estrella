@@ -4,6 +4,8 @@
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { extract10Digits, formatTel, generarNumeroOrden } from '../_shared/utils.ts'
+import { getMetaPuntos } from '../_shared/constants.ts'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -15,22 +17,6 @@ const WA_TOKEN = Deno.env.get('WHATSAPP_TOKEN')!
 const WA_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_ID')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-
-function formatTel(raw: string): string {
-  const digits = raw.replace(/\D/g, '')
-  return `52${digits.slice(-10)}`
-}
-
-function extract10Digits(phone: string): string {
-  return phone.replace(/\D/g, '').slice(-10)
-}
-
-// ── Genera número de orden legible: EST-00123 ─────────────────────────────────
-function generarNumeroOrden(pedidoId: string): string {
-  // Usa los últimos 5 caracteres del UUID para crear un número corto y único
-  const shortId = pedidoId.replace(/-/g, '').slice(-5).toUpperCase()
-  return `EST-${shortId}`
-}
 
 async function sendWhatsAppTemplate(
   to: string,
@@ -458,7 +444,7 @@ serve(async (req: Request) => {
               .maybeSingle()
 
             if (cl) {
-              const meta = cl.rango === 'oro' ? 3 : (cl.rango === 'plata' || cl.es_vip ? 4 : 5)
+              const meta = getMetaPuntos(cl.rango, cl.es_vip)
               // Si los puntos son múltiplo exacto de meta (ciclo completado) y tiene al menos 1 ciclo
               if (cl.puntos > 0 && cl.puntos % meta === 0) {
                 await notificarCliente(

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Gift, X, Loader2, CheckCircle2, Ticket } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { getMetaPuntos } from '@/lib/constants';
 import type { Cliente } from '@/types';
 
 interface CanjeModalProps {
@@ -16,8 +17,8 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
   const [successData, setSuccessData] = useState<{codigo: string, valor_pesos: number, expires_at: string} | null>(null);
 
   const isVip = cliente?.es_vip === true;
-  // Meta de puntos dinámica según rango (misma lógica que ClienteView)
-  const puntosNecesarios = cliente?.rango === 'oro' ? 3 : cliente?.rango === 'plata' ? 4 : 5;
+  // Meta de puntos dinámica según rango (centralizado en constants.ts)
+  const puntosNecesarios = getMetaPuntos(cliente?.rango, isVip);
   const puedeCanjearNormal = (cliente?.puntos || 0) >= puntosNecesarios;
   const saldoBilletera = cliente?.saldo_billetera || 0;
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { getMetaPuntos, MAX_COBERTURA_ENVIO_GRATIS } from '@/lib/constants';
 import { useParams } from 'react-router-dom';
 import { AnimatePresence, motion, useMotionValue, useTransform, animate } from 'framer-motion';
 import confetti from 'canvas-confetti';
@@ -217,10 +218,7 @@ export function ClienteView() {
   };
 
   const isVip = cliente?.es_vip === true;
-  // Meta de envíos por rango (3 para oro, 4 para plata/VIP, 5 para bronce)
-  const metaVip = cliente
-    ? (cliente.rango === 'oro' ? 3 : (cliente.rango === 'plata' || isVip ? 4 : 5))
-    : 5;
+  const metaVip = getMetaPuntos(cliente?.rango, isVip);
   // Bug #5 fix: un cliente nuevo con 0 puntos no debe mostrar "¡Gratis!"
   const puntosEnCiclo = cliente ? cliente.puntos % metaVip : 0;
   const progreso = cliente ? (puntosEnCiclo / metaVip) * 100 : 0;
@@ -229,7 +227,6 @@ export function ClienteView() {
         ? metaVip                        // cliente nuevo: aún le faltan todos
         : metaVip - puntosEnCiclo)       // en ciclo activo o inicio de nuevo ciclo
     : metaVip;
-  const MAX_ENVIO_GRATIS = 45; // Tope máximo de cobertura por envío gratis
 
   // ── Compartir tarjeta de lealtad ─────────────────────────────────────────
   const handleShare = () => {
@@ -320,9 +317,9 @@ export function ClienteView() {
       setWalletMsg(`❌ Ya tienes un cupón activo: ${cliente.cupon_activo}. Úsalo antes de generar otro.`);
       return;
     }
-    const costoReal = parseFloat(deliveryCost) || MAX_ENVIO_GRATIS;
-    const cobertura = Math.min(costoReal, MAX_ENVIO_GRATIS);
-    const diferencia = Math.max(0, costoReal - MAX_ENVIO_GRATIS);
+    const costoReal = parseFloat(deliveryCost) || MAX_COBERTURA_ENVIO_GRATIS;
+    const cobertura = Math.min(costoReal, MAX_COBERTURA_ENVIO_GRATIS);
+    const diferencia = Math.max(0, costoReal - MAX_COBERTURA_ENVIO_GRATIS);
     if (cobertura > (cliente.saldo_billetera || 0)) {
       setWalletMsg(`❌ Saldo insuficiente. El canje de envío requiere al menos $${cobertura.toFixed(2)}`);
       return;
@@ -1054,7 +1051,7 @@ export function ClienteView() {
                                   <div className="bg-blue-50 dark:bg-blue-900/10 rounded-2xl p-4 space-y-3">
                                     <p className="font-semibold text-gray-800 dark:text-white flex items-center gap-2"><Truck className="w-4 h-4 text-blue-500" /> Canje por Envío</p>
                                     <div className="text-xs text-gray-500 bg-white dark:bg-gray-800 rounded-xl p-3 space-y-1">
-                                      <p>• Cobertura máxima: <strong className="text-blue-600">${MAX_ENVIO_GRATIS}.00</strong></p>
+                                      <p>• Cobertura máxima: <strong className="text-blue-600">${MAX_COBERTURA_ENVIO_GRATIS}.00</strong></p>
                                       <p>• Si tu envío cuesta más, pagas la diferencia</p>
                                     </div>
                                     <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Costo real de tu envío (opcional)</label>
@@ -1066,20 +1063,20 @@ export function ClienteView() {
                                         step="1"
                                         value={deliveryCost}
                                         onChange={e => setDeliveryCost(e.target.value)}
-                                        placeholder={`${MAX_ENVIO_GRATIS}.00`}
+                                        placeholder={`${MAX_COBERTURA_ENVIO_GRATIS}.00`}
                                         className="w-full pl-8 pr-4 py-3 border-2 border-blue-200 rounded-xl text-lg font-bold text-gray-900 dark:text-white dark:bg-gray-800 focus:outline-none focus:border-blue-400"
                                       />
                                     </div>
-                                    {deliveryCost && parseFloat(deliveryCost) > MAX_ENVIO_GRATIS && (
+                                    {deliveryCost && parseFloat(deliveryCost) > MAX_COBERTURA_ENVIO_GRATIS && (
                                       <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
-                                        ⚠️ Tu billetera cubre <strong>${MAX_ENVIO_GRATIS}</strong><br/>
-                                        Diferencia a pagar: <strong>${(parseFloat(deliveryCost) - MAX_ENVIO_GRATIS).toFixed(2)}</strong>
+                                        ⚠️ Tu billetera cubre <strong>${MAX_COBERTURA_ENVIO_GRATIS}</strong><br/>
+                                        Diferencia a pagar: <strong>${(parseFloat(deliveryCost) - MAX_COBERTURA_ENVIO_GRATIS).toFixed(2)}</strong>
                                       </div>
                                     )}
                                     {walletMsg && <p className="text-xs text-red-500">{walletMsg}</p>}
                                   </div>
                                   <button
-                                    disabled={walletLoading || (cliente.saldo_billetera || 0) < Math.min(parseFloat(deliveryCost) || MAX_ENVIO_GRATIS, MAX_ENVIO_GRATIS)}
+                                    disabled={walletLoading || (cliente.saldo_billetera || 0) < Math.min(parseFloat(deliveryCost) || MAX_COBERTURA_ENVIO_GRATIS, MAX_COBERTURA_ENVIO_GRATIS)}
                                     onClick={handleCanjeEnvio}
                                     className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-600 hover:to-indigo-600 transition-all shadow-lg"
                                   >

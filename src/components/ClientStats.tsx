@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { Award, TrendingUp, CalendarDays, DollarSign } from 'lucide-react';
+import { VALOR_CANJE_ESTIMADO } from '@/lib/constants';
 import type { Cliente, RegistroMovimiento } from '@/types';
 
 interface ClientStatsProps {
@@ -16,8 +17,6 @@ export function ClientStats({ cliente, historial }: ClientStatsProps) {
   }).length;
 
   const canjesTotales = historial.filter(h => h.tipo === 'canje').length;
-  // BUG-23 fix: use $50 (actual delivery price) not hardcoded $35 (happy hour price)
-  const VALOR_CANJE_ESTIMADO = 50;
   const ahorroEstimado = canjesTotales * VALOR_CANJE_ESTIMADO;
 
   const rangoEmoji = (cliente.rango ?? 'bronce') === 'oro' ? '👑' : (cliente.rango ?? 'bronce') === 'plata' ? '🥈' : '🥉';

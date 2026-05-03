@@ -2,6 +2,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendWA, sendInteractiveButton, sendInteractiveButtons, sendWATemplate } from './whatsapp.ts'
 import { extract10Digits, guardarMemoria } from './db.ts'
+import { generarNumeroOrden } from '../_shared/utils.ts'
 import { conversacionDeepSeek } from './ai.ts'
 
 type Supa = ReturnType<typeof createClient>
@@ -16,10 +17,7 @@ function invokeAsync(supabase: Supa, fn: string, body: object): void {
     .catch((e: any) => console.error(`[ASYNC INVOKE] ${fn}:`, e?.message))
 }
 
-function generarNumeroOrden(pedidoId: string): string {
-  const shortId = pedidoId.replace(/-/g, '').slice(-5).toUpperCase()
-  return `EST-${shortId}`
-}
+
 
 // ── Botones ciclo de vida del pedido ─────────────────────────────────────────
 export async function handleRepButtons(supabase: Supa, fromPhone: string, buttonId: string): Promise<boolean> {
