@@ -61,6 +61,8 @@ export async function handleRepButtons(supabase: Supa, fromPhone: string, button
         await sendWA(fromPhone, '⚠️ Ya has aceptado o avanzado este pedido previamente.')
         return true
       }
+      // Actualizar estado a 'aceptado' para reflejar que el repartidor confirmó
+      await supabase.from('pedidos').update({ estado: 'aceptado' }).eq('id', pedidoId).eq('estado', 'asignado')
       const text = `📋 *Detalle del Pedido*\n\n📦 ${p.descripcion}\n` +
         (p.cliente_nombre ? `👤 ${p.cliente_nombre}\n` : '') +
         (p.cliente_tel    ? `📞 ${p.cliente_tel}\n` : '') +
@@ -73,7 +75,7 @@ export async function handleRepButtons(supabase: Supa, fromPhone: string, button
     }
     else if (tipo === 'RECOGER') {
       const { data: updated, error } = await supabase.from('pedidos')
-        .update({ estado: 'recibido' }).eq('id', pedidoId).in('estado', ['asignado', 'pendiente']).select()
+        .update({ estado: 'recibido' }).eq('id', pedidoId).in('estado', ['aceptado', 'asignado', 'pendiente']).select()
       if (error || !updated?.length) { await sendWA(fromPhone, `⚠️ Error o ya marcado recolectado.`); return true }
       invokeAsync(supabase, 'notificar-whatsapp', { pedido_id: pedidoId, tipo: 'recibido' })
       if (p.cliente_tel) {

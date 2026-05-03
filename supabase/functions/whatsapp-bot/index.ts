@@ -96,9 +96,12 @@ serve(async (req: Request) => {
       return new Response('Service Unavailable', { status: 503 })
     }
 
+    // ── NORMALIZAR TELÉFONO (necesario para rate limit y roles) ──
+    const from10 = extract10Digits(fromPhone)
+
     // ── RATE LIMITING ANTI-SPAM (Protección de Costos API y Base de Datos) ──
     // Evita ataques DoS o que un usuario rompa la IA enviando 50 mensajes de golpe.
-    const rateLimitKey = `rate_limit_${fromPhone}`
+    const rateLimitKey = `rate_limit_${from10}`
     const { data: rlData } = await supabase.from('bot_memory').select('history').eq('phone', rateLimitKey).maybeSingle()
     let timestamps = (rlData?.history as number[]) || []
     const ventanaTiempo = Date.now() - 60000 // 1 minuto
@@ -127,8 +130,7 @@ serve(async (req: Request) => {
     //     $$ DELETE FROM bot_memory WHERE phone LIKE 'processed_msg:%' AND updated_at < NOW()-INTERVAL '1 hour';
     //        DELETE FROM bot_memory WHERE phone LIKE 'rate_limit_%'    AND updated_at < NOW()-INTERVAL '2 hours'; $$);
 
-    // ── IDENTIFICACIÓN DE ROLES ── (DEBE IR ANTES de cualquier uso de esAdmin)
-    const from10 = extract10Digits(fromPhone)
+    // ── IDENTIFICACIÓN DE ROLES ── (from10 ya definido arriba)
     const ADMIN_PHONES_LIST = ADMIN_PHONES_ENV.split(',').map(s => extract10Digits(s)).filter(Boolean)
     const esAdmin = ADMIN_PHONES_LIST.includes(from10)
     const admin10 = esAdmin ? from10 : (ADMIN_PHONES_LIST[0] || '')

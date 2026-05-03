@@ -277,10 +277,18 @@ export function Home() {
                 </span>
                 <h2 className="text-2xl sm:text-4xl font-black text-white mb-3 tracking-tight">¡Hora Feliz!</h2>
                 <p className="text-gray-400 mb-5 leading-relaxed text-sm sm:text-base">
-                  Lunes, Miércoles y Sábados de{' '}
-                  <span className="text-white font-semibold">5 PM a 8 PM</span>.
-                  Todos los envíos a solo{' '}
-                  <span className="text-red-400 font-black text-xl">$35</span>.
+                  {horasFelices.filter(h => h.activo).length > 0 ? (
+                    <>
+                      {horasFelices.filter(h => h.activo).map(h => h.nombre).join(', ')} de{' '}
+                      <span className="text-white font-semibold">
+                        {formatTime(horasFelices.filter(h => h.activo)[0]?.hora_inicio)} a {formatTime(horasFelices.filter(h => h.activo)[0]?.hora_fin)}
+                      </span>.
+                      {' '}Todos los envíos a solo{' '}
+                      <span className="text-red-400 font-black text-xl">${horasFelices.filter(h => h.activo)[0]?.precio_promocional ?? 35}</span>.
+                    </>
+                  ) : (
+                    <>Horarios especiales con descuento en todos los envíos.</>
+                  )}
                 </p>
 
                 <div className="space-y-0 mb-6">

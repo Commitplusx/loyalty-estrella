@@ -234,7 +234,7 @@ export async function canjearSaldoBilleteraRPC(
   try {
     const { data, error } = await supabase.rpc('canjear_saldo', {
       p_cliente_id: clienteId,
-      p_admin_id: clienteId, // Se usa el mismo ID del cliente para autocanjes en web
+      p_admin_id: null, // Autocanje web: null indica que fue autoservicio del cliente
       p_monto: monto,
       p_concepto: concepto
     });

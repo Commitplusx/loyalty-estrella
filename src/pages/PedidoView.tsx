@@ -78,19 +78,34 @@ export function PedidoView() {
   }, [id]);
 
   const handleActualizarEstado = async (nuevoEstado: string) => {
+    if (!pedido) return;
     setAceptando(true);
     try {
-      const { error } = await supabase
-        .from('pedidos')
-        .update({ estado: nuevoEstado })
-        .eq('id', id);
+      // Validar transición de estados (misma lógica que rep-handler.ts)
+      const transicionesValidas: Record<string, string[]> = {
+        'aceptado': ['asignado'],
+        'recibido': ['aceptado', 'asignado', 'pendiente'],
+        'en_camino': ['recibido'],
+        'entregado': ['en_camino'],
+        'cancelado': ['asignado', 'aceptado', 'pendiente', 'recibido', 'en_camino'],
+      };
+      const estadosPrevios = transicionesValidas[nuevoEstado];
+      
+      let query = supabase.from('pedidos').update({ estado: nuevoEstado }).eq('id', id);
+      if (estadosPrevios) {
+        query = query.in('estado', estadosPrevios);
+      }
+      const { data, error } = await query.select();
 
       if (error) throw error;
+      if (!data?.length) {
+        toast.error('No se pudo avanzar', `El pedido ya no está en el estado correcto para pasar a "${nuevoEstado}".`);
+        return;
+      }
       toast.success(`Pedido actualizado a: ${nuevoEstado.replace('_', ' ')}`);
       setPedido((prev) => prev ? { ...prev, estado: nuevoEstado as any } : null);
 
       // BUG-26 fix: notify client via WhatsApp when state changes from web
-      // Previously only the WhatsApp bot triggered these notifications
       supabase.functions.invoke('notificar-whatsapp', {
         body: { tipo: nuevoEstado, pedido_id: id }
       }).catch(console.error);

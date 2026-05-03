@@ -25,7 +25,7 @@ export function PromosBanner() {
     // Cualquier cambio en la tabla de promociones se refleja al instante
     const channel = supabase
       .channel('promociones_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'promociones' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'promociones_dinamicas' }, () => {
         loadPromos();
       })
       .subscribe();

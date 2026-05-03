@@ -10,10 +10,9 @@ const CW_INBOX     = Deno.env.get('CHATWOOT_INBOX_ID')   ?? ''
 
 const CW_TIMEOUT_MS = 5000
 
-function cwAbort(): AbortController {
-  const ctrl = new AbortController()
-  setTimeout(() => ctrl.abort(), CW_TIMEOUT_MS)
-  return ctrl
+// AbortSignal.timeout auto-cleans — no dangling setTimeout after successful fetches
+function cwSignal(): AbortSignal {
+  return AbortSignal.timeout(CW_TIMEOUT_MS)
 }
 
 async function cwGet(path: string): Promise<any> {
@@ -38,7 +37,7 @@ async function cwPost(path: string, body: unknown): Promise<any> {
       method: 'POST',
       headers: { api_access_token: CW_TOKEN, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: cwAbort().signal,
+      signal: cwSignal(),
     })
     if (!res.ok) {
       const txt = await res.text()
@@ -59,7 +58,7 @@ async function cwPut(path: string, body: unknown): Promise<any> {
       method: 'PUT',
       headers: { api_access_token: CW_TOKEN, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: cwAbort().signal,
+      signal: cwSignal(),
     })
     if (!res.ok) {
       const txt = await res.text()

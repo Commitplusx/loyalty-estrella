@@ -90,7 +90,7 @@ async function sendInteractiveButton(to: string, text: string, buttonId: string,
       type: 'interactive',
       interactive: {
         type: 'button',
-        body: { text },
+        body: { text: text.substring(0, 1024) },
         action: {
           buttons: [{ type: 'reply', reply: { id: buttonId, title: buttonTitle } }]
         }

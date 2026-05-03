@@ -151,7 +151,11 @@ export function ClienteView() {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error(`[Realtime] Events channel error for ${clienteId}: ${status}`);
+        }
+      });
 
     return () => {
       unsubscribe();
