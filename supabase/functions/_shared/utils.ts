@@ -19,3 +19,10 @@ export function generarNumeroOrden(pedidoId: string): string {
   const shortId = pedidoId.replace(/-/g, '').slice(-5).toUpperCase()
   return `EST-${shortId}`
 }
+
+/** Genera link al pedido con key de acceso (primeros 8 chars del UUID sin guiones) */
+export function pedidoLink(pedidoId: string): string {
+  const BASE_LINK = 'https://www.app-estrella.shop/pedido'
+  const key = pedidoId.replace(/-/g, '').slice(0, 8)
+  return `${BASE_LINK}/${pedidoId}?key=${key}`
+}

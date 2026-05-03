@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { TRANSICIONES_PEDIDO } from '@/lib/constants';
 import { Card, CardContent } from '@/components/ui/card';
@@ -27,9 +27,15 @@ interface Pedido {
 
 export function PedidoView() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [loading, setLoading] = useState(true);
   const [aceptando, setAceptando] = useState(false);
+
+  // Validación de acceso: solo el repartidor con el key correcto puede avanzar estados
+  // El key son los primeros 8 chars del UUID (se incluye en el link de WhatsApp)
+  const urlKey = searchParams.get('key') || '';
+  const esAutorizado = id ? urlKey === id.replace(/-/g, '').slice(0, 8) : false;
 
   useEffect(() => {
     // BUG-20 fix: guard at the top so cleanup always runs when id changes
@@ -229,7 +235,7 @@ export function PedidoView() {
                     </div>
                   </div>
 
-                  {pedido.cliente_tel && (
+                  {esAutorizado && pedido.cliente_tel && (
                     <div className="flex gap-4 items-start">
                       <div className="mt-1 bg-zinc-800/80 p-3 rounded-xl ring-1 ring-white/5">
                         <Phone className="h-6 w-6 text-fuchsia-400" />
@@ -250,7 +256,8 @@ export function PedidoView() {
             </Card>
           </div>
 
-          {/* Columna Derecha: Acciones */}
+          {/* Columna Derecha: Acciones (solo con autorización) */}
+          {esAutorizado ? (
           <div className="space-y-6">
              <Card className="bg-zinc-900/50 border-zinc-800/50 shadow-2xl backdrop-blur-sm lg:sticky lg:top-8">
                <CardContent className="p-6 space-y-6">
@@ -272,6 +279,16 @@ export function PedidoView() {
                </CardContent>
              </Card>
           </div>
+          ) : (
+          <div className="space-y-6">
+             <Card className="bg-zinc-900/50 border-zinc-800/50 shadow-2xl backdrop-blur-sm lg:sticky lg:top-8">
+               <CardContent className="p-6 text-center space-y-3">
+                  <p className="text-zinc-400 text-sm">🔒 Vista de solo lectura</p>
+                  <p className="text-zinc-500 text-xs">Para gestionar este pedido, usa los botones de WhatsApp.</p>
+               </CardContent>
+             </Card>
+          </div>
+          )}
         </div>
       </div>
     </div>

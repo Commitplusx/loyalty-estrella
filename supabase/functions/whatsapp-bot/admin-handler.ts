@@ -2,11 +2,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendWA, sendWAImage, sendWALocation, sendWATemplate } from './whatsapp.ts'
 import { extract10Digits, guardarMemoria, limpiarMemoria, buscarRepartidor, crearPedidoDesdeBot, barChart } from './db.ts'
+import { pedidoLink } from '../_shared/utils.ts'
 import { conversacionDeepSeek } from './ai.ts'
 import { updateChatwootProfile, addPrivateNoteByPhone, syncContactAttributes } from './chatwoot-sync.ts'
 
 type Supa = ReturnType<typeof createClient>
-const BASE_LINK    = 'https://www.app-estrella.shop/pedido'
+
 const ADMIN_PHONES_ENV  = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHONE') ?? ''
 const ADMIN_PHONE_MAIN  = (() => {
   const n = ADMIN_PHONES_ENV.split(',')[0]?.replace(/\D/g,'').slice(-10)
@@ -29,7 +30,7 @@ export async function handleAdminGPS(
   }
   const r = await crearPedidoDesdeBot(supabase, pData, lat, lng, messageId)
   if (r.ok && r.pedidoId) {
-    await sendWA(fromPhone, `✅ Mapa 📍 recibido.\n\n*Pedido creado en GPS local.*\n⚠️ *[SISTEMA]*: Alerta: El pedido quedó sin número de cliente. Por favor asigna uno con la web app.\n🔗 ${BASE_LINK}/${r.pedidoId}`)
+    await sendWA(fromPhone, `✅ Mapa 📍 recibido.\n\n*Pedido creado en GPS local.*\n⚠️ *[SISTEMA]*: Alerta: El pedido quedó sin número de cliente. Por favor asigna uno con la web app.\n🔗 ${pedidoLink(r.pedidoId)}`)
   }
   return new Response('OK', { status: 200 })
 }
@@ -682,7 +683,7 @@ export async function handleAdminMessage(
       const result = await crearPedidoDesdeBot(supabase, d, undefined, undefined, messageId)
       if (result.ok && result.pedidoId) {
         await limpiarMemoria(supabase, fromPhone)
-        await sendWA(fromPhone, `✅ *Pedido Asignado*\n${mensajeUsuario}\n\n📦 *Detalle:* ${d.descripcion}\n🔗 ${BASE_LINK}/${result.pedidoId}`)
+        await sendWA(fromPhone, `✅ *Pedido Asignado*\n${mensajeUsuario}\n\n📦 *Detalle:* ${d.descripcion}\n🔗 ${pedidoLink(result.pedidoId)}`)
       } else { await sendWA(fromPhone, `❌ Error: ${result.error}`) }
       return new Response('OK', { status: 200 })
     }

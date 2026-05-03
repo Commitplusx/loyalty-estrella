@@ -4,7 +4,8 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 import { sendWA, sendInteractiveButton } from './whatsapp.ts'
-import { extract10Digits } from './db.ts'
+import { extract10Digits, guardarMemoria, crearPedidoDesdeBot } from './db.ts'
+import { pedidoLink } from '../_shared/utils.ts'
 import { handleRepButtons, handleRepMessage } from './rep-handler.ts'
 import { handleAdminGPS, handleAdminAssignRest, handleAdminMessage } from './admin-handler.ts'
 import { handleRestaurantPortal } from './restaurant-portal.ts'
@@ -235,8 +236,6 @@ serve(async (req: Request) => {
       }
       if (slashText.startsWith('/cancelar ')) {
         const codigo = slashText.replace('/cancelar ', '').trim().toUpperCase()
-        // Necesitamos el admin_id para el registro, como from10 no es uuid, busquemos el id del admin o mandamos null/default si no aplica
-        // En supabase el admin_id es uuid. Si el RPC acepta null, pasaremos null o buscaremos al admin.
         const { data: adminUser } = await supabase.from('admin_users').select('id').eq('telefono', from10).maybeSingle()
         const { data, error } = await supabase.rpc('cancelar_cupon', {
           p_codigo: codigo,
@@ -246,6 +245,104 @@ serve(async (req: Request) => {
         else if (!data?.ok) await sendWA(fromPhone, `❌ Error: ${data?.error || 'Cupón no encontrado'}`)
         else await sendWA(fromPhone, `✅ *Cupón Cancelado*\n\nSe ha cancelado el cupón *${codigo}* del cliente *${data.cliente_nombre}*.\nSe han devuelto *$${data.monto_reembolsado}* a su billetera.`)
         return new Response('OK', { status: 200 })
+      }
+
+      // ── COMANDOS DE EMERGENCIA (funcionan SIN DeepSeek) ──────────────────────
+      // Estos comandos permiten operar el negocio cuando la IA está caída.
+      if (slashText.startsWith('/pedido ')) {
+        // Formato: /pedido 9631234567 2 tacos pastor de Makitan
+        const args = (msg.text?.body as string).slice(8).trim()
+        const telMatch = args.match(/^(\d{10})\s+(.+)$/s)
+        if (!telMatch) {
+          await sendWA(fromPhone, `⚠️ Formato: */pedido 9631234567 descripción del pedido*`)
+          return new Response('OK', { status: 200 })
+        }
+        const [, cTel, desc] = telMatch
+        const pData = { clienteTel: cTel, clienteNombre: null, restaurante: null, descripcion: desc, direccion: null, repartidorAlias: null }
+        const r = await crearPedidoDesdeBot(supabase, pData, undefined, undefined, messageId)
+        if (r.ok && r.pedidoId) {
+          await sendWA(fromPhone, `✅ *Pedido creado (modo manual)*\n📞 Cliente: ${cTel}\n📦 ${desc}\n🔗 ${pedidoLink(r.pedidoId)}`)
+        } else {
+          await sendWA(fromPhone, `❌ Error: ${r.error || 'No se pudo crear el pedido'}`)
+        }
+        return new Response('OK', { status: 200 })
+      }
+
+      if (slashText.startsWith('/puntos ')) {
+        // Formato: /puntos 9631234567 [cantidad]
+        const args = slashText.slice(8).trim().split(/\s+/)
+        const cTel = args[0]?.replace(/\D/g, '').slice(-10)
+        const cant = parseInt(args[1] || '1') || 1
+        if (!cTel || cTel.length !== 10) {
+          await sendWA(fromPhone, `⚠️ Formato: */puntos 9631234567* o */puntos 9631234567 3*`)
+          return new Response('OK', { status: 200 })
+        }
+        let lastRes: any = null, rpcErr: any = null
+        for (let i = 0; i < cant; i++) {
+          const { data, error } = await supabase.rpc('fn_registrar_entrega', { p_cliente_tel: cTel })
+          if (error) { rpcErr = error; break }
+          if (data?.ok) lastRes = data
+        }
+        if (lastRes) {
+          await sendWA(fromPhone, `✅ *${cant} punto(s)* sumados a ${cTel}. Total: *${lastRes.puntos} pts*`)
+        } else {
+          await sendWA(fromPhone, `❌ Error: ${rpcErr?.message || 'Cliente no encontrado'}`)
+        }
+        return new Response('OK', { status: 200 })
+      }
+
+      if (slashText.startsWith('/buscar ')) {
+        const cTel = slashText.slice(8).trim().replace(/\D/g, '').slice(-10)
+        if (!cTel || cTel.length !== 10) {
+          await sendWA(fromPhone, `⚠️ Formato: */buscar 9631234567*`)
+          return new Response('OK', { status: 200 })
+        }
+        const { data: c } = await supabase.from('clientes')
+          .select('nombre, telefono, puntos, es_vip, rango, saldo_billetera, envios_totales, envios_gratis_disponibles, cupon_activo, notas_crm')
+          .ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
+        if (c) {
+          await sendWA(fromPhone,
+            `🔍 *${c.nombre || 'Sin nombre'}*\n📞 ${c.telefono}\n⭐ Puntos: ${c.puntos} | Rango: ${c.rango || 'bronce'}\n🎁 Envíos gratis: ${c.envios_gratis_disponibles}\n💰 Billetera: $${c.saldo_billetera || 0}\n🛵 Total entregas: ${c.envios_totales}\n${c.es_vip ? '👑 VIP' : ''}${c.cupon_activo ? `\n🎟️ Cupón: ${c.cupon_activo}` : ''}${c.notas_crm ? `\n📝 ${c.notas_crm.slice(0, 200)}` : ''}`)
+        } else {
+          await sendWA(fromPhone, `❌ Cliente no encontrado con ese número.`)
+        }
+        return new Response('OK', { status: 200 })
+      }
+
+      if (slashText.startsWith('/saldo ')) {
+        // Formato: /saldo 9631234567 150.50
+        const args = slashText.slice(7).trim().split(/\s+/)
+        const cTel = args[0]?.replace(/\D/g, '').slice(-10)
+        const monto = parseFloat(args[1] || '0')
+        if (!cTel || cTel.length !== 10 || isNaN(monto) || monto <= 0) {
+          await sendWA(fromPhone, `⚠️ Formato: */saldo 9631234567 150.50*`)
+          return new Response('OK', { status: 200 })
+        }
+        const { data: c } = await supabase.from('clientes').select('id, nombre, saldo_billetera').ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
+        if (c) {
+          const nuevoSaldo = (c.saldo_billetera || 0) + monto
+          await supabase.from('clientes').update({ saldo_billetera: nuevoSaldo }).eq('id', c.id)
+          await sendWA(fromPhone, `✅ *$${monto}* cargados a ${c.nombre || cTel}.\n💰 Saldo anterior: $${c.saldo_billetera || 0}\n💰 Saldo nuevo: *$${nuevoSaldo}*`)
+        } else {
+          await sendWA(fromPhone, `❌ Cliente no encontrado.`)
+        }
+        return new Response('OK', { status: 200 })
+      }
+
+      if (slashText === '/ayuda' || slashText === '/help') {
+        await sendWA(fromPhone,
+          `📋 *COMANDOS DE EMERGENCIA*\n_(Funcionan sin IA)_\n\n` +
+          `📦 */pedido 963XXXXXXX descripción* — Crear pedido\n` +
+          `⭐ */puntos 963XXXXXXX [cantidad]* — Sumar puntos\n` +
+          `🔍 */buscar 963XXXXXXX* — Ver datos del cliente\n` +
+          `💰 */saldo 963XXXXXXX monto* — Cargar billetera\n` +
+          `🎟️ */usar CODIGO* — Marcar cupón como usado\n` +
+          `🚫 */cancelar CODIGO* — Cancelar cupón\n` +
+          `🛵 */repartidor* — Modo repartidor\n` +
+          `👔 */admin* — Modo administrador\n\n` +
+          `_Estos comandos no requieren IA y siempre funcionan._`)
+        return new Response('OK', { status: 200 })
+      }
       }
     }
 
