@@ -20,7 +20,7 @@ async function cwGet(path: string): Promise<any> {
   try {
     const res = await fetch(`${CW_BASE}/api/v1/accounts/${CW_ACCOUNT}${path}`, {
       headers: { api_access_token: CW_TOKEN },
-      signal: cwAbort().signal,
+      signal: cwSignal(),
     })
     if (!res.ok) return null
     return res.json()
