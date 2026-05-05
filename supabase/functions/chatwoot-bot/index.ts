@@ -476,7 +476,10 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
         }
         const total = lastRes ? lastRes.puntos : ((c.puntos || 0) + cant)
         try {
-          await syncProfileToAttributes(supabase, accountId, contactId, convId, tel10)
+          const resolvedContactId = await findContactIdByPhone(accountId, tel10)
+          if (resolvedContactId) {
+            await syncProfileToAttributes(supabase, accountId, resolvedContactId, convId, tel10)
+          }
         } catch (e) {
           console.error('[CW Sync] Error post-sumar en chatwoot:', e)
         }
