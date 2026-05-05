@@ -13,7 +13,7 @@ const WA_HEADERS = () => ({
   'Content-Type': 'application/json',
 })
 
-// ── Fetch con reintento exponencial ──────────────────────────────────────────
+// ── Realizamos la petición con reintentos para manejar fallos temporales de la red ──
 export async function fetchConReintento(url: string, options: RequestInit, retries = 3): Promise<Response> {
   for (let i = 0; i < retries; i++) {
     try {

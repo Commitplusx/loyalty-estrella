@@ -1,4 +1,4 @@
-﻿// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // ðŸ½ï¸  PORTAL DE RESTAURANTES â€” ROBUST V2 (Idempotencia & Zod & Happy Hour)
 // Manejo fortificado de extracciones, guardrails en DB y AI fallback.
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -452,13 +452,12 @@ export async function handleRestaurantPortal(
   const memKey = `rest_${from10}`
   let estado = await leerEstado(supabase, memKey)
 
-  // â”€â”€ BUG FIX: Idempotencia de webhook (previa al debounce) â”€â”€
-  // Solo verificamos si el msgId ya fue procesado EXITOSAMENTE antes.
-  // NO persistimos la clave aquÃ­ todavÃ­a â€” la persistimos despuÃ©s del debounce
-  // para evitar que un webhook duplicado de Meta que llega durante el sleep
-  // marque el msgId como "ya procesado" antes de que nosotros respondamos.
+  // ── Idempotencia de webhook (previa al debounce) ──
+  // Solo verificamos si el msgId ya fue procesado exitosamente antes.
+  // No persistimos la clave aquí todavía — la persistimos después del debounce
+  // para evitar que un duplicado marque el mensaje como procesado antes de tiempo.
   if (msgId && estado.idempotency_keys?.includes(msgId)) {
-    console.log(`[RESTAURANT PORTAL] Ignorando webhook IDEMPOTENTE duplicado: ${msgId}`)
+    console.log(`[RESTAURANT PORTAL] Ignorando webhook duplicado: ${msgId}`)
     return new Response('OK', { status: 200 })
   }
 
@@ -488,7 +487,7 @@ export async function handleRestaurantPortal(
     const lng = msg.location?.longitude
     const addr = msg.location?.address || msg.location?.name || ''
 
-    // BUG FIX #2b: TambiÃ©n permitir ubicaciÃ³n cuando se espera confirmaciÃ³n
+    // También permitimos recibir la ubicación mientras el restaurante confirma el pedido.
     if (estado.phase === 'collecting_dir' || estado.phase === 'collecting_desc' || estado.phase === 'waiting_confirmation') {
       // Si hay un pedido en espera de confirmaciÃ³n, actualizar su direcciÃ³n y re-mostrar resumen
       if (estado.phase === 'waiting_confirmation' && addr && estado.pedidos_acumulados?.length > 0) {
@@ -547,7 +546,7 @@ export async function handleRestaurantPortal(
   const telefonosEnTexto = extraerTelefonos(textoRest)
   const textoBajo = textoRest.toLowerCase()
   const esReinicio = /reinicia(r)?|reset|cancela(r)?|borrar todo|empe(z|c)ar/i.test(textoBajo)
-  // BUG FIX #4: esListo debe buscar en CADA LÃNEA del buffer, no en el texto completo
+  // Verificamos si alguna línea del mensaje indica que el pedido está listo.
   const esListo = textoRest.split('\n').some(linea =>
     /^(listo|ok|ya|si|sÃ­|correcto|confirma|env[Ã­i]alo|dale|manda(lo)?)\s*[.!]*$/i.test(linea.trim())
   )
@@ -567,7 +566,7 @@ export async function handleRestaurantPortal(
     return new Response('OK', { status: 200 })
   }
 
-  // BUG FIX #3: Guard para waiting_confirmation â€” no procesar nuevos pedidos hasta que el restaurante confirme o cancele.
+  // Si el restaurante tiene un pedido pendiente de confirmación, no procesamos nuevos mensajes como pedidos.
   if (estado.phase === 'waiting_confirmation') {
     if (esListo) {
       // El restaurante escribiÃ³ "confirmar" / "listo" en lugar de pulsar el botÃ³n
@@ -731,7 +730,7 @@ export async function handleRestaurantPortal(
     }
   }
 
-  // BUG FIX: Filtrar pedidos vetados en lugar de destruir toda la sesiÃ³n
+  // Filtramos los pedidos de clientes vetados para no afectar el resto de la sesión.
   if (bloqueadoPorVeto) {
     pedidosAcumulados = pedidosAcumulados.filter(p => {
       const cliRep = p.clienteTel ? p.clienteTel : null // Simplificado, ya extrajimos la alerta
@@ -763,7 +762,7 @@ export async function handleRestaurantPortal(
   // Guardamos el estado actual
   await guardarEstado(supabase, memKey, { phase: 'waiting_confirmation', pedidos_acumulados: pedidosAcumulados, pedido_actual: {}, total_esperados: totalEsperados || estado.total_esperados, sesion_inicio: estado.sesion_inicio ?? Date.now(), idempotency_keys: estado.idempotency_keys })
 
-  // BUG FIX #5: Truncar el body del botÃ³n a 1024 chars (lÃ­mite de Meta API).
+  // Ajustamos el mensaje del botón al límite de 1024 caracteres de la API de Meta.
   // Si supera el lÃ­mite, enviamos el resumen completo por texto plano y luego el botÃ³n en un 2do mensaje corto.
   const footerBtn = `Â¿Deseas solicitar el mensajero ahora?\n_(Escribe "cancelar" si deseas reiniciar)_`
   const fullMsg = resumenMsg + footerBtn

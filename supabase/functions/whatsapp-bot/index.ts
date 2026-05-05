@@ -91,8 +91,8 @@ serve(async (req: Request) => {
         console.log(`⚠️ Mensaje duplicado ignorado (Optimistic): ${messageId}`)
         return new Response('OK', { status: 200 })
       }
-      // BUG-29 fix: don't continue processing if idempotency insert failed for other reasons
-      // This prevents double-processing messages when the DB is under stress
+      // Si la inserción de idempotencia falla por otros motivos, detenemos el proceso
+      // para evitar procesar el mensaje varias veces bajo estrés de la DB.
       console.error(`[IDEMPOTENCY DB ERROR]`, idempError)
       return new Response('Service Unavailable', { status: 503 })
     }
@@ -442,7 +442,7 @@ serve(async (req: Request) => {
       if (portalResponse) return portalResponse
     }
 
-    // BUG-24 fix: cache repartidor lookup to avoid two identical DB queries
+    // Cacheamos la búsqueda del repartidor para evitar duplicar consultas a la base de datos.
     let cachedRepData: { id: string; user_id: string; nombre: string; alias: string } | null = null
     if (!esAdmin || adminEnModoRepartidor) {
       const { data } = await supabase.from('repartidores')
@@ -477,19 +477,61 @@ serve(async (req: Request) => {
 
     // 6. PUBLICO BIENVENIDA O REPARTIDOR MULTIMEDIA ──
     if (!esAdmin || adminEnModoRepartidor) {
-      // Reuse cached repartidor lookup from above (BUG-24 fix)
+      // Reutilizamos la búsqueda del repartidor cacheada anteriormente.
       if (cachedRepData) {
         await sendWA(fromPhone, `🤖 Hola ${cachedRepData.nombre}.\nRecuerda usar los botones para avanzar pedidos o enviarme mensajes de texto sin emojis.`)
       } else {
-        const profileName = body?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.profile?.name
-        // Si el cliente está registrado, mostrar sus puntos en lugar de redirigir al admin
-        const { data: cliente } = await supabase.from('clientes')
-          .select('nombre, puntos').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
-        const botMsg = cliente
-          ? `⭐ ¡Hola *${cliente.nombre || profileName || ''}*!\n\nTienes *${cliente.puntos || 0} puntos* de lealtad acumulados.\n🔗 Tu tarjeta: https://www.app-estrella.shop/loyalty/${from10}\n\nPara hacer un pedido escríbele al administrador: wa.me/52${admin10}`
-          : `¡Hola *${profileName || ''}*! 👋 Soy el asistente de Estrella Delivery.\n\nPara pedir un servicio, escríbele al administrador: wa.me/52${admin10}\n\n¡Gracias! ⭐`
-        await sendWA(fromPhone, botMsg)
-        // cwConvIdPromise se resuelve asincronamente para asegurar que el contacto se creó antes del sendWA
+        const texto = msgType === 'text' ? (msg.text?.body as string).toLowerCase() : ''
+        const { data: mem } = await supabase.from('bot_memory').select('history').eq('phone', from10).maybeSingle()
+        const isClientAI = (mem?.history?.length > 0) || texto.includes('registrar') || texto.includes('asociar') || texto.includes('restaurante') || texto.includes('convenio')
+
+        if (isClientAI && msgType === 'text') {
+           const { conversacionDeepSeek } = await import('./ai.ts')
+           const resAI = await conversacionDeepSeek(supabase, fromPhone, msg.text.body as string, false, null, true)
+           
+           if (resAI?.errorObj) {
+             await sendWA(fromPhone, `⚠️ Tuvimos un problema procesando tu mensaje. Reintenta en unos minutos.`)
+             return new Response('OK', { status: 200 })
+           }
+           if (resAI?.respuesta) {
+             if (resAI.respuesta.accion === 'REGISTRAR_RESTAURANTE') {
+               const nombre = resAI.respuesta.datosAExtraer?.nombre_restaurante
+               const correo = resAI.respuesta.datosAExtraer?.correo
+               
+               await supabase.from('restaurantes_solicitudes').insert({
+                 nombre_restaurante: nombre, correo, telefono: from10
+               })
+               
+               const adminMsg = `🔔 *Nueva Solicitud de Restaurante*\n\nRestaurante: ${nombre}\nCorreo: ${correo}\nTeléfono: wa.me/52${from10}\n\nPara aprobar o rechazar, haz clic en el enlace seguro:`
+               // Generar enlaces para el Admin
+               const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
+               const functionUrl = `${SUPABASE_PROJECT_URL}/functions/v1/admin-approval`
+               
+               await sendWA(`52${admin10}`, adminMsg)
+               await sendWA(`52${admin10}`, `✅ APROBAR: ${functionUrl}?action=accept&tel=${from10}`)
+               await sendWA(`52${admin10}`, `❌ RECHAZAR: ${functionUrl}?action=reject&tel=${from10}`)
+               
+               await sendWA(fromPhone, `🎉 ¡Excelente *${nombre}*!\n\nTu solicitud ha sido enviada al equipo de administración. Recibirás un mensaje aquí mismo en cuanto sea aprobada para que puedas acceder al portal con tu correo *${correo}*.`)
+               
+               await supabase.from('bot_memory').delete().eq('phone', from10)
+             } else {
+               await sendWA(fromPhone, resAI.respuesta.mensajeUsuario)
+               if (resAI.nuevoHistorial) {
+                 const { guardarMemoria } = await import('./db.ts')
+                 await guardarMemoria(supabase, from10, resAI.nuevoHistorial)
+               }
+             }
+           }
+        } else {
+          const profileName = body?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.profile?.name
+          // Si el cliente está registrado, mostrar sus puntos en lugar de redirigir al admin
+          const { data: cliente } = await supabase.from('clientes')
+            .select('nombre, puntos').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
+          const botMsg = cliente
+            ? `⭐ ¡Hola *${cliente.nombre || profileName || ''}*!\n\nTienes *${cliente.puntos || 0} puntos* de lealtad acumulados.\n🔗 Tu tarjeta: https://www.app-estrella.shop/loyalty/${from10}\n\nPara hacer un pedido escríbele al administrador: wa.me/52${admin10}`
+            : `¡Hola *${profileName || ''}*! 👋 Soy el asistente de Estrella Delivery.\n\nPara pedir un servicio, escríbele al administrador: wa.me/52${admin10}\n\n¡Gracias! ⭐`
+          await sendWA(fromPhone, botMsg)
+        }
       }
       return new Response('OK', { status: 200 })
     }

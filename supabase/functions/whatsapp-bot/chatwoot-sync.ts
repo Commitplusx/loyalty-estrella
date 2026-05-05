@@ -10,7 +10,7 @@ const CW_INBOX     = Deno.env.get('CHATWOOT_INBOX_ID')   ?? ''
 
 const CW_TIMEOUT_MS = 5000
 
-// AbortSignal.timeout auto-cleans — no dangling setTimeout after successful fetches
+// Usamos AbortSignal.timeout para gestionar los tiempos de espera de forma limpia.
 function cwSignal(): AbortSignal {
   return AbortSignal.timeout(CW_TIMEOUT_MS)
 }

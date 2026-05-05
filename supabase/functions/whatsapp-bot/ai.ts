@@ -18,9 +18,9 @@ export interface AIRespuesta {
   | 'VER_HISTORIAL_CLIENTE' | 'RECORDATORIO_REPARTIDOR' | 'REVISAR_ENTREGADOS'
   | 'AGREGAR_REPARTIDOR' | 'ELIMINAR_REPARTIDOR' | 'ESTADO_REPARTIDOR'
   | 'VER_ATRASOS' | 'CARGAR_SALDO' | 'ANUNCIO_REPARTIDORES' | 'UBICACION_RESTAURANTE'
-  | 'ENTREGAR_TODOS' | 'CANCELAR_TODOS' | 'ENVIAR_QR' | 'VER_RESTAURANTES' | 'AGREGAR_CLIENTE' | 'ENVIAR_TERMINOS'
+  | 'ENTREGAR_TODOS' | 'CANCELAR_TODOS' | 'ENVIAR_QR' | 'VER_RESTAURANTES' | 'AGREGAR_CLIENTE' | 'ENVIAR_TERMINOS' | 'REGISTRAR_RESTAURANTE'
   mensajeUsuario: string
-  datosAExtraer?: PedidoData & { montoSaldo?: number, diasAtras?: number, clienteNombre?: string, colonia?: string }
+  datosAExtraer?: PedidoData & { montoSaldo?: number, diasAtras?: number, clienteNombre?: string, colonia?: string, nombre_restaurante?: string, correo?: string }
 }
 
 const VALID_ACTIONS: AIRespuesta['accion'][] = [
@@ -31,7 +31,7 @@ const VALID_ACTIONS: AIRespuesta['accion'][] = [
   'VER_HISTORIAL_CLIENTE', 'RECORDATORIO_REPARTIDOR', 'REVISAR_ENTREGADOS',
   'AGREGAR_REPARTIDOR', 'ELIMINAR_REPARTIDOR', 'ESTADO_REPARTIDOR',
   'VER_ATRASOS', 'CARGAR_SALDO', 'ANUNCIO_REPARTIDORES', 'UBICACION_RESTAURANTE',
-  'ENTREGAR_TODOS', 'CANCELAR_TODOS', 'ENVIAR_QR', 'VER_RESTAURANTES', 'AGREGAR_CLIENTE', 'ENVIAR_TERMINOS',
+  'ENTREGAR_TODOS', 'CANCELAR_TODOS', 'ENVIAR_QR', 'VER_RESTAURANTES', 'AGREGAR_CLIENTE', 'ENVIAR_TERMINOS', 'REGISTRAR_RESTAURANTE'
 ]
 
 // ── System prompts ────────────────────────────────────────────────────────────
@@ -68,6 +68,7 @@ HERRAMIENTAS DISPONIBLES:
 - ENTREGAR_TODOS / CANCELAR_TODOS.
 - ENVIAR_QR: Requiere clienteTel. Manda tarjeta de lealtad (QR) al cliente.
 - ENVIAR_TERMINOS: Requiere clienteTel. Manda la solicitud de aceptación de términos y condiciones al cliente. Úsalo cuando el admin pida "manda términos", "envía términos", "pide aceptación" a un cliente.
+- REGISTRAR_RESTAURANTE: Cuando alguien escribe para registrar o asociar su restaurante. Requiere nombre_restaurante y correo. Si falta alguno, usa RESPONDER para pedírselos paso a paso (primero el nombre, luego el correo).
 - REASIGNAR_PEDIDO: Requiere clienteTel, repartidorAlias.
 - AGREGAR_NOTA_CLIENTE: Requiere clienteTel, descripcion.
 - MARCAR_VIP: Requiere clienteTel.
@@ -75,7 +76,7 @@ HERRAMIENTAS DISPONIBLES:
 - RESPONDER: Para charlar, confirmar, o pedir datos faltantes.
 
 FORMATO JSON DE SALIDA (responde SOLO con esto, sin nada más):
-{"accion":"UNA_ACCION_LISTADA","mensajeUsuario":"Texto breve y profesional.","datosAExtraer":{"clienteTel":"10 dígitos o null","puntosASumar":null,"diasAtras":null,"clienteNombre":null,"restaurante":null,"descripcion":null,"direccion":null,"repartidorAlias":null,"montoSaldo":null}}`
+{"accion":"UNA_ACCION_LISTADA","mensajeUsuario":"Texto breve y profesional.","datosAExtraer":{"clienteTel":"10 dígitos o null","puntosASumar":null,"diasAtras":null,"clienteNombre":null,"restaurante":null,"descripcion":null,"direccion":null,"repartidorAlias":null,"montoSaldo":null,"nombre_restaurante":null,"correo":null}}`
 }
 
 function buildRepartidorPrompt(repartidorInfo: any): string {
@@ -107,7 +108,23 @@ SALIDA ESTRICTA (Únicamente un objeto JSON):
 }`
 }
 
-// ── Enforcement Validator (firewall contra alucinaciones del modelo) ───────────
+function buildClientPrompt(): string {
+  return `Eres el asistente virtual de Estrella Delivery, atendiendo a un cliente o prospecto de restaurante.
+Tu objetivo principal es ser amable y ayudarles si desean registrar su restaurante.
+
+HERRAMIENTAS PERMITIDAS:
+- REGISTRAR_RESTAURANTE: Úsalo cuando el usuario exprese intención de registrar, afiliar o asociar su restaurante / negocio. Requiere "nombre_restaurante" y "correo". Si falta alguno, usa RESPONDER para pedírselos amablemente.
+- RESPONDER: Para chatear, saludar, o pedir información faltante.
+
+REGLAS:
+1. Sé amable y conciso.
+2. Si quieren pedir comida, diles que por este medio solo se asocian restaurantes, y que para pedir comida deben usar la app o escribirle al administrador.
+
+FORMATO JSON DE SALIDA (responde SOLO con esto):
+{"accion":"UNA_ACCION_LISTADA","mensajeUsuario":"Tu respuesta","datosAExtraer":{"nombre_restaurante":null,"correo":null}}`
+}
+
+// ── Validador de Seguridad (evita datos incorrectos de la IA) ──────────────────
 function enforcerValidator(respuesta: AIRespuesta): AIRespuesta {
   const d: Record<string, any> = respuesta.datosAExtraer || {}
 
@@ -125,7 +142,7 @@ function enforcerValidator(respuesta: AIRespuesta): AIRespuesta {
       if (!d.clienteTel || d.clienteTel.length !== 10) { blocked = true; respuesta.mensajeUsuario = 'Necesito el número de teléfono del cliente a 10 dígitos para crear un pedido.' }
       else if (!d.descripcion?.trim()) { blocked = true; respuesta.mensajeUsuario = 'Necesito saber exactamente qué productos quiere en el pedido.' }
       break
-    case 'SUMAR_PUNTOS': 
+    case 'SUMAR_PUNTOS':
       if (!d.clienteTel || d.clienteTel.length !== 10) { blocked = true; respuesta.mensajeUsuario = 'Faltan los 10 dígitos del teléfono del cliente.' }
       else if (d.puntosASumar != null && d.puntosASumar <= 0) { blocked = true; respuesta.mensajeUsuario = 'La cantidad de puntos a sumar debe ser mayor a cero.' }
       break
@@ -151,6 +168,9 @@ function enforcerValidator(respuesta: AIRespuesta): AIRespuesta {
     case 'AGREGAR_CLIENTE':
       if (!d.clienteNombre || !d.clienteTel || d.clienteTel.length !== 10) { blocked = true; respuesta.mensajeUsuario = 'Para registrar al cliente, necesito su nombre y su teléfono a 10 dígitos.' }
       break
+    case 'REGISTRAR_RESTAURANTE':
+      if (!d.nombre_restaurante || !d.correo || !d.correo.includes('@')) { blocked = true; respuesta.mensajeUsuario = '¡Excelente! Para registrar tu restaurante necesito que me des su Nombre y un Correo electrónico válido.' }
+      break
   }
 
   if (blocked) {
@@ -160,9 +180,9 @@ function enforcerValidator(respuesta: AIRespuesta): AIRespuesta {
   return respuesta
 }
 
-// ── Circuit Breaker DeepSeek (in-memory, por instancia Deno) ─────────────────
-// Previene saturar DeepSeek cuando está caído: tras 3 fallas consecutivas,
-// pausa 45s antes de intentar de nuevo. Cada instancia mantiene su estado.
+// ── Cortocircuito (Circuit Breaker) para la IA ────────────────────────────────
+// Previene saturar el servicio cuando está caído. Tras varios fallos,
+// pausa las peticiones temporalmente para ahorrar recursos.
 const _dsCircuit = { fails: 0, openUntil: 0 }
 const DS_FAIL_THRESHOLD = 3
 const DS_OPEN_MS = 45_000
@@ -184,6 +204,7 @@ export async function conversacionDeepSeek(
   nuevoTexto: string,
   isRepartidor = false,
   repartidorInfo: any = null,
+  isClient = false
 ): Promise<{ respuesta?: AIRespuesta; nuevoHistorial?: any[]; errorObj?: string } | null> {
   try {
     // Circuit breaker: si está abierto, rechazar inmediatamente sin llamar a DeepSeek
@@ -194,12 +215,13 @@ export async function conversacionDeepSeek(
     }
 
     const memPhone = extract10Digits(phone)
+    const admin10 = memPhone
     const { data: mem } = await supabase.from('bot_memory').select('history').eq('phone', memPhone).maybeSingle()
     const historia = mem?.history || []
 
-    const systemInstruction = isRepartidor
-      ? buildRepartidorPrompt(repartidorInfo)
-      : buildAdminPrompt()
+    let systemInstruction = buildAdminPrompt()
+    if (isRepartidor) systemInstruction = buildRepartidorPrompt(repartidorInfo)
+    else if (isClient) systemInstruction = buildClientPrompt()
 
     const formattedHistory = historia
       .filter((h: any) => h.content && String(h.content).trim().length > 0)
@@ -218,7 +240,7 @@ export async function conversacionDeepSeek(
 
     const callDeepSeek = async (): Promise<Response> => {
       const controller = new AbortController()
-      // 12s timeout — la idempotencia en index.ts bloquea reintentos duplicados de Meta.
+      // Tiempo de espera de 12 segundos para evitar retrasos excesivos.
       const timeout = setTimeout(() => controller.abort(), 12000)
       try {
         return await fetch('https://api.deepseek.com/chat/completions', {
@@ -268,10 +290,10 @@ export async function conversacionDeepSeek(
     const data = await res.json()
     console.log(`🤖 [DeepSeek] Tokens usados — input: ${data.usage?.prompt_tokens} | output: ${data.usage?.completion_tokens}`)
 
-    // Formato OpenAI-compatible: choices[0].message.content
+    // El formato es compatible con el estándar de OpenAI.
     let rawContent = (data.choices?.[0]?.message?.content || '').trim()
 
-    // Respuesta vacía de DeepSeek — ocurre en picos de carga
+    // Manejo de respuestas vacías (puede ocurrir durante picos de carga).
     if (!rawContent || rawContent.length < 5) {
       const msg = '❌ DeepSeek devolvió contenido vacío. Finish reason: ' + (data.choices?.[0]?.finish_reason || 'unknown');
       console.error(msg)

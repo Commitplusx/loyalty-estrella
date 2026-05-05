@@ -47,7 +47,7 @@ export async function crearPedidoDesdeBot(
   try {
     const rep = await buscarRepartidor(supabase, datos.repartidorAlias)
     
-    // BUG FIX: Si el admin especificó un nombre pero no se encontró, error. No crear "pendiente".
+    // Si se especificó un repartidor pero no se encontró, devolvemos error para evitar confusiones.
     if (datos.repartidorAlias && !rep) {
       return { ok: false, error: `Repartidor "${datos.repartidorAlias}" no encontrado en el equipo activo.` }
     }

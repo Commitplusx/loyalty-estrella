@@ -10,8 +10,8 @@ const ADMIN_PHONES_ENV = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHO
 const _adminMain10 = ADMIN_PHONES_ENV.split(',').map((s: string) => extract10Digits(s)).filter(Boolean)[0] ?? ''
 const ADMIN_PHONE_MAIN = _adminMain10 ? `52${_adminMain10}` : ''
 
-// Invoca una Edge Function sin bloquear la respuesta al repartidor.
-// Las notificaciones al cliente son importantes pero NO deben penalizar la latencia del rep.
+// Invoca una función en segundo plano para no hacer esperar al repartidor.
+// Las notificaciones al cliente son importantes pero la rapidez para el repartidor es prioridad.
 function invokeAsync(supabase: Supa, fn: string, body: object): void {
   supabase.functions.invoke(fn, { body })
     .catch((e: any) => console.error(`[ASYNC INVOKE] ${fn}:`, e?.message))
@@ -114,7 +114,7 @@ export async function handleRepButtons(supabase: Supa, fromPhone: string, button
       
       await sendWA(fromPhone, `✅ ¡Excelente trabajo! El pedido ha sido entregado. Quedas libre. 🌟`)
       
-      // Solicitar calificación del cliente al REPARTIDOR post-entrega (sin bloquear al rep)
+      // Pedimos al repartidor que califique su experiencia con el cliente (UX post-entrega).
       if (p.cliente_tel) {
         const tel10 = extract10Digits(p.cliente_tel)
         if (tel10.length === 10) {
@@ -244,7 +244,7 @@ export async function handleRepMessage(
         await guardarMemoria(supabase, from10, ai?.nuevoHistorial || [])
         return new Response('OK', { status: 200 })
       }
-      // RPC fn_registrar_entrega already updates puntos atomically — no manual update needed
+      // El procedimiento fn_registrar_entrega actualiza los puntos de forma atómica en la DB.
       // Sincronizar hacia Chatwoot inmediatamente
       try {
         const { updateChatwootProfile } = await import('./chatwoot-sync.ts')

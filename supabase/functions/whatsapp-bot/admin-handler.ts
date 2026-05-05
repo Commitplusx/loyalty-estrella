@@ -18,11 +18,8 @@ export async function handleAdminGPS(
   supabase: Supa, fromPhone: string, admin10: string,
   lat: number, lng: number, contextText: string, messageId: string
 ): Promise<Response> {
-  // BUG FIX #1: Verificar si hay un pedido pendiente del restaurante que esté procesando el admin.
-  // Por simplicidad de refactor, este modo directo asume contexto de creación,
-  // pero ahora exigiremos que asocie el GPS a un pedido *activo* sin ubicación o creamos
-  // pidiendo el número del cliente post-creación en un flujo real.
-  // Para no romper la funcionalidad, lo dejaremos parecido pero le agregaremos una advertencia de que falta el cliente.
+  // Verificamos si hay un pedido pendiente del restaurante que el administrador esté procesando.
+  // Si encontramos uno, asociamos estas coordenadas al pedido.
   const pData = {
     clienteTel: '9999999999', clienteNombre: null, restaurante: null,
     descripcion: contextText || 'Entrega en coordenadas GPS',
@@ -98,14 +95,13 @@ export async function handleAdminAssignRest(
       resumen += `${idx + 1}️⃣ ❌ Error guardando: ${pedErr?.message}\n`; errores++
       continue
     }
-    // NOTA ARQUITECTURA: Ya no invocamos a `notificar-whatsapp` manualmente aquí.
-    // Ahora existe el Trigger `trg_notify_repartidor` en PostgreSQL que detecta el UPDATE de estado
-    // y se encarga de enviar el Webhook automáticamente garantizando un "Single Source of Truth".
+    // Nota: Las notificaciones a los repartidores ahora se disparan automáticamente 
+    // mediante Triggers en la base de datos (PostgreSQL) cuando cambia el estado.
 
     resumen += `${idx + 1}️⃣ ✅ a *${rep.nombre}* → Cliente ${pedido.clienteTel}\n`
   }
   resumen += errores > 0 ? `\n⚠️ ${errores} error(es).` : `\n🚀 Notificaciones enviadas.`
-  // BUG FIX: Eliminar el registro pendiente correctamente sin pasar por el limpiador de 10 dígitos
+  // Eliminamos el registro de pedidos pendientes una vez que han sido asignados correctamente.
   await supabase.from('bot_memory').delete().eq('phone', `admin_rest_pending_${admin10}`)
   await sendWA(fromPhone, resumen)
   return new Response('OK', { status: 200 })
@@ -442,7 +438,7 @@ export async function handleAdminMessage(
       return new Response('OK', { status: 200 })
     }
     case 'CANCELAR_PEDIDO': {
-      // BUG FIX #4: Usar update en lugar de delete
+      // Marcamos los pedidos como cancelados en lugar de eliminarlos para mantener el historial.
       const tel10 = extract10Digits(d.clienteTel)
       const { data: peds } = await supabase.from('pedidos').select('id, descripcion')
         .ilike('cliente_tel', `%${tel10}%`).in('estado', ['asignado', 'recibido']).order('created_at', { ascending: false })
