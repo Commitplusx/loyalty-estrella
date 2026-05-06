@@ -437,9 +437,9 @@ export function ClienteView() {
                 <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
                   <AlertCircle className="w-10 h-10 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold mb-2">Número no registrado</h2>
+                <h2 className="text-2xl font-bold mb-2">numero no registrado</h2>
                 <p className="text-orange-100">
-                  El número <strong className="text-white">{telefono}</strong> aún no tiene cuenta en Estrella Delivery.
+                  El numero <strong className="text-white">{telefono}</strong> aún no tiene cuenta en Estrella Delivery.
                 </p>
               </div>
               <CardContent className="p-6 space-y-4 text-center">
@@ -451,13 +451,13 @@ export function ClienteView() {
                   <div>
                     <p className="font-semibold text-gray-800 text-sm">¿Cómo registrarte?</p>
                     <p className="text-gray-500 text-sm">
-                      En tu próximo pedido, pide al repartidor que registre tu número. ¡Es gratis y empieza a contar de inmediato!
+                      En tu próximo pedido, pide al repartidor que registre tu numero. ¡Es gratis y empieza a contar de inmediato!
                     </p>
                   </div>
                 </div>
                 <Button onClick={handleReset} className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white h-12">
                   <Search className="w-4 h-4 mr-2" />
-                  Buscar otro número
+                  Buscar otro numero
                 </Button>
               </CardContent>
             </Card>
@@ -512,14 +512,14 @@ export function ClienteView() {
                 <h1 className="text-3xl lg:text-4xl font-bold text-foreground mb-2">
                   Consulta tus <span className="text-gradient">puntos</span>
                 </h1>
-                <p className="text-muted-foreground text-lg mb-4">Ingresa tu número para ver tu fidelidad</p>
+                <p className="text-muted-foreground text-lg mb-4">Ingresa tu numero para ver tu fidelidad</p>
               </div>
 
               <Card className="border-0 shadow-xl ring-1 ring-orange-100 dark:ring-orange-900/30">
                 <CardContent className="p-6">
                   <form onSubmit={handleBuscar} className="space-y-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground">Número de teléfono</label>
+                      <label className="text-sm font-medium text-foreground">Numero de telefono</label>
                       <div className="relative">
                         <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                         <Input
