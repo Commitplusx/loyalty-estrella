@@ -3,7 +3,7 @@ import Lottie from 'lottie-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, ChevronLeft, Phone, QrCode, Gift } from 'lucide-react';
 
-/* ── Step data ── */
+/* ── Datos de los pasos descriptivos ── */
 const STEPS = [
   {
     num: '01',
@@ -42,13 +42,13 @@ const STEPS = [
 
 const AUTO_ADVANCE_MS = 5500;
 
-/* ── Stepper — preloads ALL animations on mount so switches are instant ── */
+/* ── Stepper: Precarga todas las animaciones al montar para cambios instantáneos ── */
 export function StepsLottie() {
   const [active, setActive] = useState(0);
   const [direction, setDirection] = useState<1 | -1>(1);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Preload all 3 JSONs at once — keyed by index
+  // Precarga de los archivos JSON para evitar parpadeos al cambiar de paso.
   const [animCache, setAnimCache] = useState<Record<number, object | 'failed'>>({});
 
   useEffect(() => {
@@ -68,7 +68,7 @@ export function StepsLottie() {
   const next = () => goTo((active + 1) % STEPS.length, 1);
   const prev = () => goTo((active - 1 + STEPS.length) % STEPS.length, -1);
 
-  // Auto-advance
+  // Avance automático de los pasos.
   useEffect(() => {
     timerRef.current = setTimeout(next, AUTO_ADVANCE_MS);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
@@ -77,10 +77,10 @@ export function StepsLottie() {
   const step = STEPS[active];
   const cachedData = animCache[active];
 
-  /* Render the animation area — data is already loaded before the slide happens */
+  /* Área de renderizado de la animación (con los datos ya cargados en memoria) */
   const renderAnim = () => {
     if (cachedData === undefined) {
-      // Still loading — neutral skeleton (only visible on very first render)
+      // Estado de carga inicial (skeleton neutral).
       return (
         <div className="w-full h-full flex items-center justify-center">
           <div className={`w-24 h-24 ${step.fallbackBg} rounded-3xl animate-pulse`} />
@@ -88,7 +88,7 @@ export function StepsLottie() {
       );
     }
     if (cachedData === 'failed') {
-      // JSON not found — clean icon fallback
+      // Si falla la carga del JSON, mostramos un icono de respaldo limpio.
       return (
         <div className="w-full h-full flex items-center justify-center">
           <div className={`w-24 h-24 ${step.fallbackBg} rounded-3xl flex items-center justify-center`}>
@@ -97,7 +97,7 @@ export function StepsLottie() {
         </div>
       );
     }
-    // Data ready — render instantly, no delay
+    // Datos listos para mostrarse sin retardos.
     return (
       <Lottie
         animationData={cachedData}
@@ -128,7 +128,7 @@ export function StepsLottie() {
           ))}
         </div>
 
-        {/* Slide transition — only text and number slide, animation fades softly */}
+        {/* Transición suave entre diapositivas */}
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={active}
@@ -188,7 +188,7 @@ export function StepsLottie() {
         </button>
       </div>
 
-      {/* Auto-progress bar */}
+      {/* Barra de progreso visual del avance automático */}
       <div className="mt-3 h-0.5 bg-gray-100 rounded-full overflow-hidden">
         <motion.div
           key={active}

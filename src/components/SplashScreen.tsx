@@ -6,7 +6,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
   const [show, setShow] = useState(true);
 
   useEffect(() => {
-    // Keep splash on screen for 4.8 segundos before fading out (1800 + 3000)
+    // Mantenemos la pantalla de carga visible por 4.8 segundos antes de desvanecerla.
     const timer = setTimeout(() => {
       setShow(false);
       setTimeout(onComplete, 500); // 500ms for exit animation
@@ -24,7 +24,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
           transition={{ duration: 0.5, ease: 'easeInOut' }}
           className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background"
         >
-          {/* Logo container animated */}
+          {/* Contenedor del logo con animación de entrada */}
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -32,7 +32,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
             className="flex flex-col items-center"
           >
             <div className="relative mb-6">
-              {/* Glowing animated background */}
+              {/* Fondo con resplandor animado */}
               <motion.div
                 animate={{ scale: [1, 1.25, 1], opacity: [0.5, 0.8, 0.5] }}
                 transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
@@ -40,7 +40,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
               />
               <div className="relative w-32 h-32 rounded-[2.5rem] bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-2xl shadow-orange-500/50 border border-orange-400/30 overflow-visible">
                 
-                {/* Reverse spinning ghostly star */}
+                {/* Estrella de fondo con rotación inversa y desenfoque */}
                 <motion.div
                   className="absolute flex items-center justify-center"
                   animate={{ rotate: -360, scale: [0.9, 1.2, 0.9] }}
@@ -52,7 +52,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
                   <Star className="w-20 h-20 text-white/40 fill-white/20 blur-[2px]" />
                 </motion.div>
 
-                {/* Main bouncing and spinning star */}
+                {/* Estrella principal con animación de rotación, escala y rebote */}
                 <motion.div
                   className="absolute flex items-center justify-center"
                   animate={{ 
@@ -102,7 +102,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
               Estrella <span className="bg-gradient-to-r from-orange-500 to-amber-500 bg-clip-text text-transparent">Delivery</span>
             </h1>
             
-            {/* Loading dots */}
+            {/* Indicador de carga con puntos animados */}
             <div className="flex gap-1.5 mt-4">
               {[0, 1, 2].map((i) => (
                 <motion.div

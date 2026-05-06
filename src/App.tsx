@@ -9,6 +9,8 @@ import { Terminos } from '@/pages/Terminos';
 import { FlashBanner } from '@/components/FlashBanner';
 import { SplashScreen } from '@/components/SplashScreen';
 import { useDarkMode } from '@/hooks/useDarkMode';
+import { RestaurantesPage } from '@/pages/client/RestaurantesPage';
+import { RestauranteMenuPage } from '@/pages/client/RestauranteMenuPage';
 import './App.css';
 
 function AnimatedRoutes() {
@@ -24,6 +26,8 @@ function AnimatedRoutes() {
           <Route path="/cliente" element={<ClienteView />} />
           <Route path="/clientes" element={<ClienteView />} />
           <Route path="/loyalty/:tel" element={<ClienteView />} />
+          <Route path="/restaurantes" element={<RestaurantesPage />} />
+          <Route path="/restaurantes/:id" element={<RestauranteMenuPage />} />
           <Route path="/pedido/:id" element={<PedidoView />} />
           <Route path="/terminos" element={<Terminos />} />
           <Route path="*" element={<Navigate to="/" replace />} />

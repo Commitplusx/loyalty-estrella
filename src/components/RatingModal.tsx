@@ -11,8 +11,8 @@ interface RatingModalProps {
 }
 
 export function RatingModal({ registroId, onClose }: RatingModalProps) {
-  // Bug #2 fix: separate confirmed `rating` from `hovered` state
-  // so that hovering over stars after clicking doesn't overwrite the selection.
+  // Separamos el rating confirmado del estado 'hover' para que al pasar el mouse
+  // después de hacer clic no se pierda la selección visual.
   const [rating, setRating] = useState(0);
   const [hovered, setHovered] = useState(0);
   const [comment, setComment] = useState('');
@@ -27,7 +27,7 @@ export function RatingModal({ registroId, onClose }: RatingModalProps) {
     }
 
     setIsSubmitting(true);
-    // Bug #5 fix: only pass `comentario` if it's non-empty
+    // Solo enviamos el comentario si realmente tiene texto.
     const success = await submitRating(
       registroId,
       rating,
@@ -73,7 +73,7 @@ export function RatingModal({ registroId, onClose }: RatingModalProps) {
         </div>
 
         <div className="p-8 space-y-6">
-          {/* Bug #2 fix: use separate hover/rating states */}
+          {/* Usamos estados distintos para hover y rating */}
           <div
             className="flex justify-center gap-2"
             onMouseLeave={() => setHovered(0)}
@@ -105,7 +105,7 @@ export function RatingModal({ registroId, onClose }: RatingModalProps) {
             className="w-full min-h-[100px] bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-orange-500 transition-all resize-none disabled:opacity-50"
           />
 
-          {/* Bug #9 fix: add Loader2 spinner during isSubmitting */}
+          {/* Mostramos un spinner mientras se procesa el envío */}
           <Button
             onClick={handleSubmit}
             disabled={isSubmitting || rating === 0}

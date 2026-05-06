@@ -43,8 +43,8 @@ const HORAS_FELICES: HoraFeliz[] = [
 
 const PRECIO_NORMAL_DEFAULT = 50; // Precio regular de envío
 
-// BUG-21 fix: use empty strings so contact buttons are disabled during loading
-// instead of directing users to '1234567890' (a fake number)
+// Dejamos los datos de contacto vacíos por defecto para que los botones
+// se mantengan deshabilitados mientras carga la configuración real.
 const CONTACTO_DEFAULT: AppContacto = {
   whatsapp: '',
   telefono: '',
@@ -199,8 +199,8 @@ export function useSchedule(): UseScheduleReturn {
     };
   }, [horarios, horasFelices, contacto.precio_normal]);
 
-  // Bug #7 fix: add `horasFelices` as dependency so this doesn't become a stale closure
-  // when the config is loaded from the DB.
+  // Agregamos horasFelices como dependencia para evitar que el estado quede obsoleto
+  // cuando la configuración se carga desde la base de datos.
   const isHappyHourNow = useCallback((): boolean => {
     const now = new Date();
     const diaActual = now.getDay();
@@ -214,7 +214,7 @@ export function useSchedule(): UseScheduleReturn {
     return isTimeInRange(horaActual, minutosActual, horaFelizHoy.hora_inicio, horaFelizHoy.hora_fin);
   }, [horasFelices]);
 
-  // Bug #6 fix: read price dynamically from horaFelizHoy instead of hardcoded 35
+  // El precio lo obtenemos dinámicamente según si es hora feliz o no.
   const getPrecioActual = useCallback((): number => {
     const now = new Date();
     const diaActual = now.getDay();

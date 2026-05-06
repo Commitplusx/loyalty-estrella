@@ -8,10 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
-  Star, Phone, Search, Gift, Ticket,
+  Phone, Search, Gift,
   TrendingUp, Clock, MapPin, Sparkles, Download,
-  ChevronLeft, QrCode, AlertCircle, Loader2, Crown, Sun, Moon,
-  Wallet, Truck, X, CheckCircle2, Share2, Heart
+  ChevronLeft, QrCode, AlertCircle, Crown, Sun, Moon,
+  Truck, X, Share2, Heart
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast-native';
 import QRCode from 'qrcode';
@@ -57,7 +57,7 @@ export function ClienteView() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Al montar, restauramos la sesiÃ³n del cliente desde localStorage (intencional).
+  // Al montar, restauramos la sesión del cliente desde localStorage (intencional).
   useEffect(() => {
     const saved = localStorage.getItem('estrella_cliente');
     if (saved) {
@@ -66,7 +66,7 @@ export function ClienteView() {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setCliente(parsed);
         setViewState('result');
-        // TambiÃ©n recargamos el historial actualizado y los datos frescos del cliente
+        // También recargamos el historial actualizado y los datos frescos del cliente
         getHistorialCliente(parsed.id).then(setHistorial).catch(() => {});
         getClienteByTelefono(parsed.telefono).then(freshData => {
           if (freshData && !('found' in freshData)) {
@@ -79,25 +79,25 @@ export function ClienteView() {
     }
   }, []);
 
-  // Cada vez que cambia el cliente, actualizamos (o borramos) la sesiÃ³n guardada
+  // Cada vez que cambia el cliente, actualizamos (o borramos) la sesión guardada
   useEffect(() => {
     if (cliente) {
       localStorage.setItem('estrella_cliente', JSON.stringify(cliente));
     }
   }, [cliente]);
 
-  // DEEP LINKING: Detectar telÃ©fono en la URL (?tel=9611234567) O en la ruta /loyalty/:tel
+  // DEEP LINKING: Detectar teléfono en la URL (?tel=9611234567) O en la ruta /loyalty/:tel
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const telParam = routeTel || params.get('tel');
     if (telParam && telParam.length >= 10) {
       const cleanTel = telParam.replace(/\D/g, '').slice(-10);
       setTelefono(cleanTel);
-      // BUG-03 fix: clear localStorage before deep-link search to avoid race condition
-      // with the restore-session useEffect that runs simultaneously
+      // Evitamos conflictos borrando la sesión local antes de buscar por link directo
+      // con el efecto de restauración que corre al mismo tiempo.
       localStorage.removeItem('estrella_cliente');
       setCliente(null);
-      // Ejecutar bÃºsqueda automÃ¡tica
+      // Ejecutar búsqueda automática
       setViewState('loading');
       getClienteByTelefono(cleanTel).then(async (data) => {
         if (data && !('found' in data)) {
@@ -114,18 +114,18 @@ export function ClienteView() {
     }
   }, [routeTel]);
 
-  // SuscripciÃ³n en tiempo real
+  // Suscripción en tiempo real
   const clienteId = cliente?.id;
   useEffect(() => {
     if (!clienteId) return;
     const unsubscribe = subscribeToCliente(clienteId, (updated) => {
       setCliente(updated);
-      // Mantenemos la sesiÃ³n actualizada en storage tambiÃ©n
+      // Mantenemos la sesión actualizada en storage también
       localStorage.setItem('estrella_cliente', JSON.stringify(updated));
     });
 
-    // BUG-02 fix: Unified single channel instead of two separate ones
-    // listening to the same table/filter â€” avoids duplicate WebSocket connections
+    // Usamos un solo canal para no duplicar conexiones de WebSocket
+    // escuchando la misma tabla.
     const eventsChannel = supabase
       .channel(`events_${clienteId}`)
       .on(
@@ -174,7 +174,7 @@ export function ClienteView() {
     setCliente(null);
     setQrDataUrl(null);
 
-    // Run fetch + 4-second minimum timer in parallel â€” whichever finishes last wins
+    // Run fetch + 4-second minimum timer in parallel "” whichever finishes last wins
     const MIN_LOADING_MS = 4000;
     const [data] = await Promise.all([
       getClienteByTelefono(tel),
@@ -194,7 +194,7 @@ export function ClienteView() {
   };
 
   const handleReset = () => {
-    // Cerrar sesiÃ³n: limpiamos todo incluyendo la sesiÃ³n guardada en localStorage
+    // Cerrar sesión: limpiamos todo incluyendo la sesión guardada en localStorage
     localStorage.removeItem('estrella_cliente');
     setCliente(null);
     setTelefono('');
@@ -209,19 +209,19 @@ export function ClienteView() {
 
   const isVip = cliente?.es_vip === true;
   const metaVip = getMetaPuntos(cliente?.rango, isVip);
-  // Bug #5 fix: un cliente nuevo con 0 puntos no debe mostrar "Â¡Gratis!"
+  // Si el cliente es nuevo y tiene 0 puntos, no mostramos el mensaje de gratis.
   const puntosEnCiclo = cliente ? cliente.puntos % metaVip : 0;
   const progreso = cliente ? (puntosEnCiclo / metaVip) * 100 : 0;
   const enviosRestantes = cliente
     ? (puntosEnCiclo === 0 && cliente.envios_totales === 0
-        ? metaVip                        // cliente nuevo: aÃºn le faltan todos
+        ? metaVip                        // cliente nuevo: aún le faltan todos
         : metaVip - puntosEnCiclo)       // en ciclo activo o inicio de nuevo ciclo
     : metaVip;
 
   // â”€â”€ Compartir tarjeta de lealtad â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleShare = () => {
     const url = `https://www.app-estrella.shop/loyalty/${cliente?.telefono}`;
-    const text = `Â¡Mira mi tarjeta de lealtad en Estrella Delivery! ðŸŒŸ\n${url}`;
+    const text = `¡Mira mi tarjeta de lealtad en Estrella Delivery! ðŸŒŸ\n${url}`;
     if (navigator.share) {
       navigator.share({ title: 'Estrella Delivery', text, url }).catch(() => {});
     } else {
@@ -259,14 +259,12 @@ export function ClienteView() {
     a.href = qrDataUrl;
     a.download = `estrella-qr-${cliente?.telefono || 'mi-codigo'}.png`;
     a.click();
-    toast.success('Â¡QR descargado!', 'Guardado en tu galerÃ­a');
+    toast.success('¡QR descargado!', 'Guardado en tu galería');
   };
 
   // Wallet handlers moved to WalletSection component
 
-  // BUG-14 fix: removed duplicate QR generation useEffect.
-  // QR is already generated by the useEffect above (lines 162-170) whenever
-  // cliente.qr_code changes, making this second one redundant.
+  // El QR ya se genera arriba, quitamos el efecto duplicado.
 
   return (
     <motion.div 
@@ -276,7 +274,7 @@ export function ClienteView() {
       transition={{ duration: 0.3, ease: 'easeOut' }}
       className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/20 transition-colors duration-300"
     >
-      {/* Header â€” fixed blue like Home page */}
+      {/* Header "” fixed blue like Home page */}
       <header
         className={`fixed top-0 inset-x-0 z-50 bg-blue-600 transition-all duration-300
           ${navScrolled ? 'shadow-xl shadow-blue-700/40' : ''}`}
@@ -335,11 +333,11 @@ export function ClienteView() {
         </div>
       </header>
 
-      {/* Main â€” padding-top to clear fixed header + bottom safe-area for iPhone home bar */}
+      {/* Main "” padding-top to clear fixed header + bottom safe-area for iPhone home bar */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pt-20 sm:pt-24"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 2rem)' }}>
 
-        {/* â”€â”€ LOADING â€” premium â”€â”€ */}
+        {/* â”€â”€ LOADING "” premium â”€â”€ */}
         {viewState === 'loading' && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -351,13 +349,13 @@ export function ClienteView() {
             {/* Orbital spinner */}
             <div className="flex flex-col items-center gap-5">
               <div className="relative w-24 h-24">
-                {/* Outer ring â€” spins fast */}
+                {/* Outer ring "” spins fast */}
                 <motion.div
                   className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-600 border-r-blue-400"
                   animate={{ rotate: 360 }}
                   transition={{ duration: 0.9, repeat: Infinity, ease: 'linear' }}
                 />
-                {/* Middle ring â€” spins slow, opposite */}
+                {/* Middle ring "” spins slow, opposite */}
                 <motion.div
                   className="absolute inset-2 rounded-full border-4 border-transparent border-b-blue-300 border-l-blue-500"
                   animate={{ rotate: -360 }}
@@ -381,7 +379,7 @@ export function ClienteView() {
                   animate={{ opacity: [0.7, 1, 0.7] }}
                   transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
                 >
-                  Buscando tu cuentaâ€¦
+                  Buscando tu cuenta"¦
                 </motion.h2>
                 <p className="text-sm text-gray-400 font-mono tracking-wide">
                   +52 {telefono.slice(0, 3)} {telefono.slice(3, 6)} {telefono.slice(6)}
@@ -389,7 +387,7 @@ export function ClienteView() {
               </div>
             </div>
 
-            {/* Shimmer skeleton cards â€” staggered */}
+            {/* Shimmer skeleton cards "” staggered */}
             <div className="space-y-3">
               {[
                 { w: 'w-full', h: 'h-28' },
@@ -439,9 +437,9 @@ export function ClienteView() {
                 <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
                   <AlertCircle className="w-10 h-10 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold mb-2">NÃºmero no registrado</h2>
+                <h2 className="text-2xl font-bold mb-2">Número no registrado</h2>
                 <p className="text-orange-100">
-                  El nÃºmero <strong className="text-white">{telefono}</strong> aÃºn no tiene cuenta en Estrella Delivery.
+                  El número <strong className="text-white">{telefono}</strong> aún no tiene cuenta en Estrella Delivery.
                 </p>
               </div>
               <CardContent className="p-6 space-y-4 text-center">
@@ -451,15 +449,15 @@ export function ClienteView() {
                 <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-xl text-left">
                   <Phone className="w-8 h-8 text-blue-500 shrink-0" />
                   <div>
-                    <p className="font-semibold text-gray-800 text-sm">Â¿CÃ³mo registrarte?</p>
+                    <p className="font-semibold text-gray-800 text-sm">¿Cómo registrarte?</p>
                     <p className="text-gray-500 text-sm">
-                      En tu prÃ³ximo pedido, pide al repartidor que registre tu nÃºmero. Â¡Es gratis y empieza a contar de inmediato!
+                      En tu próximo pedido, pide al repartidor que registre tu número. ¡Es gratis y empieza a contar de inmediato!
                     </p>
                   </div>
                 </div>
                 <Button onClick={handleReset} className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white h-12">
                   <Search className="w-4 h-4 mr-2" />
-                  Buscar otro nÃºmero
+                  Buscar otro número
                 </Button>
               </CardContent>
             </Card>
@@ -477,7 +475,7 @@ export function ClienteView() {
                 <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto">
                   <AlertCircle className="w-8 h-8 text-red-500" />
                 </div>
-                <h2 className="text-xl font-bold text-gray-900">Error de conexiÃ³n</h2>
+                <h2 className="text-xl font-bold text-gray-900">Error de conexión</h2>
                 <p className="text-gray-500">No se pudo conectar al servidor. Verifica tu internet e intenta de nuevo.</p>
                 <Button onClick={handleReset} variant="outline" className="border-orange-300 text-orange-600">
                   Intentar de nuevo
@@ -514,14 +512,14 @@ export function ClienteView() {
                 <h1 className="text-3xl lg:text-4xl font-bold text-foreground mb-2">
                   Consulta tus <span className="text-gradient">puntos</span>
                 </h1>
-                <p className="text-muted-foreground text-lg mb-4">Ingresa tu nÃºmero para ver tu fidelidad</p>
+                <p className="text-muted-foreground text-lg mb-4">Ingresa tu número para ver tu fidelidad</p>
               </div>
 
               <Card className="border-0 shadow-xl ring-1 ring-orange-100 dark:ring-orange-900/30">
                 <CardContent className="p-6">
                   <form onSubmit={handleBuscar} className="space-y-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground">NÃºmero de telÃ©fono</label>
+                      <label className="text-sm font-medium text-foreground">Número de teléfono</label>
                       <div className="relative">
                         <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                         <Input
@@ -551,6 +549,24 @@ export function ClienteView() {
                         Consultar mis puntos
                       </Button>
                     </motion.div>
+
+                    <div className="pt-2">
+                      <div className="relative flex items-center py-2">
+                        <div className="flex-grow border-t border-muted"></div>
+                        <span className="flex-shrink-0 mx-4 text-muted-foreground text-sm font-medium">O descubre</span>
+                        <div className="flex-grow border-t border-muted"></div>
+                      </div>
+                      <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="mt-2">
+                        <Button
+                          type="button"
+                          onClick={() => window.location.href = '/restaurantes'}
+                          className="w-full h-14 bg-white dark:bg-zinc-900 hover:bg-orange-50 dark:hover:bg-zinc-800 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-900/50 font-semibold text-lg"
+                        >
+                          <Utensils className="w-5 h-5 mr-2" />
+                          Restaurantes Asociados
+                        </Button>
+                      </motion.div>
+                    </div>
                   </form>
                 </CardContent>
               </Card>
@@ -565,7 +581,7 @@ export function ClienteView() {
                     </div>
                     <div>
                       <p className="font-extrabold text-foreground tracking-tight">5 = 1 Gratis</p>
-                      <p className="text-sm font-medium text-orange-600/70 dark:text-orange-400/70">Mucha mÃ¡s fidelidad</p>
+                      <p className="text-sm font-medium text-orange-600/70 dark:text-orange-400/70">Mucha más fidelidad</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -577,7 +593,7 @@ export function ClienteView() {
                     </div>
                     <div>
                       <p className="font-extrabold text-foreground tracking-tight">Hora Feliz</p>
-                      <p className="text-sm font-medium text-amber-600/70 dark:text-amber-500/70">Tus envÃ­os a $35</p>
+                      <p className="text-sm font-medium text-amber-600/70 dark:text-amber-500/70">Tus envíos a $35</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -595,7 +611,7 @@ export function ClienteView() {
                     </div>
                     <div>
                       <p className="font-extrabold text-foreground tracking-tight">5 = 1 Gratis</p>
-                      <p className="text-sm font-medium text-orange-600/70 dark:text-orange-400/70">Mucha mÃ¡s fidelidad</p>
+                      <p className="text-sm font-medium text-orange-600/70 dark:text-orange-400/70">Mucha más fidelidad</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -607,7 +623,7 @@ export function ClienteView() {
                     </div>
                     <div>
                       <p className="font-extrabold text-foreground tracking-tight">Hora Feliz</p>
-                      <p className="text-sm font-medium text-amber-600/70 dark:text-amber-500/70">Tus envÃ­os a $35</p>
+                      <p className="text-sm font-medium text-amber-600/70 dark:text-amber-500/70">Tus envíos a $35</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -618,7 +634,7 @@ export function ClienteView() {
                 <CardContent className="p-6">
                   <div className="flex items-center gap-2 mb-6">
                     <Clock className="w-6 h-6 text-orange-500" />
-                    <h3 className="font-bold text-xl text-foreground">Horario de AtenciÃ³n</h3>
+                    <h3 className="font-bold text-xl text-foreground">Horario de Atención</h3>
                   </div>
                   <div className="flex flex-col xl:flex-row xl:items-center justify-between p-4 bg-muted/30 dark:bg-muted/50 rounded-xl mb-4 gap-2">
                     <span className="text-muted-foreground font-medium text-sm lg:text-base">Lunes a Domingo</span>
@@ -636,7 +652,7 @@ export function ClienteView() {
                         </div>
                         <div>
                           <h4 className="font-extrabold text-xl lg:text-xl text-white tracking-tight leading-tight drop-shadow-sm">Horas Felices</h4>
-                          <p className="text-orange-100 text-xs font-semibold uppercase tracking-wider">EnvÃ­os a solo $35</p>
+                          <p className="text-orange-100 text-xs font-semibold uppercase tracking-wider">Envíos a solo $35</p>
                         </div>
                       </div>
                       
@@ -739,7 +755,7 @@ export function ClienteView() {
                     );
                   })()}
 
-                  {/* CupÃ³n activo */}
+                  {/* Cupón activo */}
                   {cliente.cupon_activo && (
                     <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
                       className="relative overflow-hidden rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 p-4 text-white shadow-md shadow-orange-500/30">
@@ -747,10 +763,10 @@ export function ClienteView() {
                       <div className="relative z-10">
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <motion.span animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>ðŸŽŸï¸</motion.span>
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-white/80">CupÃ³n activo</span>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-white/80">Cupón activo</span>
                         </div>
                         <p className="font-mono font-black text-2xl tracking-[0.18em] mb-1.5">{cliente.cupon_activo}</p>
-                        <button onClick={() => { navigator.clipboard.writeText(cliente.cupon_activo!); toast.success('Â¡Copiado!', 'Listo para usar'); }}
+                        <button onClick={() => { navigator.clipboard.writeText(cliente.cupon_activo!); toast.success('¡Copiado!', 'Listo para usar'); }}
                           className="text-[11px] font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors">ðŸ“‹ Copiar</button>
                       </div>
                     </motion.div>
@@ -761,7 +777,7 @@ export function ClienteView() {
                     <div className="rounded-xl overflow-hidden shadow-sm">
                       <img src={(cliente as any).foto_fachada_url} alt="Fachada" className="w-full h-28 object-cover" />
                       <div className="bg-gray-50 dark:bg-gray-800 px-3 py-1.5">
-                        <p className="text-[10px] text-gray-400 flex items-center gap-1"><MapPin className="w-3 h-3" /> DirecciÃ³n registrada</p>
+                        <p className="text-[10px] text-gray-400 flex items-center gap-1"><MapPin className="w-3 h-3" /> Dirección registrada</p>
                       </div>
                     </div>
                   )}
@@ -775,9 +791,9 @@ export function ClienteView() {
               {/* Progress + QR side by side on desktop */}
               <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-5 items-start">
 
-              {/* Progress card â€” full width on mobile, left slot on desktop */}
+              {/* Progress card "” full width on mobile, left slot on desktop */}
               <div className="space-y-6">
-                {/* Mobile toggle â€” hidden on desktop */}
+                {/* Mobile toggle "” hidden on desktop */}
                 <div className="flex lg:hidden justify-center gap-2">
                   <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                     <Button
@@ -821,11 +837,11 @@ export function ClienteView() {
                     )}
                   </>
                 ) : (
-                  // QR View â€” mobile only (on desktop it's in the center column)
+                  // QR View "” mobile only (on desktop it's in the center column)
                   <Card className="border-0 shadow-xl lg:hidden">
                     <CardContent className="p-6 flex flex-col items-center text-center gap-4">
-                      <h2 className="text-lg font-bold text-gray-800">Tu CÃ³digo QR Personal</h2>
-                      <p className="text-sm text-gray-500">MuÃ©straselo al repartidor</p>
+                      <h2 className="text-lg font-bold text-gray-800">Tu Código QR Personal</h2>
+                      <p className="text-sm text-gray-500">Muéstraselo al repartidor</p>
                       {qrDataUrl ? (
                         <div className="p-4 bg-white rounded-2xl shadow-inner border border-gray-100">
                           <img src={qrDataUrl} alt="Tu QR" className="w-56 h-56 rounded-xl" />
@@ -841,7 +857,7 @@ export function ClienteView() {
                 )}
               </div>{/* end progress card column */}
 
-              {/* â”€â”€ QR column (desktop: right of progress, mobile: hidden â€” inside mobile toggle) â”€â”€ */}
+              {/* â”€â”€ QR column (desktop: right of progress, mobile: hidden "” inside mobile toggle) â”€â”€ */}
               <div className="hidden lg:flex flex-col items-center gap-3 shrink-0">
                 <Card className="border-0 shadow-lg dark:bg-card">
                   <CardContent className="p-4 flex flex-col items-center gap-3">
@@ -885,9 +901,9 @@ export function ClienteView() {
                     <CardContent className="p-6 text-center">
                       <Gift className="w-12 h-12 mx-auto mb-3" />
                       <h3 className="text-xl font-bold mb-1">
-                        Â¡Tienes {cliente.envios_gratis_disponibles} envÃ­o{cliente.envios_gratis_disponibles > 1 ? 's' : ''} gratis!
+                        ¡Tienes {cliente.envios_gratis_disponibles} envío{cliente.envios_gratis_disponibles > 1 ? 's' : ''} gratis!
                       </h3>
-                      <p className="text-green-100">Muestra tu cÃ³digo QR al repartidor para canjearlo</p>
+                      <p className="text-green-100">Muestra tu código QR al repartidor para canjearlo</p>
                     </CardContent>
                   </Card>
                 )}
@@ -910,7 +926,7 @@ export function ClienteView() {
               <span className="font-semibold text-sm text-gray-700 dark:text-gray-300">Estrella Delivery</span>
             </div>
             <div className="flex items-center gap-1.5 text-xs text-gray-400">
-              <Clock className="w-3.5 h-3.5" /> Lun â€“ Dom: 9 AM â€“ 10 PM
+              <Clock className="w-3.5 h-3.5" /> Lun "“ Dom: 9 AM "“ 10 PM
             </div>
             <a href={whatsappUrl} target="_blank" rel="noopener noreferrer"
               className="text-xs text-green-600 dark:text-green-400 font-semibold hover:underline flex items-center gap-1">
@@ -918,7 +934,7 @@ export function ClienteView() {
             </a>
           </div>
           <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 text-center text-[10px] text-gray-300 dark:text-gray-600">
-            Â© {new Date().getFullYear()} Estrella Delivery â€” Hecho con <Heart className="w-2.5 h-2.5 text-red-400 fill-red-400 inline mx-0.5" /> para nuestros clientes
+            © {new Date().getFullYear()} Estrella Delivery "” Hecho con <Heart className="w-2.5 h-2.5 text-red-400 fill-red-400 inline mx-0.5" /> para nuestros clientes
           </div>
         </div>
       </footer>

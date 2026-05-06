@@ -1,8 +1,6 @@
 /* Estilos específicos de la aplicación */
-/* NOTE: Keyframe animations and utility classes are defined here.
-   index.css defines the Tailwind base/component/utilities layer.
-   Shared classes like .text-gradient, .bg-gradient-primary are intentionally
-   kept here (App.css) and removed from index.css to avoid duplication. */
+/* Animaciones de keyframes y clases de utilidad globales.
+   Aquí se definen estilos compartidos como gradientes y sombras que se usan en toda la app. */
 
 /* ─── Animations ──────────────────────────────────────────── */
 
@@ -120,8 +118,8 @@
 }
 
 /* ─── Focus styles ────────────────────────────────────────── */
-/* Bug #24 fix: use valid CSS box-shadow for focus ring instead of
-   Tailwind's `ring` utility which is not valid in plain CSS files. */
+/* Usamos box-shadow estándar para el anillo de foco para asegurar compatibilidad
+   fuera de las utilidades directas de Tailwind. */
 input:focus,
 textarea:focus,
 select:focus {
@@ -157,9 +155,7 @@ button:focus-visible {
   }
 }
 
-/* ─── NOTE on global transition ─────────────────────────────
-   Bug #23: The previous `* { transition-property: ... }` rule was
-   removed. It was applied to EVERY DOM element and caused major
-   scroll/paint performance issues. Transitions per element are
-   handled by Tailwind's `transition-*` utilities on individual components.
-─────────────────────────────────────────────────────────── */
+/* Nota sobre transiciones globales:
+   Se eliminó la regla que aplicaba transiciones a todos los elementos (*)
+   porque causaba problemas graves de rendimiento al hacer scroll.
+   Ahora se manejan puntualmente en cada componente. */

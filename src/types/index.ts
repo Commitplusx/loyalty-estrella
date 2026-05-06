@@ -15,7 +15,7 @@ export interface Cliente {
   cupon_activo?: string | null;
   costo_envio?: number;
   notas_crm?: string;
-  foto_fachada_url?: string | null; // BUG-28 fix: used in notificar-whatsapp for delivery photos
+  foto_fachada_url?: string | null; // URL de la foto de la fachada para facilitar la entrega.
   created_at: string;
   updated_at: string;
 }

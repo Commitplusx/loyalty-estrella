@@ -38,7 +38,7 @@ export function PedidoView() {
   const esAutorizado = id ? urlKey === id.replace(/-/g, '').slice(0, 8) : false;
 
   useEffect(() => {
-    // BUG-20 fix: guard at the top so cleanup always runs when id changes
+    // Verificamos que el ID exista al inicio del efecto para evitar errores de carga.
     if (!id) return;
 
     const fetchPedido = async () => {
@@ -72,7 +72,6 @@ export function PedidoView() {
           filter: `id=eq.${id}`,
         },
         (payload) => {
-          console.log('Pedido actualizado remoto:', payload.new);
           setPedido(payload.new as Pedido);
           toast.info(`El pedido ahora está: ${payload.new.estado.replace('_', ' ')}`);
         }
@@ -104,7 +103,7 @@ export function PedidoView() {
       toast.success(`Pedido actualizado a: ${nuevoEstado.replace('_', ' ')}`);
       setPedido((prev) => prev ? { ...prev, estado: nuevoEstado as any } : null);
 
-      // BUG-26 fix: notify client via WhatsApp when state changes from web
+      // Notificamos al cliente por WhatsApp sobre el cambio de estado desde la web.
       supabase.functions.invoke('notificar-whatsapp', {
         body: { tipo: nuevoEstado, pedido_id: id }
       }).catch(console.error);
@@ -121,7 +120,7 @@ export function PedidoView() {
     } else if (pedido?.direccion) {
       window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pedido.direccion + ', Comitan')}&travelmode=driving`, '_blank');
     } else {
-      // BUG-31 fix: show feedback instead of silently doing nothing
+      // Avisamos al usuario si no hay datos de ubicación para evitar que parezca que el botón no funciona.
       toast.warning('Sin datos de ubicación', 'Este pedido no tiene dirección ni coordenadas GPS');
     }
   };

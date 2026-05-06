@@ -3,7 +3,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
 // Muestra puntos actuales, barra de progreso, estrellas, y stats.
 
-import { motion } from 'framer-motion';
+import { motion, MotionValue } from 'framer-motion';
 import { Star, Gift, Ticket } from 'lucide-react';
 import type { Cliente } from '@/types';
 
@@ -12,7 +12,7 @@ interface ProgressCardProps {
   metaVip: number;
   progreso: number;
   enviosRestantes: number;
-  displayPointsRounded: number;
+  displayPointsRounded: MotionValue<number>;
   onCanjear: () => void;
 }
 

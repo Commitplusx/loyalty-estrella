@@ -81,7 +81,7 @@
 /* ─── Tailwind utility extensions ─────────────────────────── */
 
 @layer utilities {
-  /* Gradient text — Bug #26 fix: defined ONLY here, removed from App.css overlap */
+  /* Texto con gradiente: definido aquí para evitar duplicidad con App.css */
   .text-gradient {
     @apply bg-clip-text text-transparent;
     background-image: linear-gradient(135deg, #f97316 0%, #f59e0b 100%);

@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Cliente, RegistroPunto, AdminUser, AppConfig } from '@/types';
 
-// BUG FIX #1: Credentials must come from environment variables only — no hardcoded fallbacks
+// Las credenciales deben venir de variables de entorno para mayor seguridad, sin fallbacks manuales.
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -163,7 +163,7 @@ export async function submitRating(registroPuntoId: string, puntuacion: number, 
     registro_punto_id: registroPuntoId,
     puntuacion,
   };
-  // Only include comentario if it has actual content
+  // Solo incluimos el comentario si realmente tiene contenido.
   if (comentario && comentario.trim().length > 0) {
     payload.comentario = comentario.trim();
   }
@@ -270,7 +270,7 @@ export async function getAppConfig(): Promise<AppConfig | null> {
     horarios: data.horarios,
     horas_felices: data.horas_felices,
     contacto: data.contacto,
-    // Add default values since they are hardcoded in schema defaults
+    // Valores por defecto del esquema (puntos y envíos gratis).
     puntos_por_envio: 1,
     envios_para_gratis: 5
   } as AppConfig;
@@ -336,7 +336,7 @@ export function subscribeToCliente(
         callback(payload.new as Cliente);
       }
     )
-    // Bug #29 fix: handle channel errors so callers know if Realtime fails
+    // Controlamos errores en el canal para notificar si la conexión en tiempo real falla.
     .subscribe((status) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         console.error(`[Realtime] Channel error for cliente ${clienteId}: ${status}`);

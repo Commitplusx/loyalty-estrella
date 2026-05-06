@@ -60,12 +60,22 @@ export default defineConfig(({ mode }) => {
     server: {
       host: true, 
     },
-    // ── Test config (Vitest) ──
-    test: {
-      globals: true,
-      environment: 'jsdom',
-      setupFiles: './src/test/setup.ts',
-      include: ['src/**/*.test.{ts,tsx}'],
+    // ── Build optimizations para producción ──
+    build: {
+      // Eliminar console.log en el bundle de producción
+      minify: 'esbuild',
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            // Separar librerías pesadas en chunks propios para mejor cacheo
+            'vendor-react':    ['react', 'react-dom', 'react-router-dom'],
+            'vendor-motion':   ['framer-motion'],
+            'vendor-lottie':   ['lottie-react'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+            'vendor-ui':       ['lucide-react', 'canvas-confetti', 'qrcode'],
+          },
+        },
+      },
     },
   }
 });

@@ -10,7 +10,7 @@ interface QRGeneratorProps {
   size?: number;
 }
 
-// Bug #11: derive the correct goal based on the client's league rank
+// Obtenemos la meta de envíos necesaria para el premio según el rango del cliente.
 function getMetaEnvios(cliente: Cliente): number {
   if (cliente.rango === 'oro') return 3;
   if (cliente.rango === 'plata' || cliente.es_vip) return 4;
@@ -52,7 +52,7 @@ export function QRGenerator({ cliente, size = 280 }: QRGeneratorProps) {
     
     const link = document.createElement('a');
     link.href = qrDataUrl;
-    // Bug #17 fix: guard against null/undefined nombre before calling replace
+    // Verificamos que el nombre exista y lo limpiamos para usarlo como nombre de archivo.
     const safeName = (cliente.nombre || 'cliente').replace(/\s+/g, '-').toLowerCase();
     link.download = `qr-${safeName}.png`;
     document.body.appendChild(link);
@@ -126,7 +126,7 @@ export function QRGenerator({ cliente, size = 280 }: QRGeneratorProps) {
           )}
         </div>
 
-        {/* Progreso — Bug #11 fix: use dynamic meta based on rango */}
+        {/* Sección de progreso: la meta se ajusta dinámicamente según el rango del usuario */}
         <div className="bg-orange-50 rounded-xl p-4 mb-6">
           {(() => {
             const meta = getMetaEnvios(cliente);

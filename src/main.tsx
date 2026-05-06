@@ -10,7 +10,7 @@ console.log(
   'color: #f97316; font-size: 1em; font-weight: 500; margin-top: 8px;'
 );
 
-// Bug #22 fix: guard against missing root element instead of using non-null assertion
+// Verificamos que el elemento root exista antes de intentar renderizar la aplicación.
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error('[Estrella Delivery] Root element #root not found in index.html');
