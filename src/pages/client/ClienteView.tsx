@@ -11,7 +11,7 @@ import {
   Phone, Search, Gift,
   TrendingUp, Clock, MapPin, Sparkles, Download,
   ChevronLeft, QrCode, AlertCircle, Crown, Sun, Moon,
-  Truck, X, Share2, Heart
+  Truck, X, Share2, Heart, Utensils
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast-native';
 import QRCode from 'qrcode';
