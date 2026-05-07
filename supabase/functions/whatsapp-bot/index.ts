@@ -3,7 +3,7 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-import { sendWA, sendInteractiveButton, markMessageAsRead } from './whatsapp.ts'
+import { sendWA, sendInteractiveButton, markMessageAsRead, sendTypingIndicator } from './whatsapp.ts'
 import { extract10Digits, guardarMemoria, crearPedidoDesdeBot } from './db.ts'
 import { pedidoLink, logError } from '../_shared/utils.ts'
 import { handleRepButtons, handleRepMessage } from './rep-handler.ts'
@@ -97,9 +97,10 @@ serve(async (req: Request) => {
       return new Response('Service Unavailable', { status: 503 })
     }
 
-    // ── MARCAR COMO LEÍDO (Palomitas Azules) ──
-    // Se ejecuta de fondo para no bloquear el flujo principal
+    // ── MARCAR COMO LEÍDO Y ESCRIBIENDO (Chat Actions) ──
+    // Se ejecutan de fondo para no bloquear el flujo principal
     markMessageAsRead(messageId).catch(e => console.error('[ReadReceipt] Error:', e))
+    sendTypingIndicator(fromPhone).catch(e => console.error('[Typing] Error:', e))
 
     // ── NORMALIZAR TELÉFONO (necesario para rate limit y roles) ──
     const from10 = extract10Digits(fromPhone)
