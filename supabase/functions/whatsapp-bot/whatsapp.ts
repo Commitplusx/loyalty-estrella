@@ -265,23 +265,3 @@ export async function markMessageAsRead(messageId: string): Promise<void> {
     console.error('WA Fatal Net Error (Read Receipt):', e)
   }
 }
-
-// ── Animación de "Escribiendo..." (Typing Indicator) ─────────────────────────
-export async function sendTypingIndicator(to: string): Promise<void> {
-  try {
-    const res = await fetchConReintento(WA_BASE, {
-      method: 'POST',
-      headers: WA_HEADERS(),
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to,
-        type: 'chat_action',
-        chat_action: { action: 'typing_on' },
-      }),
-    })
-    if (!res.ok) console.error('WA Typing Indicator Error:', await res.text())
-  } catch (e) {
-    console.error('WA Fatal Net Error (Typing Indicator):', e)
-  }
-}
