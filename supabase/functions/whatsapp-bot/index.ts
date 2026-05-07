@@ -3,7 +3,7 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-import { sendWA, sendInteractiveButton } from './whatsapp.ts'
+import { sendWA, sendInteractiveButton, markMessageAsRead } from './whatsapp.ts'
 import { extract10Digits, guardarMemoria, crearPedidoDesdeBot } from './db.ts'
 import { pedidoLink, logError } from '../_shared/utils.ts'
 import { handleRepButtons, handleRepMessage } from './rep-handler.ts'
@@ -97,6 +97,10 @@ serve(async (req: Request) => {
       return new Response('Service Unavailable', { status: 503 })
     }
 
+    // ── MARCAR COMO LEÍDO (Palomitas Azules) ──
+    // Se ejecuta de fondo para no bloquear el flujo principal
+    markMessageAsRead(messageId).catch(e => console.error('[ReadReceipt] Error:', e))
+
     // ── NORMALIZAR TELÉFONO (necesario para rate limit y roles) ──
     const from10 = extract10Digits(fromPhone)
 
@@ -136,16 +140,24 @@ serve(async (req: Request) => {
     const esAdmin = ADMIN_PHONES_LIST.includes(from10)
     const admin10 = esAdmin ? from10 : (ADMIN_PHONES_LIST[0] || '')
 
-    // ── IDENTIFICAR ROL PARA ETIQUETAS DE CHATWOOT ──
+    // ── IDENTIFICAR ROL PARA ETIQUETAS DE CHATWOOT Y LOGICA ──
     let userLabel = 'cliente'
+    let cachedRepData: { id: string; user_id: string; nombre: string; alias: string } | null = null
+
     if (esAdmin) {
       userLabel = 'admin'
     } else {
-      const { data: isRep } = await supabase.from('repartidores').select('id').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
-      if (isRep) userLabel = 'repartidor'
-      else {
-        const { data: isRest } = await supabase.from('restaurantes').select('id').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
-        if (isRest) userLabel = 'restaurante'
+      // Ejecución paralela de roles para reducir latencia (Escalabilidad Fase 2)
+      const [resRep, resRest] = await Promise.all([
+        supabase.from('repartidores').select('id, user_id, nombre, alias').ilike('telefono', `%${from10}%`).limit(1).maybeSingle(),
+        supabase.from('restaurantes').select('id').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
+      ])
+
+      if (resRep.data) {
+        userLabel = 'repartidor'
+        cachedRepData = resRep.data
+      } else if (resRest.data) {
+        userLabel = 'restaurante'
       }
     }
 
@@ -442,13 +454,8 @@ serve(async (req: Request) => {
       if (portalResponse) return portalResponse
     }
 
-    // Cacheamos la búsqueda del repartidor para evitar duplicar consultas a la base de datos.
-    let cachedRepData: { id: string; user_id: string; nombre: string; alias: string } | null = null
-    if (!esAdmin || adminEnModoRepartidor) {
-      const { data } = await supabase.from('repartidores')
-        .select('id, user_id, nombre, alias').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
-      cachedRepData = data
-    }
+    // La búsqueda de repartidor ya fue cacheada al inicio en cachedRepData (Escalabilidad Fase 2)
+    // if (!esAdmin || adminEnModoRepartidor) { ... }
 
     // 4. REP FLOW — only for text messages
     if ((!esAdmin || adminEnModoRepartidor) && msgType === 'text') {

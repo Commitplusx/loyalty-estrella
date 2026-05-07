@@ -183,19 +183,39 @@ function enforcerValidator(respuesta: AIRespuesta): AIRespuesta {
 // ── Cortocircuito (Circuit Breaker) para la IA ────────────────────────────────
 // Previene saturar el servicio cuando está caído. Tras varios fallos,
 // pausa las peticiones temporalmente para ahorrar recursos.
-const _dsCircuit = { fails: 0, openUntil: 0 }
 const DS_FAIL_THRESHOLD = 3
 const DS_OPEN_MS = 45_000
+const CB_KEY = 'sys_circuit_ds'
 
-function _cbFail(): void {
-  _dsCircuit.fails++
-  if (_dsCircuit.fails >= DS_FAIL_THRESHOLD) {
-    _dsCircuit.openUntil = Date.now() + DS_OPEN_MS
-    _dsCircuit.fails = 0
+async function _getDsCircuit(supabase: SupabaseClient) {
+  try {
+    const { data } = await supabase.from('bot_memory').select('history').eq('phone', CB_KEY).maybeSingle()
+    if (data?.history?.[0]) return data.history[0] as { fails: number, openUntil: number }
+  } catch (e) {}
+  return { fails: 0, openUntil: 0 }
+}
+
+async function _updateDsCircuit(supabase: SupabaseClient, state: { fails: number, openUntil: number }) {
+  await supabase.from('bot_memory').upsert({ phone: CB_KEY, history: [state], updated_at: new Date().toISOString() })
+}
+
+async function _cbFail(supabase: SupabaseClient): Promise<void> {
+  const c = await _getDsCircuit(supabase)
+  c.fails++
+  if (c.fails >= DS_FAIL_THRESHOLD) {
+    c.openUntil = Date.now() + DS_OPEN_MS
+    c.fails = 0
     console.error(`⛔ [CIRCUIT OPEN] DeepSeek pausado ${DS_OPEN_MS / 1000}s por ${DS_FAIL_THRESHOLD} fallas consecutivas.`)
   }
+  await _updateDsCircuit(supabase, c)
 }
-function _cbSuccess(): void { _dsCircuit.fails = 0 }
+
+async function _cbSuccess(supabase: SupabaseClient): Promise<void> {
+  const c = await _getDsCircuit(supabase)
+  if (c.fails > 0) {
+    await _updateDsCircuit(supabase, { fails: 0, openUntil: 0 })
+  }
+}
 
 // ── Llamar a DeepSeek R1 ──────────────────────────────────────────────────────
 export async function conversacionDeepSeek(
@@ -208,8 +228,9 @@ export async function conversacionDeepSeek(
 ): Promise<{ respuesta?: AIRespuesta; nuevoHistorial?: any[]; errorObj?: string } | null> {
   try {
     // Circuit breaker: si está abierto, rechazar inmediatamente sin llamar a DeepSeek
-    if (Date.now() < _dsCircuit.openUntil) {
-      const secsLeft = Math.ceil((_dsCircuit.openUntil - Date.now()) / 1000)
+    const circuit = await _getDsCircuit(supabase)
+    if (Date.now() < circuit.openUntil) {
+      const secsLeft = Math.ceil((circuit.openUntil - Date.now()) / 1000)
       console.warn(`⛔ [CIRCUIT OPEN] DeepSeek en pausa — ${secsLeft}s restantes`)
       return { errorObj: `IA en pausa temporal (${secsLeft}s). Reintenta en un momento.` }
     }
@@ -275,7 +296,7 @@ export async function conversacionDeepSeek(
       const msg = isTimeout ? '⏱️ Timeout 12s alcanzado, usando fallback' : '🌐 Fetch error: ' + String(fetchErr);
       console.error(msg)
       await logError('whatsapp-bot', `DeepSeek Fetch Failure: ${msg}`, { error: String(fetchErr), admin10 }, 'critical');
-      _cbFail()
+      await _cbFail(supabase)
       return { errorObj: isTimeout ? 'DeepSeek no respondió a tiempo. Intente de nuevo.' : String(fetchErr) }
     }
 
@@ -283,7 +304,7 @@ export async function conversacionDeepSeek(
       const errText = await res.text()
       console.error('DeepSeek API Error:', errText)
       await logError('whatsapp-bot', `DeepSeek HTTP Error ${res.status}`, { response: errText, admin10 }, 'critical');
-      _cbFail()
+      await _cbFail(supabase)
       return { errorObj: `HTTP ${res.status} - ${errText}` }
     }
 
@@ -298,7 +319,7 @@ export async function conversacionDeepSeek(
       const msg = '❌ DeepSeek devolvió contenido vacío. Finish reason: ' + (data.choices?.[0]?.finish_reason || 'unknown');
       console.error(msg)
       await logError('whatsapp-bot', `DeepSeek Empty Response`, { finish_reason: data.choices?.[0]?.finish_reason, admin10 }, 'error');
-      _cbFail()
+      await _cbFail(supabase)
       return { errorObj: msg }
     }
 
@@ -312,13 +333,15 @@ export async function conversacionDeepSeek(
       if (!parsed.accion || !VALID_ACTIONS.includes(parsed.accion)) throw new Error(`Acción inválida: "${parsed.accion}"`)
       respuesta = parsed as AIRespuesta
     } catch {
-      const jsonMatch = rawContent.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
+      const fallbackFb = rawContent.indexOf('{')
+      const fallbackLb = rawContent.lastIndexOf('}')
+      if (fallbackFb !== -1 && fallbackLb !== -1 && fallbackLb > fallbackFb) {
         try {
-          const parsed2 = JSON.parse(jsonMatch[0])
+          const jsonMatchStr = rawContent.substring(fallbackFb, fallbackLb + 1)
+          const parsed2 = JSON.parse(jsonMatchStr)
           if (parsed2.accion && VALID_ACTIONS.includes(parsed2.accion)) {
             respuesta = parsed2 as AIRespuesta
-            console.warn('⚠️ JSON recuperado via regex fallback.')
+            console.warn('⚠️ JSON recuperado via substring fallback.')
           } else throw new Error('Acción inválida en fallback')
         } catch (repairErr: any) {
           console.error('❌ JSON no rescatable. Raw:', rawContent.slice(0, 500))
@@ -332,7 +355,7 @@ export async function conversacionDeepSeek(
     }
 
     respuesta = enforcerValidator(respuesta)
-    _cbSuccess()
+    await _cbSuccess(supabase)
 
     const nuevoHistorial = [
       ...historia.slice(-6),

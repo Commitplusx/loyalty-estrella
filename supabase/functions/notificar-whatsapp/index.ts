@@ -243,7 +243,8 @@ serve(async (req: Request) => {
     if (tipo === 'canje_billetera') {
       const { cliente_tel, cliente_nombre, codigo_canje, monto, saldo_restante } = payload
       const telFormateado = formatTel(cliente_tel)
-      const adminPhoneMain = Deno.env.get('ADMIN_PHONE_BILLETERA') || '529631539156'
+      const adminPhoneMain = Deno.env.get('ADMIN_PHONE_BILLETERA')
+      if (!adminPhoneMain) throw new Error('Missing ADMIN_PHONE_BILLETERA en entorno')
 
       // Avisar al cliente (USANDO PLANTILLA estrella_cupon_generado en INGLES)
       const fExp = 'Válido hoy'
@@ -310,7 +311,8 @@ serve(async (req: Request) => {
 
     // ── ZOMBIE WATCHDOG (INTERVENCIÓN DEL ADMIN) ──
     if (tipo === 'alerta_zombie') {
-      const adminPhone = Deno.env.get('ADMIN_PHONE') || '529631550244'
+      const adminPhone = Deno.env.get('ADMIN_PHONE')
+      if (!adminPhone) throw new Error('Missing ADMIN_PHONE en entorno')
       const msgZ = `🚨 *ALERTA CRÍTICA: PEDIDO ZOMBIE* 🚨\n\n⚠️ El siguiente pedido se ha atascado:\n\n🔢 *Orden:* ${numeroOrden}\n📦 *${descripcion || pedido.descripcion}*\n\n⏱️ *Tiempo total:* ${minutos_total} min\n⏳ *Sin moverse:* ${minutos_estancado} min\n\n👉 Por favor, revisa o reasigna el pedido.`
 
       const resZ = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {

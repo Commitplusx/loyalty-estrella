@@ -16,6 +16,7 @@ interface Pedido {
   precio: string | null // Puede ser negociado
   lat?: number | null
   lng?: number | null
+  es_vetado?: boolean
 }
 
 interface EstadoSesion {
@@ -157,23 +158,45 @@ async function extraerJsonSeguro(text: string): Promise<any | null> {
   }
 }
 
-// â”€â”€ Circuit Breaker DeepSeek â€” Portal Restaurantes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Instancia independiente del circuit breaker de ai.ts (mÃ³dulo distinto).
-const _restCircuit = { fails: 0, openUntil: 0 }
+// ── Circuit Breaker DeepSeek — Portal Restaurantes ─────────────────────────
+// Persistido en base de datos para entornos Serverless (Edge Functions)
 const REST_CB_THRESHOLD = 3
 const REST_CB_OPEN_MS = 45_000
-function _restCbFail(): void {
-  _restCircuit.fails++
-  if (_restCircuit.fails >= REST_CB_THRESHOLD) {
-    _restCircuit.openUntil = Date.now() + REST_CB_OPEN_MS
-    _restCircuit.fails = 0
+const CB_KEY = 'sys_circuit_rest'
+
+async function _getRestCircuit(supabase: SupabaseClient) {
+  try {
+    const { data } = await supabase.from('bot_memory').select('history').eq('phone', CB_KEY).maybeSingle()
+    if (data?.history?.[0]) return data.history[0] as { fails: number, openUntil: number }
+  } catch (e) {}
+  return { fails: 0, openUntil: 0 }
+}
+
+async function _updateRestCircuit(supabase: SupabaseClient, state: { fails: number, openUntil: number }) {
+  await supabase.from('bot_memory').upsert({ phone: CB_KEY, history: [state], updated_at: new Date().toISOString() })
+}
+
+async function _restCbFail(supabase: SupabaseClient): Promise<void> {
+  const c = await _getRestCircuit(supabase)
+  c.fails++
+  if (c.fails >= REST_CB_THRESHOLD) {
+    c.openUntil = Date.now() + REST_CB_OPEN_MS
+    c.fails = 0
     console.error('[CIRCUIT OPEN] DeepSeek-Restaurantes pausado 45s por 3 fallas consecutivas')
     logError('whatsapp-bot', '[CIRCUIT OPEN] Restaurante pausado 45s por fallo de AI.', {}, 'error').catch(() => {});
   }
+  await _updateRestCircuit(supabase, c)
 }
-function _restCbSuccess(): void { _restCircuit.fails = 0 }
+
+async function _restCbSuccess(supabase: SupabaseClient): Promise<void> { 
+  const c = await _getRestCircuit(supabase)
+  if (c.fails > 0) {
+    await _updateRestCircuit(supabase, { fails: 0, openUntil: 0 })
+  }
+}
 
 async function llamarDeepSeek(
+  supabase: SupabaseClient,
   deepseekKey: string,
   restaurante: RestauranteRow,
   estado: EstadoSesion,
@@ -181,10 +204,11 @@ async function llamarDeepSeek(
   textoRest: string,
   reintentos = 2
 ): Promise<any | null> {
-  // Circuit breaker: si DeepSeek estÃ¡ caÃ­do, respondemos null de inmediato
-  if (Date.now() < _restCircuit.openUntil) {
-    const secsLeft = Math.ceil((_restCircuit.openUntil - Date.now()) / 1000)
-    console.warn(`[CIRCUIT OPEN] Restaurantes DeepSeek en pausa â€” ${secsLeft}s`)
+  // Circuit breaker: si DeepSeek está caído, respondemos null de inmediato
+  const circuit = await _getRestCircuit(supabase)
+  if (Date.now() < circuit.openUntil) {
+    const secsLeft = Math.ceil((circuit.openUntil - Date.now()) / 1000)
+    console.warn(`[CIRCUIT OPEN] Restaurantes DeepSeek en pausa — ${secsLeft}s`)
     return null
   }
 
@@ -279,7 +303,7 @@ R9. MÃšLTIPLES PEDIDOS EN UN MENSAJE
 
       if (!res.ok) {
         console.warn(`[RESTAURANT AI] HTTP ${res.status} intento ${intento}`)
-        _restCbFail()
+        await _restCbFail(supabase)
         continue
       }
 
@@ -288,13 +312,13 @@ R9. MÃšLTIPLES PEDIDOS EN UN MENSAJE
       const result = await extraerJsonSeguro(content)
 
       if (result) {
-        _restCbSuccess()
+        await _restCbSuccess(supabase)
         return result
       }
     } catch (err: any) {
       const isTimeout = err?.name === 'AbortError'
       console.warn(`[RESTAURANT AI] ${isTimeout ? 'Timeout 12s' : 'Red Error'} intento ${intento}:`, isTimeout ? '' : err)
-      _restCbFail()
+      await _restCbFail(supabase)
     }
   }
   return null
@@ -589,7 +613,7 @@ export async function handleRestaurantPortal(
   }
 
   // LLAMADA IA (sin cÃ¡lculo de zonas ni distancias â€” solo captura y asignaciÃ³n)
-  const aiResult = await llamarDeepSeek(DSKEY, restaurante, estado, telefonosEnTexto, textoRest)
+  const aiResult = await llamarDeepSeek(supabase, DSKEY, restaurante, estado, telefonosEnTexto, textoRest)
   if (!aiResult) return await manejarFallback(ctx, sendWA, memKey, estado, telefonosEnTexto, textoRest)
 
   const aiPedidoActual = aiResult.pedido_actual_actualizado || {}
@@ -718,6 +742,7 @@ export async function handleRestaurantPortal(
       if (cliRep) {
         if (cliRep.reputacion === 'vetado') {
           bloqueadoPorVeto = true
+          p.es_vetado = true
           alertasReputacion += `ðŸ”´ *SERVICIO RESTRINGIDO:* ${p.clienteTel}\nMotivo: Incidencias de seguridad crÃ­ticas registradas.\n`
         } else if (cliRep.reputacion === 'malo') {
           alertasReputacion += `ðŸš¨ *ALERTA:* Historial de incidencias alto (${p.clienteTel})\nðŸ·ï¸ Detalle: ${cliRep.etiquetas?.join(', ') || 'revisar historial'}\n`
@@ -730,14 +755,9 @@ export async function handleRestaurantPortal(
     }
   }
 
-  // Filtramos los pedidos de clientes vetados para no afectar el resto de la sesión.
+  // Filtramos los pedidos de clientes vetados usando la bandera lógica
   if (bloqueadoPorVeto) {
-    pedidosAcumulados = pedidosAcumulados.filter(p => {
-      const cliRep = p.clienteTel ? p.clienteTel : null // Simplificado, ya extrajimos la alerta
-      // No tenemos el dato exacto de cual fue vetado aqui adentro del filter facilmente a menos que re-chequemos,
-      // pero podemos apoyarnos en la cadena de alertas
-      return !(alertasReputacion.includes(`ðŸ”´ *SERVICIO RESTRINGIDO:* ${p.clienteTel}`))
-    })
+    pedidosAcumulados = pedidosAcumulados.filter(p => !p.es_vetado)
     
     if (pedidosAcumulados.length === 0) {
       await sendWA(fromPhone, `ðŸ”´ *PEDIDOS NO PROCESABLES*\n\n${alertasReputacion}\nPor seguridad del personal, todos los nÃºmeros en esta lista tienen el servicio restringido.`)

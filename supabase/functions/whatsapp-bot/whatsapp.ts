@@ -247,3 +247,21 @@ export async function sendWATemplate(
     return { ok: false, error: e.message }
   }
 }
+
+// ── Marcar mensaje como leído (Double Blue Ticks) ────────────────────────────
+export async function markMessageAsRead(messageId: string): Promise<void> {
+  try {
+    const res = await fetchConReintento(WA_BASE, {
+      method: 'POST',
+      headers: WA_HEADERS(),
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        status: 'read',
+        message_id: messageId,
+      }),
+    })
+    if (!res.ok) console.error('WA Read Receipt Error:', await res.text())
+  } catch (e) {
+    console.error('WA Fatal Net Error (Read Receipt):', e)
+  }
+}

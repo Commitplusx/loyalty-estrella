@@ -13,7 +13,8 @@ const DEEPSEEK_API_KEY = Deno.env.get('DEEPSEEK_API_KEY')!
 const CHATWOOT_BOT_TOKEN = Deno.env.get('CHATWOOT_BOT_TOKEN')!
 const CHATWOOT_API_TOKEN = Deno.env.get('CHATWOOT_API_TOKEN') ?? CHATWOOT_BOT_TOKEN
 const CHATWOOT_SECRET = Deno.env.get('CHATWOOT_WEBHOOK_SECRET') ?? ''
-const CHATWOOT_ACCOUNT_ID = Deno.env.get('CHATWOOT_ACCOUNT_ID') ?? '162525'
+const CHATWOOT_ACCOUNT_ID = Deno.env.get('CHATWOOT_ACCOUNT_ID')
+if (!CHATWOOT_ACCOUNT_ID) throw new Error('Missing CHATWOOT_ACCOUNT_ID en entorno')
 const CHATWOOT_BASE_URL = Deno.env.get('CHATWOOT_BASE_URL') ?? 'https://app.chatwoot.com'
 const CHATWOOT_INBOX_ID = parseInt(Deno.env.get('CHATWOOT_INBOX_ID') ?? '0')
 const WA_TOKEN = Deno.env.get('WHATSAPP_TOKEN') ?? ''
@@ -145,12 +146,12 @@ async function syncProfileToAttributes(supabase: Supa, accountId: number, contac
 
   // 3. Sincronizar Etiquetas de Rol
   let roleLabel = 'cliente'
-  const { data: isRep } = await supabase.from('repartidores').select('id').ilike('telefono', `%${p10}%`).limit(1).maybeSingle()
-  if (isRep) roleLabel = 'repartidor'
-  else {
-    const { data: isRest } = await supabase.from('restaurantes').select('id').ilike('telefono', `%${p10}%`).limit(1).maybeSingle()
-    if (isRest) roleLabel = 'restaurante'
-  }
+  const [resRep, resRest] = await Promise.all([
+    supabase.from('repartidores').select('id').ilike('telefono', `%${p10}%`).limit(1).maybeSingle(),
+    supabase.from('restaurantes').select('id').ilike('telefono', `%${p10}%`).limit(1).maybeSingle()
+  ])
+  if (resRep.data) roleLabel = 'repartidor'
+  else if (resRest.data) roleLabel = 'restaurante'
   await labelConversation(accountId, conversationId, [roleLabel])
   console.log(`[CW Sync] Finalizado para ${p10}`)
 }

@@ -1,7 +1,8 @@
 // chatwoot-sync.ts — Sync WhatsApp messages to Chatwoot API inbox (CRM bridge)
 
 const CW_BASE      = Deno.env.get('CHATWOOT_BASE_URL')   ?? 'https://app.chatwoot.com'
-const CW_ACCOUNT   = Deno.env.get('CHATWOOT_ACCOUNT_ID') ?? '162525'
+const CW_ACCOUNT   = Deno.env.get('CHATWOOT_ACCOUNT_ID')
+if (!CW_ACCOUNT) throw new Error('Missing CHATWOOT_ACCOUNT_ID')
 // Admin token: puede crear contactos/conversaciones y postear mensajes
 const CW_TOKEN     = Deno.env.get('CHATWOOT_API_TOKEN')  ?? Deno.env.get('CHATWOOT_BOT_TOKEN') ?? ''
 // Bot token: postea mensajes como "agent_bot" → evita que chatwoot-bot lo reenvíe por WA

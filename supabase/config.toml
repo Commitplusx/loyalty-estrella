@@ -1,4 +1,3 @@
-
 [functions.run-sql]
 enabled = true
 verify_jwt = true
@@ -9,3 +8,13 @@ entrypoint = "./functions/run-sql/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/chatwoot-bot/index.ts"
+
+[functions.whatsapp-bot]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/whatsapp-bot/index.ts"
+
+[functions.notificar-whatsapp]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/notificar-whatsapp/index.ts"
