@@ -25,26 +25,6 @@ export function FlashBanner() {
     };
 
     fetchAviso();
-
-    // 2. Subscribe to realtime changes
-    const channel = supabase
-      .channel('anuncios_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'anuncios_flash',
-        },
-        () => {
-          fetchAviso();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
 
   return (

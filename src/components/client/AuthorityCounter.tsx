@@ -52,13 +52,6 @@ export default function AuthorityCounter() {
       if (!error && count !== null) setDeliveryTarget(BASE_DELIVERIES + count);
     };
     fetchCount();
-    const channel = supabase
-      .channel('authority_counter_realtime')
-      .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'registros_puntos', filter: 'tipo=eq.acumulacion' },
-        () => setDeliveryTarget(prev => prev + 1)
-      ).subscribe();
-    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const deliveries = useCountUp(inView ? deliveryTarget : 0, 1600, splashExtraDelay);

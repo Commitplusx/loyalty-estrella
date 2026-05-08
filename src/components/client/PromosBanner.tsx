@@ -21,18 +21,6 @@ export function PromosBanner() {
     };
 
     loadPromos();
-
-    // Cualquier cambio en la tabla de promociones se refleja al instante
-    const channel = supabase
-      .channel('promociones_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'promociones_dinamicas' }, () => {
-        loadPromos();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
 
   if (loading || promos.length === 0) return null;

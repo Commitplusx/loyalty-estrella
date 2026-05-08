@@ -38,9 +38,22 @@ BEGIN
             COALESCE(OLD.saldo_billetera, 0),
             COALESCE(NEW.saldo_billetera, 0),
             COALESCE(NEW.saldo_billetera, 0) - COALESCE(OLD.saldo_billetera, 0),
-            'Transacción de base de datos'
+            'Transacción de base de datos (Saldo)'
         );
     END IF;
+
+    -- Si los puntos cambiaron matemáticamente
+    IF OLD.puntos_lealtad IS DISTINCT FROM NEW.puntos_lealtad THEN
+        INSERT INTO historial_billetera (cliente_id, saldo_anterior, saldo_nuevo, diferencia, motivo)
+        VALUES (
+            NEW.id,
+            COALESCE(OLD.puntos_lealtad, 0),
+            COALESCE(NEW.puntos_lealtad, 0),
+            COALESCE(NEW.puntos_lealtad, 0) - COALESCE(OLD.puntos_lealtad, 0),
+            'Transacción de base de datos (Puntos)'
+        );
+    END IF;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -48,7 +61,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Enganchar el vigilante a la tabla clientes
 DROP TRIGGER IF EXISTS trg_auditar_billetera ON clientes;
 CREATE TRIGGER trg_auditar_billetera
-    AFTER UPDATE OF saldo_billetera ON clientes
+    AFTER UPDATE OF saldo_billetera, puntos_lealtad ON clientes
     FOR EACH ROW
     EXECUTE FUNCTION auditar_billetera_vip();
 

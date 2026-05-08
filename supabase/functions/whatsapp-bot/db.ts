@@ -88,18 +88,27 @@ export async function crearPedidoDesdeBot(
 
     const pedidoId = inserted.id as string
 
+    const notifyPromises = [];
+
     if (rep?.telefono) {
-      const invokeRes = await supabase.functions.invoke('notificar-whatsapp', {
-        body: { pedido_id: pedidoId, tipo: 'asignacion', repartidor_tel: rep.telefono },
-      })
-      if (invokeRes.error) console.error('[NOTIFICACIÓN] Error:', invokeRes.error)
+      notifyPromises.push(
+        supabase.functions.invoke('notificar-whatsapp', {
+          body: { pedido_id: pedidoId, tipo: 'asignacion', repartidor_tel: rep.telefono },
+        }).then(res => { if (res.error) console.error('[NOTIFICACIÓN REP] Error:', res.error) })
+      );
     }
 
     if (datos.clienteTel) {
-      await supabase.functions.invoke('notificar-whatsapp', {
-        body: { pedido_id: pedidoId, tipo: 'creado' },
-      })
+      notifyPromises.push(
+        supabase.functions.invoke('notificar-whatsapp', {
+          body: { pedido_id: pedidoId, tipo: 'creado' },
+        }).then(res => { if (res.error) console.error('[NOTIFICACIÓN CLI] Error:', res.error) })
+      );
     }
+
+    // Ejecutar notificaciones en paralelo esperando a que terminen para que Deno no las aborte,
+    // pero ahorrando el 50% del tiempo de espera al no ser secuenciales.
+    await Promise.allSettled(notifyPromises).catch(e => console.error('Error in notifyPromises', e));
 
     return { ok: true, pedidoId, repartidorInfo }
   } catch (e: any) {
