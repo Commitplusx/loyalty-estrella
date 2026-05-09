@@ -1,8 +1,9 @@
 import { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useInView } from 'framer-motion';
-import { ArrowRight, Phone, Star, Gift, Zap, Shield, Clock, Flame, Heart, Truck, MapPin, Sparkles, ChevronRight } from 'lucide-react';
+import { ArrowRight, Phone, Star, Gift, Zap, Shield, Clock, Flame, Heart, Truck, MapPin, Sparkles, ChevronRight, Store } from 'lucide-react';
 import { useSchedule } from '@/hooks/useSchedule';
+import { supabase } from '@/lib/supabase';
 import AuthorityCounter from '@/components/client/AuthorityCounter';
 import { StepsLottie } from '@/components/StepsLottie';
 
@@ -141,6 +142,13 @@ export function Home() {
   const { storeState, horasFelices, formatTime, contacto } = useSchedule();
   const whatsappNum = contacto.whatsapp.replace(/\D/g, '');
   const whatsappUrl = whatsappNum ? `https://wa.me/${whatsappNum}` : '';
+
+  const [restaurantes, setRestaurantes] = useState<any[]>([]);
+
+  useEffect(() => {
+    supabase.from('restaurantes').select('id, nombre, foto_portada_url').eq('activo', true).limit(8).order('nombre')
+      .then(({ data }) => setRestaurantes(data || []));
+  }, []);
 
   // Scroll-aware nav: add shadow + stronger bg when user scrolls
   const [scrolled, setScrolled] = useState(false);
@@ -381,6 +389,40 @@ export function Home() {
           ))}
         </div>
       </section>
+
+      {/* ── RESTAURANTES SOCIOS ── */}
+      {restaurantes.length > 0 && (
+        <section className="py-20 px-5 bg-gray-50/50 border-y border-gray-100">
+          <div className="max-w-5xl mx-auto">
+            <Reveal className="mb-10 text-center">
+              <p className="text-xs font-bold uppercase tracking-widest text-orange-600 mb-3">Nuestras Alianzas</p>
+              <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-gray-900">Restaurantes Asociados</h2>
+              <p className="text-gray-500 mt-3 max-w-lg mx-auto">Disfruta del mejor servicio a domicilio pidiendo de nuestros restaurantes verificados.</p>
+            </Reveal>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+              {restaurantes.map((rest, i) => (
+                <Reveal key={rest.id} custom={i} variants={scaleIn}
+                  className="bg-white rounded-2xl p-4 shadow-sm border border-orange-100/50 hover:border-orange-200 flex flex-col items-center justify-center text-center aspect-square hover:shadow-md transition-all cursor-pointer group"
+                >
+                  <div className="w-14 h-14 bg-orange-50 group-hover:bg-orange-100 transition-colors rounded-full flex items-center justify-center mb-3 shadow-inner">
+                    <Store className="w-7 h-7 text-orange-500" />
+                  </div>
+                  <h3 className="font-bold text-gray-900 text-sm group-hover:text-orange-600 transition-colors">{rest.nombre}</h3>
+                </Reveal>
+              ))}
+            </div>
+
+            <div className="text-center">
+              <motion.button onClick={() => navigate('/restaurantes')}
+                whileHover={{ scale: 1.02, y: -1 }} whileTap={{ scale: 0.98 }}
+                className="inline-flex items-center gap-2 bg-orange-50 text-orange-600 border border-orange-200 font-bold px-6 py-3 rounded-xl hover:bg-orange-100 transition-colors">
+                Ver todos los restaurantes <ArrowRight className="w-4 h-4" />
+              </motion.button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ── CTA FINAL ── */}
       <section className="py-10 pb-24 px-5 max-w-5xl mx-auto">
