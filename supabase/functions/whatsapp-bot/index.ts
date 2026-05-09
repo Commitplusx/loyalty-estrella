@@ -372,6 +372,44 @@ serve(async (req: Request) => {
         return await exitSafely(new Response('OK', { status: 200 }))
       }
 
+      if (slashText.startsWith('/usar ')) {
+        const code = slashText.slice(6).trim().toUpperCase()
+        if (!code) {
+          await sendWA(fromPhone, `⚠️ Formato: */usar CODIGO*`)
+          return await exitSafely(new Response('OK', { status: 200 }))
+        }
+        const { data, error } = await supabase.rpc('usar_cupon', { p_codigo: code })
+        if (error) {
+          await sendWA(fromPhone, `❌ *Error al usar cupón:*\n${error.message}`)
+        } else if (data?.ok) {
+          await sendWA(fromPhone, `✅ *CUPÓN APLICADO*\n🎟️ Código: *${code}*\n👤 Cliente: ${data.cliente_nombre || 'Desconocido'}\n📱 Tel: ${data.cliente_tel || '-'}\n\nEl cupón ha sido marcado como usado exitosamente.`)
+        } else {
+          await sendWA(fromPhone, `⚠️ *Cupón no válido:*\n${data?.error || 'No se pudo aplicar el cupón.'}`)
+        }
+        return await exitSafely(new Response('OK', { status: 200 }))
+      }
+
+      if (slashText.startsWith('/cancelar ')) {
+        const code = slashText.slice(10).trim().toUpperCase()
+        if (!code) {
+          await sendWA(fromPhone, `⚠️ Formato: */cancelar CODIGO*`)
+          return await exitSafely(new Response('OK', { status: 200 }))
+        }
+        const { data: admin } = await supabase.from('admins').select('id').eq('telefono', admin10).maybeSingle()
+        const { data, error } = await supabase.rpc('cancelar_cupon', { 
+          p_codigo: code,
+          p_admin_id: admin?.id || null 
+        })
+        if (error) {
+          await sendWA(fromPhone, `❌ *Error al cancelar cupón:*\n${error.message}`)
+        } else if (data?.ok) {
+          await sendWA(fromPhone, `🚫 *CUPÓN CANCELADO*\n🎟️ Código: *${code}*\n👤 Cliente: ${data.cliente_nombre}\n💰 Reembolsado: *$${data.monto_reembolsado}*\n\nEl saldo ha sido devuelto a la billetera del cliente.`)
+        } else {
+          await sendWA(fromPhone, `⚠️ *No se pudo cancelar:*\n${data?.error || 'Error desconocido.'}`)
+        }
+        return await exitSafely(new Response('OK', { status: 200 }))
+      }
+
       if (slashText === '/ayuda' || slashText === '/help') {
         await sendWA(fromPhone,
           `📋 *COMANDOS DE EMERGENCIA*\n_(Funcionan sin IA)_\n\n` +
