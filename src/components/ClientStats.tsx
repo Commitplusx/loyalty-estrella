@@ -19,8 +19,10 @@ export function ClientStats({ cliente, historial }: ClientStatsProps) {
   const canjesTotales = historial.filter(h => h.tipo === 'canje').length;
   const ahorroEstimado = canjesTotales * VALOR_CANJE_ESTIMADO;
 
-  const rangoEmoji = (cliente.rango ?? 'bronce') === 'oro' ? '👑' : (cliente.rango ?? 'bronce') === 'plata' ? '🥈' : '🥉';
-  const rangoNext = (cliente.rango ?? 'bronce') === 'bronce' ? 'Plata' : (cliente.rango ?? 'bronce') === 'plata' ? 'Oro' : null;
+  const isVip = cliente.es_vip === true || (cliente.envios_totales ? cliente.envios_totales >= 15 : false);
+  const rangoActual = isVip ? 'Socio VIP' : (cliente.rango ?? 'bronce');
+  const rangoEmoji = isVip ? '👑' : (rangoActual === 'oro' ? '🥇' : rangoActual === 'plata' ? '🥈' : '🥉');
+  const rangoNext = isVip ? null : (rangoActual === 'bronce' ? 'Plata' : rangoActual === 'plata' ? 'Oro' : 'Socio VIP');
 
   return (
     <div className="mb-6">
@@ -60,7 +62,7 @@ export function ClientStats({ cliente, historial }: ClientStatsProps) {
         >
           <TrendingUp className="w-8 h-8 text-amber-200 dark:text-amber-900/40 absolute -right-1 -top-1" />
           <p className="text-xl font-black text-gray-900 dark:text-white">{rangoEmoji}</p>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-wider font-medium">{cliente.rango ?? 'Bronce'}</p>
+          <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-wider font-medium">{rangoActual}</p>
         </motion.div>
       </div>
 
