@@ -207,7 +207,7 @@ export function ClienteView() {
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
-  const isVip = cliente?.es_vip === true;
+  const isVip = cliente?.es_vip === true || (cliente?.envios_totales ? cliente.envios_totales >= 15 : false);
   const metaVip = getMetaPuntos(cliente?.rango, isVip);
   // Si el cliente es nuevo y tiene 0 puntos, no mostramos el mensaje de gratis.
   const puntosEnCiclo = cliente ? cliente.puntos % metaVip : 0;
@@ -713,7 +713,7 @@ export function ClienteView() {
                     })()}
                     <div className="min-w-0 flex-1">
                       <h1 className="text-base font-bold text-gray-900 dark:text-white truncate">{cliente.nombre}</h1>
-                      <p className="text-xs text-gray-400">{cliente.telefono}{isVip && <span className="ml-2 text-amber-500 font-semibold">Â· VIP</span>}</p>
+                      <p className="text-xs text-gray-400">{cliente.telefono}{isVip && <span className="ml-2 text-amber-500 font-semibold">· VIP</span>}</p>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <button onClick={handleShare} title="Compartir" className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-500 transition-colors">
@@ -727,11 +727,12 @@ export function ClienteView() {
 
                   {/* Rango badge */}
                   {(() => {
-                    const rango = cliente.rango || 'bronce';
+                    const rango = isVip ? 'vip' : (cliente.rango || 'bronce');
                     const rangoConfig: Record<string, { label: string; emoji: string; color: string; nextLabel: string; nextMeta: number; currentMeta: number }> = {
                       bronce: { label: 'Bronce', emoji: '🥉', color: 'bg-amber-700/10 text-amber-700 border-amber-700/20', nextLabel: 'Plata', nextMeta: 20, currentMeta: 0 },
                       plata:  { label: 'Plata',  emoji: '🥈', color: 'bg-slate-400/10 text-slate-600 border-slate-400/20', nextLabel: 'Oro', nextMeta: 50, currentMeta: 20 },
                       oro:    { label: 'Oro',    emoji: '🥇', color: 'bg-amber-400/10 text-amber-600 border-amber-400/20', nextLabel: 'Leyenda', nextMeta: 100, currentMeta: 50 },
+                      vip:    { label: 'Socio VIP', emoji: '👑', color: 'bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-amber-600 border-amber-500/30 shadow-sm', nextLabel: 'Infinito', nextMeta: 9999, currentMeta: 15 },
                     };
                     const cfg = rangoConfig[rango] || rangoConfig.bronce;
                     const envTot = cliente.envios_totales || 0;
