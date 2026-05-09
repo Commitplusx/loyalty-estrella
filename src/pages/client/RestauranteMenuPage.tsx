@@ -4,6 +4,7 @@ import { ChevronLeft, MessageCircle, Store, ExternalLink } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useSchedule } from '@/hooks/useSchedule';
 
 export function RestauranteMenuPage() {
   const { id } = useParams<{ id: string }>();
@@ -12,6 +13,7 @@ export function RestauranteMenuPage() {
   const [categorias, setCategorias] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { contacto } = useSchedule();
 
   useEffect(() => {
     if (!id) return;
@@ -36,9 +38,7 @@ export function RestauranteMenuPage() {
 
   const handlePedir = () => {
     if (!restaurante) return;
-    // Envía el mensaje por WhatsApp al BOT de Estrella (o directo al restaurante si prefieres, 
-    // pero el esquema es que pidan al Bot)
-    const numeroBot = '529631234567'; // Aquí el número de tu bot de Estrella Delivery
+    const numeroBot = contacto?.whatsapp ? contacto.whatsapp.replace(/\D/g, '') : '529631550244';
     const mensaje = `Hola, quiero pedir del menú de *${restaurante.nombre}*:\n\n`;
     const url = `https://wa.me/${numeroBot}?text=${encodeURIComponent(mensaje)}`;
     window.open(url, '_blank');

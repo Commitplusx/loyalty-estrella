@@ -16,7 +16,7 @@ export function RestaurantesPage() {
       // Cargamos restaurantes activos
       const { data } = await supabase
         .from('restaurantes')
-        .select('id, nombre, direccion')
+        .select('id, nombre, direccion, foto_portada_url')
         .eq('activo', true)
         .order('nombre');
       setRestaurantes(data || []);
@@ -60,14 +60,20 @@ export function RestaurantesPage() {
                   onClick={() => navigate(`/restaurantes/${rest.id}`)}
                 >
                   <CardContent className="p-4 flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-orange-100 to-orange-200 dark:from-orange-500/20 dark:to-orange-500/10 rounded-xl flex items-center justify-center shrink-0">
-                      <Store className="w-7 h-7 text-orange-600 dark:text-orange-400" />
-                    </div>
+                    {rest.foto_portada_url ? (
+                      <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 shadow-sm">
+                        <img src={rest.foto_portada_url} alt={rest.nombre} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      </div>
+                    ) : (
+                      <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-200 dark:from-orange-500/20 dark:to-orange-500/10 rounded-xl flex items-center justify-center shrink-0 shadow-sm">
+                        <Store className="w-8 h-8 text-orange-600 dark:text-orange-400" />
+                      </div>
+                    )}
                     <div className="flex-1">
-                      <h3 className="font-bold text-lg leading-tight group-hover:text-orange-500 transition-colors">{rest.nombre}</h3>
+                      <h3 className="font-bold text-lg leading-tight group-hover:text-orange-600 transition-colors">{rest.nombre}</h3>
                       {rest.direccion && (
                         <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                          <MapPin className="w-3 h-3" /> {rest.direccion}
+                          <MapPin className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">{rest.direccion}</span>
                         </p>
                       )}
                     </div>
