@@ -1,1 +1,0 @@
--- Coordenadas GPS obtenidas con Google Maps Geocoding API

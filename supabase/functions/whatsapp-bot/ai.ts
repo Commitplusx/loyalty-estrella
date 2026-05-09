@@ -19,8 +19,9 @@ export interface AIRespuesta {
   | 'AGREGAR_REPARTIDOR' | 'ELIMINAR_REPARTIDOR' | 'ESTADO_REPARTIDOR'
   | 'VER_ATRASOS' | 'CARGAR_SALDO' | 'ANUNCIO_REPARTIDORES' | 'UBICACION_RESTAURANTE'
   | 'ENTREGAR_TODOS' | 'CANCELAR_TODOS' | 'ENVIAR_QR' | 'VER_RESTAURANTES' | 'AGREGAR_CLIENTE' | 'ENVIAR_TERMINOS' | 'REGISTRAR_RESTAURANTE'
+  | 'USAR_CUPON' | 'CANCELAR_CUPON'
   mensajeUsuario: string
-  datosAExtraer?: PedidoData & { montoSaldo?: number, diasAtras?: number, clienteNombre?: string, colonia?: string, nombre_restaurante?: string, correo?: string }
+  datosAExtraer?: PedidoData & { montoSaldo?: number, diasAtras?: number, clienteNombre?: string, colonia?: string, nombre_restaurante?: string, correo?: string, codigoCupon?: string }
 }
 
 const VALID_ACTIONS: AIRespuesta['accion'][] = [
@@ -30,8 +31,9 @@ const VALID_ACTIONS: AIRespuesta['accion'][] = [
   'AGREGAR_NOTA_CLIENTE', 'REPORTE_SEMANAL', 'MARCAR_VIP',
   'VER_HISTORIAL_CLIENTE', 'RECORDATORIO_REPARTIDOR', 'REVISAR_ENTREGADOS',
   'AGREGAR_REPARTIDOR', 'ELIMINAR_REPARTIDOR', 'ESTADO_REPARTIDOR',
-  'VER_ATRASOS', 'CARGAR_SALDO', 'ANUNCIO_REPARTIDORES', 'UBICACION_RESTAURANTE',
-  'ENTREGAR_TODOS', 'CANCELAR_TODOS', 'ENVIAR_QR', 'VER_RESTAURANTES', 'AGREGAR_CLIENTE', 'ENVIAR_TERMINOS', 'REGISTRAR_RESTAURANTE'
+  'VER_ATRASOS' | 'CARGAR_SALDO' | 'ANUNCIO_REPARTIDORES' | 'UBICACION_RESTAURANTE',
+  'ENTREGAR_TODOS' | 'CANCELAR_TODOS' | 'ENVIAR_QR' | 'VER_RESTAURANTES' | 'AGREGAR_CLIENTE' | 'ENVIAR_TERMINOS' | 'REGISTRAR_RESTAURANTE',
+  'USAR_CUPON', 'CANCELAR_CUPON'
 ]
 
 // ── System prompts ────────────────────────────────────────────────────────────
@@ -73,10 +75,12 @@ HERRAMIENTAS DISPONIBLES:
 - AGREGAR_NOTA_CLIENTE: Requiere clienteTel, descripcion.
 - MARCAR_VIP: Requiere clienteTel.
 - VER_HISTORIAL_CLIENTE: Requiere clienteTel.
+- USAR_CUPON: Requiere codigoCupon. Úsalo cuando el admin pida "usa el cupon CODE", "aplica el codigo CODE".
+- CANCELAR_CUPON: Requiere codigoCupon. Úsalo cuando el admin pida "cancela el cupon CODE", "reembolsa el codigo CODE".
 - RESPONDER: Para charlar, confirmar, o pedir datos faltantes.
 
 FORMATO JSON DE SALIDA (responde SOLO con esto, sin nada más):
-{"accion":"UNA_ACCION_LISTADA","mensajeUsuario":"Texto breve y profesional.","datosAExtraer":{"clienteTel":"10 dígitos o null","puntosASumar":null,"diasAtras":null,"clienteNombre":null,"restaurante":null,"descripcion":null,"direccion":null,"repartidorAlias":null,"montoSaldo":null,"nombre_restaurante":null,"correo":null}}`
+{"accion":"UNA_ACCION_LISTADA","mensajeUsuario":"Texto breve y profesional.","datosAExtraer":{"clienteTel":"10 dígitos o null","puntosASumar":null,"diasAtras":null,"clienteNombre":null,"restaurante":null,"descripcion":null,"direccion":null,"repartidorAlias":null,"montoSaldo":null,"nombre_restaurante":null,"correo":null,"codigoCupon":null}}`
 }
 
 function buildRepartidorPrompt(repartidorInfo: any): string {
@@ -171,6 +175,9 @@ function enforcerValidator(respuesta: AIRespuesta): AIRespuesta {
     case 'REGISTRAR_RESTAURANTE':
       if (!d.nombre_restaurante || !d.correo || !d.correo.includes('@')) { blocked = true; respuesta.mensajeUsuario = '¡Excelente! Para registrar tu restaurante necesito que me des su Nombre y un Correo electrónico válido.' }
       break
+    case 'USAR_CUPON': case 'CANCELAR_CUPON':
+      if (!d.codigoCupon) { blocked = true; respuesta.mensajeUsuario = 'Proporciona el código del cupón para ejecutar esta acción.' }
+      break
   }
 
   if (blocked) {
@@ -233,6 +240,22 @@ export async function conversacionDeepSeek(
       const secsLeft = Math.ceil((circuit.openUntil - Date.now()) / 1000)
       console.warn(`⛔ [CIRCUIT OPEN] DeepSeek en pausa — ${secsLeft}s restantes`)
       return { errorObj: `IA en pausa temporal (${secsLeft}s). Reintenta en un momento.` }
+    }
+
+    // ── MOCK MODE PARA TESTS DE ESTRÉS ──────────────────────────────────────
+    if (Deno.env.get('DEBUG_MOCK_AI') === 'true') {
+      const mockRes: AIRespuesta = {
+        accion: 'RESPONDER',
+        mensajeUsuario: '🤖 [MOCK MODE] Recibí tu mensaje: ' + nuevoTexto.substring(0, 50)
+      }
+      return { 
+        respuesta: mockRes, 
+        nuevoHistorial: [
+          ...(mem?.history || []).slice(-5), 
+          { role: 'user', content: nuevoTexto }, 
+          { role: 'model', content: mockRes.mensajeUsuario }
+        ] 
+      }
     }
 
     const memPhone = extract10Digits(phone)

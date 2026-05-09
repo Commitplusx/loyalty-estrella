@@ -93,6 +93,50 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
                 Cerrar
               </button>
             </div>
+          ) : loading ? (
+            <div className="p-12 flex flex-col items-center justify-center bg-white dark:bg-gray-900">
+              <div className="relative w-24 h-24 mb-6">
+                <motion.div
+                  className="absolute inset-0 rounded-full border-4 border-transparent border-t-orange-500 border-r-amber-400"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 0.9, repeat: Infinity, ease: 'linear' }}
+                />
+                <motion.div
+                  className="absolute inset-2 rounded-full border-4 border-transparent border-b-amber-300 border-l-orange-400"
+                  animate={{ rotate: -360 }}
+                  transition={{ duration: 1.6, repeat: Infinity, ease: 'linear' }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <motion.div
+                    className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/40"
+                    animate={{ scale: [1, 1.12, 1] }}
+                    transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+                  >
+                    <Gift className="w-4 h-4 text-white" />
+                  </motion.div>
+                </div>
+              </div>
+              <div className="text-center">
+                <motion.h2
+                  className="text-xl font-bold text-gray-900 dark:text-white mb-1"
+                  animate={{ opacity: [0.7, 1, 0.7] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  Canjeando beneficio...
+                </motion.h2>
+                <p className="text-sm text-gray-400">Por favor no cierres esta ventana</p>
+              </div>
+              <div className="flex justify-center gap-1.5 mt-6">
+                {[0, 1, 2].map((i) => (
+                  <motion.div
+                    key={i}
+                    className="w-1.5 h-1.5 rounded-full bg-orange-400"
+                    animate={{ scale: [1, 1.6, 1], opacity: [0.4, 1, 0.4] }}
+                    transition={{ duration: 1, repeat: Infinity, delay: i * 0.2, ease: 'easeInOut' }}
+                  />
+                ))}
+              </div>
+            </div>
           ) : (
             <>
               <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-6 text-white text-center">
@@ -133,7 +177,7 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
                         disabled={loading || !puedeCanjearNormal}
                         className="w-full py-3 rounded-xl bg-orange-500 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-orange-600 transition-colors"
                       >
-                        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Canjear 5 puntos'}
+                        Canjear 5 puntos
                       </button>
                       {!puedeCanjearNormal && (
                         <p className="text-xs text-center text-red-500 mt-2">Necesitas 5 puntos para canjear.</p>
@@ -154,7 +198,7 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
                         disabled={loading || !puedeCanjearNormal || saldoBilletera <= 0}
                         className="w-full py-3 rounded-xl bg-amber-500 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-amber-600 transition-colors"
                       >
-                        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Canjear 5 puntos y Saldo'}
+                        Canjear 5 puntos y Saldo
                       </button>
                       {!puedeCanjearNormal ? (
                         <p className="text-xs text-center text-red-500 mt-2">Necesitas 5 puntos.</p>

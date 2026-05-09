@@ -1,8 +1,3 @@
-[functions.run-sql]
-enabled = true
-verify_jwt = true
-import_map = "./functions/run-sql/deno.json"
-entrypoint = "./functions/run-sql/index.ts"
 
 [functions.chatwoot-bot]
 enabled = true

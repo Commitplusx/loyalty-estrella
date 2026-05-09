@@ -240,6 +240,20 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
 
+    if (tipo === 'bienvenida_vip') {
+      const { cliente_tel, cliente_nombre } = payload
+      const telFormateado = formatTel(cliente_tel)
+      const resCli = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text',
+          text: { body: `👑 *¡BIENVENIDO AL CLUB VIP, ${cliente_nombre || 'Cliente'}!* 👑\n\nHas completado 3 ciclos de envíos con nosotros. 🎉\n\nA partir de este momento eres *Cliente VIP* ⭐.\nPor cada envío que pidas, acumularás saldo real en pesos en tu billetera que podrás usar para pagar futuros envíos o descuentos en comida.\n\n¡Gracias por tu gran preferencia! 🌟` }
+        })
+      })
+      if (!resCli.ok) console.error(`WA error bienvenida_vip:`, await resCli.text())
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+    }
+
     if (tipo === 'canje_billetera') {
       const { cliente_tel, cliente_nombre, codigo_canje, monto, saldo_restante } = payload
       const telFormateado = formatTel(cliente_tel)
@@ -313,15 +327,45 @@ serve(async (req: Request) => {
     if (tipo === 'alerta_zombie') {
       const adminPhone = Deno.env.get('ADMIN_PHONE')
       if (!adminPhone) throw new Error('Missing ADMIN_PHONE en entorno')
-      const msgZ = `🚨 *ALERTA CRÍTICA: PEDIDO ZOMBIE* 🚨\n\n⚠️ El siguiente pedido se ha atascado:\n\n🔢 *Orden:* ${numeroOrden}\n📦 *${descripcion || pedido.descripcion}*\n\n⏱️ *Tiempo total:* ${minutos_total} min\n⏳ *Sin moverse:* ${minutos_estancado} min\n\n👉 Por favor, revisa o reasigna el pedido.`
+      
+      let repInfoTexto = '🛵 *Repartidor:* Ninguno asignado'
+      if (pedido.repartidor_id) {
+        const { data: rep } = await supabase.from('repartidores').select('nombre, telefono').or(`user_id.eq.${pedido.repartidor_id},id.eq.${pedido.repartidor_id}`).limit(1).maybeSingle()
+        if (rep) {
+          repInfoTexto = `🛵 *Repartidor:* ${rep.nombre} (wa.me/52${extract10Digits(rep.telefono)})`
+        }
+      }
+
+      const clienteLink = pedido.cliente_tel ? ` (wa.me/52${extract10Digits(pedido.cliente_tel)})` : ''
+      const clienteNombre = pedido.cliente_nombre || 'Cliente Anónimo'
+      const restTexto = pedido.restaurante ? `🍔 *Restaurante:* ${pedido.restaurante}\n` : ''
+
+      const msgZ = `🧠 *Asistente Estrella*\n¡Hola jefe! 🚨 Tenemos un pedido que se nos está quedando frío (Alerta Zombie).\n\n${restTexto}📦 *Paquete:* ${descripcion || pedido.descripcion}\n🔢 *Orden:* ${numeroOrden}\n📌 *Estado actual:* ${pedido.estado.toUpperCase()}\n\n⏱️ *Tiempo total:* ${minutos_total} min\n⏳ *Estancado por:* ${minutos_estancado} min\n\n👤 *Cliente:* ${clienteNombre}${clienteLink}\n${repInfoTexto}\n\n¿Qué hacemos con este pedido?`
+
+      const payloadZ = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: formatTel(adminPhone),
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { text: msgZ.substring(0, 1024) },
+          action: {
+            buttons: [
+              { type: 'reply', reply: { id: `CMD_REASIGNAR_${numeroOrden}`, title: '🔄 Reasignar' } },
+              { type: 'reply', reply: { id: `CMD_CANCELAR_${numeroOrden}`, title: '❌ Cancelar' } }
+            ]
+          }
+        }
+      }
 
       const resZ = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: formatTel(adminPhone), type: 'text', text: { body: msgZ } })
+        body: JSON.stringify(payloadZ)
       })
       if (!resZ.ok) console.error(`Error enviando Alerta Zombie:`, await resZ.text())
 
-      results.push(`✅ Alerta Zombie despachada al Admin: ${adminPhone}`)
+      results.push(`✅ Alerta Zombie interactiva despachada al Admin: ${adminPhone}`)
       return new Response(JSON.stringify({ ok: true, actions: results }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
 
@@ -410,9 +454,10 @@ serve(async (req: Request) => {
       } else {
         results.push('⚠️ Repartidor sin teléfono o no encontrado')
       }
-    } else {
-      // B. Notificar al Cliente
-      if (tipo !== 'asignacion' && pedido.cliente_tel) {
+    }
+
+    // B. Notificar al Cliente
+    if (tipo !== 'asignacion' && pedido.cliente_tel) {
         let repNom = 'tu repartidor'
         if (pedido.repartidor_id) {
           // Buscar por user_id O por id para cubrir repartidores sin cuenta Auth
@@ -467,7 +512,6 @@ serve(async (req: Request) => {
       } else if (tipo !== 'asignacion') {
         results.push('⚠️ Cliente sin teléfono')
       }
-    }
 
     console.log("Final Actions:", results)
     return new Response(JSON.stringify({ ok: true, actions: results }), {

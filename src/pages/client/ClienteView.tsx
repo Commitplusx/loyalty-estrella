@@ -221,7 +221,7 @@ export function ClienteView() {
   // â”€â”€ Compartir tarjeta de lealtad â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleShare = () => {
     const url = `https://www.app-estrella.shop/loyalty/${cliente?.telefono}`;
-    const text = `¡Mira mi tarjeta de lealtad en Estrella Delivery! ðŸŒŸ\n${url}`;
+    const text = `¡Mira mi tarjeta de lealtad en Estrella Delivery! 🌟\n${url}`;
     if (navigator.share) {
       navigator.share({ title: 'Estrella Delivery', text, url }).catch(() => {});
     } else {
@@ -295,7 +295,7 @@ export function ClienteView() {
             {/* Estado tienda */}
             <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-white/15 text-white backdrop-blur-sm">
               <span className={`w-1.5 h-1.5 rounded-full ${storeState.isOpen ? 'bg-green-400 animate-pulse' : 'bg-red-300'}`} />
-              {storeState.isOpen ? (storeState.isHappyHour ? 'ðŸ”¥ Hora Feliz' : 'Abierto') : 'Cerrado'}
+              {storeState.isOpen ? (storeState.isHappyHour ? '🔥 Hora Feliz' : 'Abierto') : 'Cerrado'}
             </div>
 
             {/* Controles derechos */}
@@ -337,7 +337,7 @@ export function ClienteView() {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pt-20 sm:pt-24"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 2rem)' }}>
 
-        {/* â”€â”€ LOADING "” premium â”€â”€ */}
+        {/* --- LOADING --- */}
         {viewState === 'loading' && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -349,13 +349,13 @@ export function ClienteView() {
             {/* Orbital spinner */}
             <div className="flex flex-col items-center gap-5">
               <div className="relative w-24 h-24">
-                {/* Outer ring "” spins fast */}
+                {/* Outer ring */}
                 <motion.div
                   className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-600 border-r-blue-400"
                   animate={{ rotate: 360 }}
                   transition={{ duration: 0.9, repeat: Infinity, ease: 'linear' }}
                 />
-                {/* Middle ring "” spins slow, opposite */}
+                {/* Middle ring */}
                 <motion.div
                   className="absolute inset-2 rounded-full border-4 border-transparent border-b-blue-300 border-l-blue-500"
                   animate={{ rotate: -360 }}
@@ -379,7 +379,7 @@ export function ClienteView() {
                   animate={{ opacity: [0.7, 1, 0.7] }}
                   transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
                 >
-                  Buscando tu cuenta"¦
+                  Buscando tu cuenta...
                 </motion.h2>
                 <p className="text-sm text-gray-400 font-mono tracking-wide">
                   +52 {telefono.slice(0, 3)} {telefono.slice(3, 6)} {telefono.slice(6)}
@@ -387,7 +387,7 @@ export function ClienteView() {
               </div>
             </div>
 
-            {/* Shimmer skeleton cards "” staggered */}
+            {/* Shimmer skeleton cards */}
             <div className="space-y-3">
               {[
                 { w: 'w-full', h: 'h-28' },
@@ -677,16 +677,16 @@ export function ClienteView() {
           </motion.div>
         )}
 
-        {/* â”€â”€ RESULT â”€â”€ */}
+        {/* --- RESULT --- */}
         {viewState === 'result' && cliente && (
           <motion.div
             initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
             className="w-full"
           >
-            {/* â”€â”€ DESKTOP: 2-column sidebar layout | MOBILE: single column â”€â”€ */}
+            {/* --- DESKTOP: 2-column sidebar layout | MOBILE: single column --- */}
             <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start">
-            {/* â”€â”€ LEFT SIDEBAR (Profile + Progress + QR) â”€â”€ */}
+            {/* --- LEFT SIDEBAR (Profile + Progress + QR) --- */}
             <div className="w-full lg:w-80 xl:w-96 shrink-0 lg:sticky lg:top-24 space-y-4">
 
               {/* Profile Header */}
@@ -729,9 +729,9 @@ export function ClienteView() {
                   {(() => {
                     const rango = cliente.rango || 'bronce';
                     const rangoConfig: Record<string, { label: string; emoji: string; color: string; nextLabel: string; nextMeta: number; currentMeta: number }> = {
-                      bronce: { label: 'Bronce', emoji: 'ðŸ¥‰', color: 'bg-amber-700/10 text-amber-700 border-amber-700/20', nextLabel: 'Plata', nextMeta: 20, currentMeta: 0 },
-                      plata:  { label: 'Plata',  emoji: 'ðŸ¥ˆ', color: 'bg-slate-400/10 text-slate-600 border-slate-400/20', nextLabel: 'Oro', nextMeta: 50, currentMeta: 20 },
-                      oro:    { label: 'Oro',    emoji: 'ðŸ¥‡', color: 'bg-amber-400/10 text-amber-600 border-amber-400/20', nextLabel: 'Leyenda', nextMeta: 100, currentMeta: 50 },
+                      bronce: { label: 'Bronce', emoji: '🥉', color: 'bg-amber-700/10 text-amber-700 border-amber-700/20', nextLabel: 'Plata', nextMeta: 20, currentMeta: 0 },
+                      plata:  { label: 'Plata',  emoji: '🥈', color: 'bg-slate-400/10 text-slate-600 border-slate-400/20', nextLabel: 'Oro', nextMeta: 50, currentMeta: 20 },
+                      oro:    { label: 'Oro',    emoji: '🥇', color: 'bg-amber-400/10 text-amber-600 border-amber-400/20', nextLabel: 'Leyenda', nextMeta: 100, currentMeta: 50 },
                     };
                     const cfg = rangoConfig[rango] || rangoConfig.bronce;
                     const envTot = cliente.envios_totales || 0;
@@ -742,7 +742,7 @@ export function ClienteView() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-xs font-bold uppercase tracking-wider">{cfg.label}</span>
-                            <span className="text-[10px] font-medium opacity-70">{envTot} Â· {cfg.nextLabel}</span>
+                            <span className="text-[10px] font-medium opacity-70">{envTot} · {cfg.nextLabel}</span>
                           </div>
                           <div className="h-1.5 bg-black/10 rounded-full overflow-hidden">
                             <motion.div className="h-full bg-current rounded-full opacity-60"
@@ -762,12 +762,12 @@ export function ClienteView() {
                       <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/20 rounded-full blur-2xl pointer-events-none" />
                       <div className="relative z-10">
                         <div className="flex items-center gap-1.5 mb-1.5">
-                          <motion.span animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>ðŸŽŸï¸</motion.span>
+                          <motion.span animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>🎟️</motion.span>
                           <span className="text-[10px] font-bold uppercase tracking-widest text-white/80">Cupón activo</span>
                         </div>
                         <p className="font-mono font-black text-2xl tracking-[0.18em] mb-1.5">{cliente.cupon_activo}</p>
                         <button onClick={() => { navigator.clipboard.writeText(cliente.cupon_activo!); toast.success('¡Copiado!', 'Listo para usar'); }}
-                          className="text-[11px] font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors">ðŸ“‹ Copiar</button>
+                          className="text-[11px] font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors">📋 Copiar</button>
                       </div>
                     </motion.div>
                   )}
@@ -785,15 +785,15 @@ export function ClienteView() {
               </Card>
             </div>{/* end left sidebar */}
 
-            {/* â”€â”€ RIGHT CONTENT AREA â”€â”€ */}
+            {/* --- RIGHT CONTENT AREA --- */}
             <div className="flex-1 min-w-0 space-y-6">
 
               {/* Progress + QR side by side on desktop */}
               <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-5 items-start">
 
-              {/* Progress card "” full width on mobile, left slot on desktop */}
+              {/* Progress card - full width on mobile, left slot on desktop */}
               <div className="space-y-6">
-                {/* Mobile toggle "” hidden on desktop */}
+                {/* Mobile toggle - hidden on desktop */}
                 <div className="flex lg:hidden justify-center gap-2">
                   <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                     <Button
@@ -851,13 +851,13 @@ export function ClienteView() {
                           <QrCode className="w-16 h-16 text-gray-300" />
                         </div>
                       )}
-                      <p className="text-xs text-gray-400">{cliente.telefono} Â· {cliente.nombre}</p>
+                      <p className="text-xs text-gray-400">{cliente.telefono} · {cliente.nombre}</p>
                     </CardContent>
                   </Card>
                 )}
               </div>{/* end progress card column */}
 
-              {/* â”€â”€ QR column (desktop: right of progress, mobile: hidden "” inside mobile toggle) â”€â”€ */}
+              {/* --- QR column (desktop: right of progress, mobile: hidden) --- */}
               <div className="hidden lg:flex flex-col items-center gap-3 shrink-0">
                 <Card className="border-0 shadow-lg dark:bg-card">
                   <CardContent className="p-4 flex flex-col items-center gap-3">
@@ -887,7 +887,7 @@ export function ClienteView() {
 
               </div>{/* end progress+QR grid */}
 
-              {/* â”€â”€ Stats + Historial (full width below progress+QR) â”€â”€ */}
+              {/* --- Stats + Historial (full width below progress+QR) --- */}
               <div className="space-y-5">
                 {/* Wrapped Stats */}
                 <ClientStats cliente={cliente} historial={historial} />
@@ -926,15 +926,15 @@ export function ClienteView() {
               <span className="font-semibold text-sm text-gray-700 dark:text-gray-300">Estrella Delivery</span>
             </div>
             <div className="flex items-center gap-1.5 text-xs text-gray-400">
-              <Clock className="w-3.5 h-3.5" /> Lun "“ Dom: 9 AM "“ 10 PM
+              <Clock className="w-3.5 h-3.5" /> Lun - Dom: 9 AM - 10 PM
             </div>
             <a href={whatsappUrl} target="_blank" rel="noopener noreferrer"
               className="text-xs text-green-600 dark:text-green-400 font-semibold hover:underline flex items-center gap-1">
-              Hacer un pedido â†’
+              Hacer un pedido →
             </a>
           </div>
           <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 text-center text-[10px] text-gray-300 dark:text-gray-600">
-            © {new Date().getFullYear()} Estrella Delivery "” Hecho con <Heart className="w-2.5 h-2.5 text-red-400 fill-red-400 inline mx-0.5" /> para nuestros clientes
+            © {new Date().getFullYear()} Estrella Delivery - Hecho con <Heart className="w-2.5 h-2.5 text-red-400 fill-red-400 inline mx-0.5" /> para nuestros clientes
           </div>
         </div>
       </footer>

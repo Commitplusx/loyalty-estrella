@@ -146,6 +146,7 @@ export function PedidoView() {
   const renderBotones = () => {
     switch (pedido.estado) {
       case 'asignado':
+      case 'aceptado':
         return (
           <Button 
             onClick={() => handleActualizarEstado('recibido')} 

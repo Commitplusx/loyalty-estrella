@@ -25,7 +25,7 @@ export function extract10Digits(phone: string | null | undefined): string {
 // ── Buscar repartidor por alias o nombre ──────────────────────────────────────
 export async function buscarRepartidor(supabase: SupabaseClient, alias: string | null) {
   if (!alias) return null
-  const cleanAlias = alias.trim().split(' ')[0]
+  const cleanAlias = alias.trim()
   const { data } = await supabase
     .from('repartidores')
     .select('id, user_id, telefono, nombre')

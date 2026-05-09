@@ -37,7 +37,7 @@ export async function handleAdminAssignRest(
 ): Promise<Response | null> {
   const pedidosPendientes: any[] = pendingState.pedidos
   // Solo hace match si hay "todos" o empieza con "1 jorge", etc., y nada más que eso.
-  const esAsignacion = /^(todos\s+[a-zA-ZáéíóúÁÉÍÓÚñÑ]+|(\d+\s+[a-zA-ZáéíóúÁÉÍÓÚñÑ]+(,\s*\d+\s+[a-zA-ZáéíóúÁÉÍÓÚñÑ]+)*))$/i.test(textoAdmin.trim())
+  const esAsignacion = /^(todos\s+[a-zA-ZáéíóúÁÉÍÓÚñÑ]+([\s][a-zA-ZáéíóúÁÉÍÓÚñÑ]+)*|(\d+\s+[a-zA-ZáéíóúÁÉÍÓÚñÑ]+([\s][a-zA-ZáéíóúÁÉÍÓÚñÑ]+)*(,\s*\d+\s+[a-zA-ZáéíóúÁÉÍÓÚñÑ]+([\s][a-zA-ZáéíóúÁÉÍÓÚñÑ]+)*)*))$/i.test(textoAdmin.trim())
   
   if (!esAsignacion) return null // Pasa al flujo de DeepSeek
 
@@ -232,7 +232,15 @@ export async function handleAdminMessage(
         }
 
         const saldoInfo = lastRes.saldo_billetera > 0 ? `\n💳 Saldo en billetera: *$${lastRes.saldo_billetera}*` : ''
-        await sendWA(fromPhone, `🌟 Sumados *${cant} pts* a ${c.nombre || tel10}.\nTotal: *${lastRes.puntos} pts* ✅${saldoInfo}`)
+        let promoAviso = ''
+        if (lastRes.puede_canjear && lastRes.puntos === 5) {
+          promoAviso += `\n\n🎉 *¡TIENE ENVÍO GRATIS DISPONIBLE!* 🎉\nEste cliente acaba de ganar un envío gratis.`
+        }
+        if (lastRes.recien_ascendido) {
+          promoAviso += `\n\n👑 *¡NUEVO VIP!* 👑\nEl cliente completó 3 ciclos (15 envíos) y ahora es VIP.`
+        }
+
+        await sendWA(fromPhone, `🌟 Sumados *${cant} pts* a ${c.nombre || tel10}.\nTotal: *${lastRes.puntos} pts* ✅${saldoInfo}${promoAviso}`)
         const ptsResult = await sendWATemplate(
           `52${tel10}`,
           'estrella_puntos_acumulados',
@@ -405,7 +413,7 @@ export async function handleAdminMessage(
       const result = await sendWATemplate(
         `52${tel10}`,
         'estrella_loyalty_welcome',
-        [d.clienteNombre || 'Cliente', (d.puntosASumar || 0).toString()],
+        [d.clienteNombre || 'Cliente', d.puntosASumar > 0 ? d.puntosASumar.toString() : '¡Empieza hoy!'],
         qrImageUrl, tel10
       )
 
@@ -441,7 +449,7 @@ export async function handleAdminMessage(
       // Marcamos los pedidos como cancelados en lugar de eliminarlos para mantener el historial.
       const tel10 = extract10Digits(d.clienteTel)
       const { data: peds } = await supabase.from('pedidos').select('id, descripcion')
-        .ilike('cliente_tel', `%${tel10}%`).in('estado', ['asignado', 'recibido']).order('created_at', { ascending: false })
+        .ilike('cliente_tel', `%${tel10}%`).in('estado', ['asignado', 'aceptado', 'recibido', 'en_camino']).order('created_at', { ascending: false })
       if (peds && peds.length > 0) {
         const ids = peds.map((p: any) => p.id)
         await supabase.from('pedidos').update({ estado: 'cancelado' }).in('id', ids)
@@ -604,7 +612,7 @@ export async function handleAdminMessage(
       const tel10 = extract10Digits(d.clienteTel)
       const { data: cli } = await supabase.from('clientes').select('id, nombre, saldo_billetera').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
       if (cli) {
-        const ns = (parseFloat(cli.saldo_billetera) || 0) + (d.montoSaldo || 0)
+        const ns = (parseFloat(String(cli.saldo_billetera)) || 0) + (parseFloat(String(d.montoSaldo)) || 0)
         await supabase.from('clientes').update({ saldo_billetera: ns }).eq('id', cli.id)
         await supabase.from('registros_puntos').insert({ cliente_id: cli.id, tipo: 'acumulacion', puntos: 0, monto_saldo: d.montoSaldo, descripcion: `Ajuste admin: $${d.montoSaldo}` })
         await sendWA(fromPhone, `💲 *Billetera*\nCargado $${d.montoSaldo} al cliente ${cli.nombre || tel10}.\nSaldo final: *$${ns}*`)
@@ -613,7 +621,7 @@ export async function handleAdminMessage(
     }
     case 'VER_ATRASOS': {
       const c = new Date(Date.now() - 45 * 60000).toISOString()
-      const { data: at } = await supabase.from('pedidos').select('descripcion, estado, created_at').not('estado','in','("entregado","cancelado")').lt('created_at', c)
+      const { data: at } = await supabase.from('pedidos').select('descripcion, estado, created_at').not('estado','in','(entregado,cancelado)').lt('created_at', c)
       if (at?.length) {
         let msg = `🚨 *ATRASOS (+45 mins)*\n\n`
         at.forEach((p:any) => msg += `⏱️ ${Math.floor((Date.now()-new Date(p.created_at).getTime())/60000)}m : _${p.descripcion?.substring(0,25)}_\nEstado: ${p.estado}\n\n`)
@@ -682,6 +690,37 @@ export async function handleAdminMessage(
         await sendWA(fromPhone, `✅ *Pedido Asignado*\n${mensajeUsuario}\n\n📦 *Detalle:* ${d.descripcion}\n🔗 ${pedidoLink(result.pedidoId)}`)
       } else { await sendWA(fromPhone, `❌ Error: ${result.error}`) }
       return new Response('OK', { status: 200 })
+    }
+    case 'USAR_CUPON': {
+      const code = String(d.codigoCupon).trim().toUpperCase()
+      const { data, error } = await supabase.rpc('usar_cupon', { p_codigo: code })
+      
+      if (error) {
+        await sendWA(fromPhone, `❌ *Error al usar cupón:*\n${error.message}`)
+      } else if (data?.ok) {
+        await sendWA(fromPhone, `✅ *CUPÓN APLICADO*\n🎟️ Código: *${code}*\n👤 Cliente: ${data.cliente_nombre || 'Desconocido'}\n📱 Tel: ${data.cliente_tel || '-'}\n\nEl cupón ha sido marcado como usado exitosamente.`)
+      } else {
+        await sendWA(fromPhone, `⚠️ *Cupón no válido:*\n${data?.error || 'No se pudo aplicar el cupón.'}`)
+      }
+      break
+    }
+    case 'CANCELAR_CUPON': {
+      const code = String(d.codigoCupon).trim().toUpperCase()
+      const { data: admin } = await supabase.from('admins').select('id').eq('telefono', admin10).maybeSingle()
+      
+      const { data, error } = await supabase.rpc('cancelar_cupon', { 
+        p_codigo: code,
+        p_admin_id: admin?.id || null 
+      })
+
+      if (error) {
+        await sendWA(fromPhone, `❌ *Error al cancelar cupón:*\n${error.message}`)
+      } else if (data?.ok) {
+        await sendWA(fromPhone, `🚫 *CUPÓN CANCELADO*\n🎟️ Código: *${code}*\n👤 Cliente: ${data.cliente_nombre}\n💰 Reembolsado: *$${data.monto_reembolsado}*\n\nEl saldo ha sido devuelto a la billetera del cliente.`)
+      } else {
+        await sendWA(fromPhone, `⚠️ *No se pudo cancelar:*\n${data?.error || 'Error desconocido.'}`)
+      }
+      break
     }
   }
 
@@ -877,6 +916,36 @@ export async function handleTerminos(supabase: Supa, fromPhone: string, buttonId
       const { data: cliRec } = await supabase.from('clientes').select('nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
       await sendWA(ADMIN_PHONE_MAIN, `❌ *${cliRec?.nombre || tel10}* (${tel10}) *rechazó* los términos y condiciones.`)
     }
+  }
+
+  return new Response('OK', { status: 200 })
+}
+
+export async function handleAdminCommands(supabase: Supa, fromPhone: string, buttonId: string): Promise<Response> {
+  const isCancel = buttonId.startsWith('CMD_CANCELAR_')
+  const isReasignar = buttonId.startsWith('CMD_REASIGNAR_')
+  
+  const prefixLength = isCancel ? 'CMD_CANCELAR_'.length : 'CMD_REASIGNAR_'.length
+  const ordenOrId = buttonId.substring(prefixLength)
+
+  const suffix = ordenOrId.replace('EST-', '').toLowerCase()
+  const { data: pIdData } = await supabase.from('pedidos').select('id, estado').ilike('id', `%${suffix}`).limit(1).maybeSingle()
+
+  if (!pIdData) {
+    await sendWA(fromPhone, `❌ No encontré el pedido ${ordenOrId}.`)
+    return new Response('OK', { status: 200 })
+  }
+
+  if (isCancel) {
+    if (pIdData.estado === 'cancelado') {
+      await sendWA(fromPhone, `⚠️ El pedido ${ordenOrId} ya estaba cancelado.`)
+    } else {
+      await supabase.from('pedidos').update({ estado: 'cancelado' }).eq('id', pIdData.id)
+      await sendWA(fromPhone, `✅ Pedido ${ordenOrId} CANCELADO exitosamente.`)
+    }
+  } else if (isReasignar) {
+    await supabase.from('pedidos').update({ estado: 'asignado', repartidor_id: null }).eq('id', pIdData.id)
+    await sendWA(fromPhone, `🔄 La orden *${ordenOrId}* ha sido removida del repartidor actual y devuelta a la lista de *Asignados*.\n\n👉 Para dársela a alguien más, usa tu panel Web o escribe su nombre.`)
   }
 
   return new Response('OK', { status: 200 })

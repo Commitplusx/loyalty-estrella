@@ -61,8 +61,9 @@ export async function logError(
     if (severity === 'critical') {
       const webhookUrl = Deno.env.get('DISCORD_WEBHOOK_URL');
       if (webhookUrl) {
+        const rawContent = `🚨 **ALERTA CRÍTICA** en \`${source}\`\n**Error:** ${message}\n\`\`\`json\n${JSON.stringify(metadata, null, 2)}\n\`\`\``
         const discordMsg = {
-          content: `🚨 **ALERTA CRÍTICA** en \`${source}\`\n**Error:** ${message}\n\`\`\`json\n${JSON.stringify(metadata, null, 2)}\n\`\`\``
+          content: rawContent.substring(0, 1900) // Discord hard limit is 2000 chars
         };
         fetch(webhookUrl, {
           method: 'POST',

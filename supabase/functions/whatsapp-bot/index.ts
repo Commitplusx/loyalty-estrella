@@ -172,27 +172,39 @@ serve(async (req: Request) => {
     } else if (msgType === 'interactive') {
       const buttonTitle = msg.interactive?.button_reply?.title || 'Botón presionado'
       cwConvIdPromise = syncToChatwoot(fromPhone, `[Clic Botón] ${buttonTitle}`, profileName, userLabel)
+    } else if (['audio', 'image', 'document', 'sticker', 'video', 'voice'].includes(msgType)) {
+      cwConvIdPromise = syncToChatwoot(fromPhone, `[Multimedia: ${msgType}]`, profileName, userLabel)
     }
 
-    // Disparar sincronización de Atributos Personalizados en segundo plano
+    let cwUpdateProfilePromise: Promise<any> = Promise.resolve()
     if (userLabel === 'cliente') {
-      updateChatwootProfile(supabase, fromPhone).catch(e => console.error('[CW Sync] Error actualizando perfil:', e))
+      cwUpdateProfilePromise = updateChatwootProfile(supabase, fromPhone).catch(e => console.error('[CW Sync] Error actualizando perfil:', e))
+    }
+
+    const exitSafely = async (res: Response) => {
+      await Promise.allSettled([cwConvIdPromise, cwUpdateProfilePromise])
+      return res
     }
 
     // ── COMANDO SECRETO SANEAMIENTO (ahora sí después de esAdmin) ──
     if (msgType === 'text' && msg.text?.body === 'SANEAMIENTO_TOTAL') {
       if (!esAdmin) return new Response('Unauthorized', { status: 401 })
       const cleanPhones = async (table: string) => {
-        const { data } = await supabase.from(table).select('id, telefono')
-        for (const r of data || []) {
-          if (r.telefono && r.telefono !== r.telefono.replace(/\D/g, '')) {
-            await supabase.from(table).update({ telefono: r.telefono.replace(/\D/g, '') }).eq('id', r.id)
+        let from = 0; const PAGE = 500
+        while (true) {
+          const { data } = await supabase.from(table).select('id, telefono').range(from, from + PAGE - 1)
+          if (!data?.length) break
+          for (const r of data) {
+            if (r.telefono && r.telefono !== r.telefono.replace(/\D/g, '')) {
+              await supabase.from(table).update({ telefono: r.telefono.replace(/\D/g, '') }).eq('id', r.id)
+            }
           }
+          from += PAGE
         }
       }
       await Promise.all([cleanPhones('repartidores'), cleanPhones('restaurantes'), cleanPhones('clientes')])
       await sendWA(fromPhone, `✅ [SISTEMA] Base de datos saneada (espacios eliminados en teléfonos).`)
-      return new Response('OK', { status: 200 })
+      return await exitSafely(new Response('OK', { status: 200 }))
     }
 
     // ── INTERCEPTOR DE MULTIMEDIA Y FORMATOS NO SOPORTADOS ──
@@ -200,7 +212,7 @@ serve(async (req: Request) => {
       if (!esAdmin) {
         await sendWA(fromPhone, `🤖 Por favor envíanos la información únicamente en *texto*. Aún no proceso notas de voz, fotos o documentos. ¡Gracias!`)
       }
-      return new Response('OK', { status: 200 })
+      return await exitSafely(new Response('OK', { status: 200 }))
     }
 
     // 1. BOTONES INTERACTIVOS Y PLANTILLAS ──
@@ -218,9 +230,14 @@ serve(async (req: Request) => {
           const { handleTerminos } = await import('./admin-handler.ts')
           return await handleTerminos(supabase, fromPhone, buttonId)
         }
+        // Botones de administrador (Alerta Zombie)
+        if (buttonId.startsWith('CMD_REASIGNAR_') || buttonId.startsWith('CMD_CANCELAR_')) {
+          const { handleAdminCommands } = await import('./admin-handler.ts')
+          return await handleAdminCommands(supabase, fromPhone, buttonId)
+        }
         await handleRepButtons(supabase, fromPhone, buttonId)
       }
-      return new Response('OK', { status: 200 })
+      return await exitSafely(new Response('OK', { status: 200 }))
     }
 
     // ── SLASH COMMANDS (Admin Dual Mode) ─────────────────────────────────────
@@ -234,12 +251,12 @@ serve(async (req: Request) => {
           updated_at: new Date().toISOString()
         })
         await sendWA(fromPhone, `🛵 *Modo Repartidor activado.*\nAhora recibirás pedidos como mensajero y puedes aceptarlos con el botón.\n\nEscribe */admin* para regresar a modo administrador.`)
-        return new Response('OK', { status: 200 })
+        return await exitSafely(new Response('OK', { status: 200 }))
       }
       if (slashText === '/admin') {
         await supabase.from('bot_memory').delete().eq('phone', `admin_mode_${from10}`)
         await sendWA(fromPhone, `👔 *Modo Admin activado.*\nYa tienes acceso completo al panel de administración.`)
-        return new Response('OK', { status: 200 })
+        return await exitSafely(new Response('OK', { status: 200 }))
       }
       if (slashText.startsWith('/usar ')) {
         const codigo = slashText.replace('/usar ', '').trim().toUpperCase()
@@ -247,7 +264,7 @@ serve(async (req: Request) => {
         if (error) await sendWA(fromPhone, `❌ Error interno: ${error.message}`)
         else if (!data?.ok) await sendWA(fromPhone, `❌ Error: ${data?.error || 'Cupón no encontrado'}`)
         else await sendWA(fromPhone, `✅ *Cupón Usado*\n\nSe ha marcado como usado el cupón *${codigo}* del cliente *${data.cliente_nombre}* (${data.cliente_tel}).\nYa puede generar uno nuevo.`)
-        return new Response('OK', { status: 200 })
+        return await exitSafely(new Response('OK', { status: 200 }))
       }
       if (slashText.startsWith('/cancelar ')) {
         const codigo = slashText.replace('/cancelar ', '').trim().toUpperCase()
@@ -259,7 +276,7 @@ serve(async (req: Request) => {
         if (error) await sendWA(fromPhone, `❌ Error interno: ${error.message}`)
         else if (!data?.ok) await sendWA(fromPhone, `❌ Error: ${data?.error || 'Cupón no encontrado'}`)
         else await sendWA(fromPhone, `✅ *Cupón Cancelado*\n\nSe ha cancelado el cupón *${codigo}* del cliente *${data.cliente_nombre}*.\nSe han devuelto *$${data.monto_reembolsado}* a su billetera.`)
-        return new Response('OK', { status: 200 })
+        return await exitSafely(new Response('OK', { status: 200 }))
       }
 
       if (slashText === '/testdiscord') {
@@ -270,7 +287,7 @@ serve(async (req: Request) => {
           'critical'
         );
         await sendWA(fromPhone, `📡 *Test Enviado*\nAcabo de disparar un error crítico de prueba. Si configuraste bien el \`DISCORD_WEBHOOK_URL\` en Supabase, el mensaje debió llegar al canal de Discord ahora mismo.`);
-        return new Response('OK', { status: 200 })
+        return await exitSafely(new Response('OK', { status: 200 }))
       }
 
       // ── COMANDOS DE EMERGENCIA (funcionan SIN DeepSeek) ──────────────────────
@@ -281,7 +298,7 @@ serve(async (req: Request) => {
         const telMatch = args.match(/^(\d{10})\s+(.+)$/s)
         if (!telMatch) {
           await sendWA(fromPhone, `⚠️ Formato: */pedido 9631234567 descripción del pedido*`)
-          return new Response('OK', { status: 200 })
+          return await exitSafely(new Response('OK', { status: 200 }))
         }
         const [, cTel, desc] = telMatch
         const pData = { clienteTel: cTel, clienteNombre: null, restaurante: null, descripcion: desc, direccion: null, repartidorAlias: null }
@@ -291,7 +308,7 @@ serve(async (req: Request) => {
         } else {
           await sendWA(fromPhone, `❌ Error: ${r.error || 'No se pudo crear el pedido'}`)
         }
-        return new Response('OK', { status: 200 })
+        return await exitSafely(new Response('OK', { status: 200 }))
       }
 
       if (slashText.startsWith('/puntos ')) {
@@ -301,7 +318,7 @@ serve(async (req: Request) => {
         const cant = parseInt(args[1] || '1') || 1
         if (!cTel || cTel.length !== 10) {
           await sendWA(fromPhone, `⚠️ Formato: */puntos 9631234567* o */puntos 9631234567 3*`)
-          return new Response('OK', { status: 200 })
+          return await exitSafely(new Response('OK', { status: 200 }))
         }
         let lastRes: any = null, rpcErr: any = null
         for (let i = 0; i < cant; i++) {
@@ -314,14 +331,14 @@ serve(async (req: Request) => {
         } else {
           await sendWA(fromPhone, `❌ Error: ${rpcErr?.message || 'Cliente no encontrado'}`)
         }
-        return new Response('OK', { status: 200 })
+        return await exitSafely(new Response('OK', { status: 200 }))
       }
 
       if (slashText.startsWith('/buscar ')) {
         const cTel = slashText.slice(8).trim().replace(/\D/g, '').slice(-10)
         if (!cTel || cTel.length !== 10) {
           await sendWA(fromPhone, `⚠️ Formato: */buscar 9631234567*`)
-          return new Response('OK', { status: 200 })
+          return await exitSafely(new Response('OK', { status: 200 }))
         }
         const { data: c } = await supabase.from('clientes')
           .select('nombre, telefono, puntos, es_vip, rango, saldo_billetera, envios_totales, envios_gratis_disponibles, cupon_activo, notas_crm')
@@ -332,7 +349,7 @@ serve(async (req: Request) => {
         } else {
           await sendWA(fromPhone, `❌ Cliente no encontrado con ese número.`)
         }
-        return new Response('OK', { status: 200 })
+        return await exitSafely(new Response('OK', { status: 200 }))
       }
 
       if (slashText.startsWith('/saldo ')) {
@@ -342,7 +359,7 @@ serve(async (req: Request) => {
         const monto = parseFloat(args[1] || '0')
         if (!cTel || cTel.length !== 10 || isNaN(monto) || monto <= 0) {
           await sendWA(fromPhone, `⚠️ Formato: */saldo 9631234567 150.50*`)
-          return new Response('OK', { status: 200 })
+          return await exitSafely(new Response('OK', { status: 200 }))
         }
         const { data: c } = await supabase.from('clientes').select('id, nombre, saldo_billetera').ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
         if (c) {
@@ -352,7 +369,7 @@ serve(async (req: Request) => {
         } else {
           await sendWA(fromPhone, `❌ Cliente no encontrado.`)
         }
-        return new Response('OK', { status: 200 })
+        return await exitSafely(new Response('OK', { status: 200 }))
       }
 
       if (slashText === '/ayuda' || slashText === '/help') {
@@ -367,7 +384,7 @@ serve(async (req: Request) => {
           `🛵 */repartidor* — Modo repartidor\n` +
           `👔 */admin* — Modo administrador\n\n` +
           `_Estos comandos no requieren IA y siempre funcionan._`)
-        return new Response('OK', { status: 200 })
+        return await exitSafely(new Response('OK', { status: 200 }))
       }
     }
 
@@ -398,7 +415,7 @@ serve(async (req: Request) => {
         if (texto.toLowerCase() === 'debug_restaurantes') {
           const { data } = await supabase.from('restaurantes').select('nombre, telefono, activo').limit(50)
           if (data) await sendWA(fromPhone, `📍 *RESTAURANTES REGISTRADOS:*\n${data.map((r: any) => `- ${r.nombre}: ${r.telefono} [${r.activo ? '✅' : '❌'}]`).join('\n')}`)
-          return new Response('OK', { status: 200 })
+          return await exitSafely(new Response('OK', { status: 200 }))
         }
 
         // Asignación rápida de restaurante
@@ -440,9 +457,9 @@ serve(async (req: Request) => {
           const buttonId = msg.interactive?.button_reply?.id as string | undefined
           if (buttonId) {
             const handled = await handleRepButtons(supabase, fromPhone, buttonId)
-            if (handled) return new Response('OK', { status: 200 })
+            if (handled) return await exitSafely(new Response('OK', { status: 200 }))
           }
-          return new Response('OK', { status: 200 })
+          return await exitSafely(new Response('OK', { status: 200 }))
         }
 
         if (msgType === 'text') {
@@ -450,7 +467,7 @@ serve(async (req: Request) => {
         }
 
         await sendWA(fromPhone, `🛵 *Modo Repartidor activo.*\nEnvía texto o usa los botones de pedido.\n\nEscribe */admin* para regresar a modo administrador.`)
-        return new Response('OK', { status: 200 })
+        return await exitSafely(new Response('OK', { status: 200 }))
       }
 
       const portalResponse = await handleRestaurantPortal(supabase, fromPhone, from10, admin10, `52${admin10}`, msgType, msg, sendWA, sendInteractiveButton)
@@ -475,13 +492,13 @@ serve(async (req: Request) => {
       
       if (normalizedText === 'aceptar') {
         await sendWA(fromPhone, `✅ **¡Confirmado!** Hemos validado tu pedido.\n\nPrepara la mesa 🍽️, te avisaremos por este medio en cuanto tu repartidor inicie la ruta hacia tu domicilio. 🛵💨`)
-        return new Response('OK', { status: 200 })
+        return await exitSafely(new Response('OK', { status: 200 }))
       } else if (normalizedText === 'rechazar') {
         await sendWA(fromPhone, `❌ Lamentamos el inconveniente. Un administrador ha sido notificado y se pondrá en contacto contigo a la brevedad.`)
         if (admin10) {
           await sendWA(`52${admin10}`, `🚨 *ALERTA CLIENTE RECHAZÓ PEDIDO*\n\nEl cliente acaba de presionar "Rechazar" en la notificación de su pedido.\nComunícate de inmediato: wa.me/${fromPhone}`)
         }
-        return new Response('OK', { status: 200 })
+        return await exitSafely(new Response('OK', { status: 200 }))
       }
     }
 
@@ -501,7 +518,7 @@ serve(async (req: Request) => {
            
            if (resAI?.errorObj) {
              await sendWA(fromPhone, `⚠️ Tuvimos un problema procesando tu mensaje. Reintenta en unos minutos.`)
-             return new Response('OK', { status: 200 })
+             return await exitSafely(new Response('OK', { status: 200 }))
            }
            if (resAI?.respuesta) {
              if (resAI.respuesta.accion === 'REGISTRAR_RESTAURANTE') {
@@ -525,7 +542,11 @@ serve(async (req: Request) => {
                
                await supabase.from('bot_memory').delete().eq('phone', from10)
              } else {
-               await sendWA(fromPhone, resAI.respuesta.mensajeUsuario)
+               // Guard: AI hallucination — if mensajeUsuario is not a string, use a safe fallback
+               const aiMsg = typeof resAI.respuesta?.mensajeUsuario === 'string' && resAI.respuesta.mensajeUsuario.trim()
+                 ? resAI.respuesta.mensajeUsuario
+                 : '¡Hola! Estoy aquí para ayudarte. ¿En qué puedo asistirte hoy? 😊'
+               await sendWA(fromPhone, aiMsg)
                if (resAI.nuevoHistorial) {
                  const { guardarMemoria } = await import('./db.ts')
                  await guardarMemoria(supabase, from10, resAI.nuevoHistorial)
@@ -543,10 +564,10 @@ serve(async (req: Request) => {
           await sendWA(fromPhone, botMsg)
         }
       }
-      return new Response('OK', { status: 200 })
+      return await exitSafely(new Response('OK', { status: 200 }))
     }
 
-    return new Response('OK', { status: 200 })
+    return await exitSafely(new Response('OK', { status: 200 }))
   } catch (e) {
     const errorString = e instanceof Error ? e.message : String(e);
     const stackTrace = e instanceof Error ? e.stack : undefined;
