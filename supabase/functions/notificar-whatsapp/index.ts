@@ -257,8 +257,8 @@ serve(async (req: Request) => {
     if (tipo === 'canje_billetera') {
       const { cliente_tel, cliente_nombre, codigo_canje, monto, saldo_restante } = payload
       const telFormateado = formatTel(cliente_tel)
-      const adminPhoneMain = Deno.env.get('ADMIN_PHONE_BILLETERA')
-      if (!adminPhoneMain) throw new Error('Missing ADMIN_PHONE_BILLETERA en entorno')
+      const adminPhoneMain = Deno.env.get('ADMIN_PHONE_BILLETERA') || Deno.env.get('ADMIN_PHONE') || Deno.env.get('ADMIN_PHONES')?.split(',')[0]
+      if (!adminPhoneMain) throw new Error('Missing ADMIN_PHONE_BILLETERA o ADMIN_PHONE en entorno')
 
       // Avisar al cliente (USANDO PLANTILLA estrella_cupon_generado en INGLES)
       const fExp = 'Válido hoy'
