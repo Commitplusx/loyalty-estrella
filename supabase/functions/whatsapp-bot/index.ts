@@ -555,12 +555,23 @@ serve(async (req: Request) => {
            }
         } else {
           const profileName = body?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.profile?.name
-          // Si el cliente está registrado, mostrar sus puntos en lugar de redirigir al admin
+          // Si el cliente está registrado, mostrar sus puntos e invitar a la web
           const { data: cliente } = await supabase.from('clientes')
             .select('nombre, puntos').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
-          const botMsg = cliente
-            ? `⭐ ¡Hola *${cliente.nombre || profileName || ''}*!\n\nTienes *${cliente.puntos || 0} puntos* de lealtad acumulados.\n🔗 Tu tarjeta: https://www.app-estrella.shop/loyalty/${from10}\n\nPara hacer un pedido escríbele al administrador: wa.me/52${admin10}`
-            : `¡Hola *${profileName || ''}*! 👋 Soy el asistente de Estrella Delivery.\n\nPara pedir un servicio, escríbele al administrador: wa.me/52${admin10}\n\n¡Gracias! ⭐`
+            
+          let botMsg = ''
+          if (cliente) {
+            botMsg = `⭐ ¡Hola *${cliente.nombre || profileName || ''}*! Qué gusto saludarte de nuevo. 👋\n\n` +
+                     `Actualmente tienes *${cliente.puntos || 0} puntos* acumulados.\n\n` +
+                     `🎁 Te invito a ver tus recompensas, tu progreso VIP y realizar *canjes* directamente en tu portal web:\n` +
+                     `🔗 https://www.app-estrella.shop/loyalty/${from10}\n\n` +
+                     `Para solicitar un nuevo servicio, por favor envíale mensaje al administrador: wa.me/52${admin10}`
+          } else {
+            botMsg = `¡Hola *${profileName || ''}*! 👋 Bienvenido a *Estrella Delivery*.\n\n` +
+                     `¿Aún no eres parte de nuestro club VIP? ¡Comienza a ganar puntos y envíos gratis!\n\n` +
+                     `Para registrarte o pedir un servicio, mándale mensaje a nuestro administrador: wa.me/52${admin10}\n\n` +
+                     `¡Será un placer atenderte! ⭐`
+          }
           await sendWA(fromPhone, botMsg)
         }
       }
