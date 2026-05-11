@@ -69,22 +69,29 @@ export function ClienteView() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Al montar, restauramos la sesión. Si el cliente ya tiene PIN → directo al perfil.
-  // Si no tiene PIN → forzar a crear uno antes de ver el perfil.
+  // Al montar, restauramos la sesión.
+  // Usamos sessionStorage para saber si el PIN ya fue verificado en esta sesión.
+  // Esto evita pedir PIN en cada refresh, pero sí en cada nueva visita/pestaña.
   useEffect(() => {
     const saved = localStorage.getItem('estrella_cliente');
     if (saved) {
       try {
         const parsed: Cliente = JSON.parse(saved);
         setCliente(parsed);
-        // Si la sesión guardada ya tiene PIN, mostramos perfil directo (sesión previa válida)
-        setViewState(parsed.pin ? 'result' : 'pin-setup');
+        const pinVerifiedThisSession = sessionStorage.getItem('pin_verified') === 'true';
+        if (pinVerifiedThisSession) {
+          // PIN ya verificado en esta pestaña → mostrar perfil directo
+          setViewState('result');
+        } else {
+          // Nueva visita → siempre pedir PIN (o crear si no tiene)
+          setViewState(parsed.pin ? 'pin-verify' : 'pin-setup');
+        }
         getHistorialCliente(parsed.id).then(setHistorial).catch(() => {});
         getClienteByTelefono(parsed.telefono).then(freshData => {
           if (freshData && !('found' in freshData)) {
             setCliente(freshData);
-            // Si los datos frescos no tienen PIN, forzar setup
-            if (!freshData.pin) setViewState('pin-setup');
+            // Si los datos frescos muestran que no tiene PIN, forzar setup
+            if (!freshData.pin && !pinVerifiedThisSession) setViewState('pin-setup');
           }
         }).catch(() => {});
       } catch {
@@ -92,6 +99,7 @@ export function ClienteView() {
       }
     }
   }, []);
+
 
   // Cada vez que cambia el cliente, actualizamos (o borramos) la sesión guardada
   useEffect(() => {
@@ -250,6 +258,8 @@ export function ClienteView() {
       setPinError(false);
       setPinAttempts(0);
       localStorage.setItem('estrella_cliente', JSON.stringify(cliente));
+      // Marcar PIN como verificado en esta sesión (evita re-pedir en refresh)
+      sessionStorage.setItem('pin_verified', 'true');
       setViewState('result');
     } else {
       setPinAttempts(prev => prev + 1);
@@ -287,6 +297,7 @@ export function ClienteView() {
     if (data?.ok) {
       setCliente(prev => prev ? { ...prev, pin } : prev);
       localStorage.setItem('estrella_cliente', JSON.stringify({ ...cliente, pin }));
+      sessionStorage.setItem('pin_verified', 'true');
       toast.success('¡PIN creado!', 'Tu cuenta está protegida 🔒');
       setViewState('result');
     } else {
@@ -314,7 +325,10 @@ export function ClienteView() {
     setPinSetupStep('enter');
     setPinFirst('');
     setPinConfirm('');
+    // Limpiar sesión de PIN para que la próxima vez se pida de nuevo
+    sessionStorage.removeItem('pin_verified');
     setTimeout(() => inputRef.current?.focus(), 100);
+
   };
 
 
