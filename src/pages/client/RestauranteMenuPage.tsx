@@ -24,7 +24,7 @@ export function RestauranteMenuPage() {
         { data: prods }
       ] = await Promise.all([
         supabase.from('restaurantes').select('*').eq('id', id).single(),
-        supabase.from('menu_categorias').select('*').eq('restaurante_id', id).eq('activa', true).order('orden'),
+        supabase.from('menu_categorias').select('*').eq('restaurante_id', id).order('orden'),
         supabase.from('menu_items').select('*').eq('restaurante_id', id).eq('disponible', true).order('orden')
       ]);
 

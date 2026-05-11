@@ -155,6 +155,7 @@ export async function handleRepMessage(
       `🛵 *COMANDOS RÁPIDOS — Estrella Delivery*\n\n` +
       `📋 */mis_pedidos* — Ver tus pedidos activos ahora\n` +
       `🟢 */libre* — Avisar al admin que quedas disponible\n` +
+      `🎟️ */usar CODIGO* — Marcar un cupón de canje como usado\n` +
       `❓ */help* — Esta ayuda\n\n` +
       `_Usa los botones de pedido para avanzar los estados._`
     )
@@ -197,6 +198,45 @@ export async function handleRepMessage(
       await sendWA(ADMIN_PHONE_MAIN, `🟢 *${isRep.nombre}* está libre y disponible para el próximo pedido.`)
     }
     await sendWA(fromPhone, `✅ Le avisé al admin que quedas libre. ¡Espera el próximo pedido!`)
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── /usar CODIGO — el repartidor marca un código de canje del cliente como usado ──
+  if (trimCmd.toLowerCase().startsWith('/usar ')) {
+    const codigo = trimCmd.slice(6).trim().toUpperCase()
+    if (!codigo) {
+      await sendWA(fromPhone, `⚠️ Formato: */usar CODIGO*\n\nEjemplo: /usar EST-ABC123`)
+      return new Response('OK', { status: 200 })
+    }
+
+    const { data, error } = await (supabase as any).rpc('usar_cupon', { p_codigo: codigo })
+
+    if (error) {
+      await sendWA(fromPhone, `❌ *Error interno:* ${error.message}`)
+    } else if (data?.ok) {
+      // Notificar al repartidor
+      await sendWA(fromPhone,
+        `✅ *CUPÓN APLICADO*\n` +
+        `🎟️ Código: *${codigo}*\n` +
+        `👤 Cliente: ${data.cliente_nombre || 'Desconocido'}\n` +
+        `📱 Tel: ${data.cliente_tel || '-'}\n\n` +
+        `El cupón ha sido marcado como usado. ¡Gracias!`
+      )
+      // Notificar al admin también
+      if (ADMIN_PHONE_MAIN) {
+        await sendWA(ADMIN_PHONE_MAIN,
+          `🎟️ *[OP] Cupón Usado*\n` +
+          `🛵 Repartidor: *${isRep.nombre}*\n` +
+          `🎟️ Código: *${codigo}*\n` +
+          `👤 Cliente: ${data.cliente_nombre || 'Desconocido'} (${data.cliente_tel || '-'})`
+        )
+      }
+    } else {
+      await sendWA(fromPhone,
+        `⚠️ *Cupón no válido:*\n${data?.error || 'No se encontró o ya fue usado.'}\n\n` +
+        `Verifica que el código esté bien escrito. Ejemplo: */usar EST-ABC123*`
+      )
+    }
     return new Response('OK', { status: 200 })
   }
 

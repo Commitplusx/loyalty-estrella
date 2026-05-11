@@ -146,7 +146,7 @@ export function Home() {
   const [restaurantes, setRestaurantes] = useState<any[]>([]);
 
   useEffect(() => {
-    supabase.from('restaurantes').select('id, nombre, foto_portada_url').eq('activo', true).limit(8).order('nombre')
+    supabase.from('restaurantes').select('id, nombre, foto_fachada_url').eq('activo', true).limit(8).order('nombre')
       .then(({ data }) => setRestaurantes(data || []));
   }, []);
 

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Award, TrendingUp, CalendarDays, DollarSign } from 'lucide-react';
+import { Award, CalendarDays, DollarSign, Star } from 'lucide-react';
 import { VALOR_CANJE_ESTIMADO } from '@/lib/constants';
 import type { Cliente, RegistroMovimiento } from '@/types';
 
@@ -20,9 +20,14 @@ export function ClientStats({ cliente, historial }: ClientStatsProps) {
   const ahorroEstimado = canjesTotales * VALOR_CANJE_ESTIMADO;
 
   const isVip = cliente.es_vip === true || (cliente.envios_totales ? cliente.envios_totales >= 15 : false);
-  const rangoActual = isVip ? 'Socio VIP' : (cliente.rango ?? 'bronce');
+  // "Socio VIP" era muy largo para el espacio reducido, abreviamos a "VIP"
+  const rangoActual = isVip ? 'VIP' : (cliente.rango ?? 'bronce');
   const rangoEmoji = isVip ? '👑' : (rangoActual === 'oro' ? '🥇' : rangoActual === 'plata' ? '🥈' : '🥉');
-  const rangoNext = isVip ? null : (rangoActual === 'bronce' ? 'Plata' : rangoActual === 'plata' ? 'Oro' : 'Socio VIP');
+  const rangoNext = isVip ? null : (rangoActual === 'bronce' ? 'Plata' : rangoActual === 'plata' ? 'Oro' : 'VIP');
+
+  // Clase base compartida para que las 3 tarjetas tengan exactamente el mismo tamaño y centrado
+  const cardClass = "relative overflow-hidden rounded-xl bg-white dark:bg-card border border-gray-100 dark:border-gray-800 p-4 text-center shadow-sm flex flex-col items-center justify-center gap-1";
+  const bgIconClass = "w-8 h-8 absolute -right-1 -top-1 opacity-20";
 
   return (
     <div className="mb-6">
@@ -36,33 +41,34 @@ export function ClientStats({ cliente, historial }: ClientStatsProps) {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="relative overflow-hidden rounded-xl bg-white dark:bg-card border border-gray-100 dark:border-gray-800 p-4 text-center shadow-sm"
+          className={cardClass}
         >
-          <CalendarDays className="w-8 h-8 text-orange-200 dark:text-orange-900/40 absolute -right-1 -top-1" />
-          <p className="text-2xl font-black text-gray-900 dark:text-white">{enviosEsteAno}</p>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-wider font-medium">Envíos</p>
+          <CalendarDays className={`${bgIconClass} text-orange-400`} />
+          <p className="text-2xl font-black text-gray-900 dark:text-white leading-none">{enviosEsteAno}</p>
+          <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-medium">Envíos</p>
         </motion.div>
 
         <motion.div 
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="relative overflow-hidden rounded-xl bg-white dark:bg-card border border-gray-100 dark:border-gray-800 p-4 text-center shadow-sm"
+          className={cardClass}
         >
-          <DollarSign className="w-8 h-8 text-emerald-200 dark:text-emerald-900/40 absolute -right-1 -top-1" />
-          <p className="text-2xl font-black text-gray-900 dark:text-white">${ahorroEstimado}</p>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-wider font-medium">Ahorro</p>
+          <DollarSign className={`${bgIconClass} text-emerald-400`} />
+          <p className="text-2xl font-black text-gray-900 dark:text-white leading-none">${ahorroEstimado}</p>
+          <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-medium">Ahorro</p>
         </motion.div>
 
         <motion.div 
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="relative overflow-hidden rounded-xl bg-white dark:bg-card border border-gray-100 dark:border-gray-800 p-4 text-center shadow-sm"
+          className={cardClass}
         >
-          <TrendingUp className="w-8 h-8 text-amber-200 dark:text-amber-900/40 absolute -right-1 -top-1" />
-          <p className="text-xl font-black text-gray-900 dark:text-white">{rangoEmoji}</p>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-wider font-medium">{rangoActual}</p>
+          <Star className={`${bgIconClass} text-amber-400`} />
+          {/* El emoji al mismo font-size que los números de las otras 2 tarjetas */}
+          <span className="text-2xl leading-none" role="img" aria-label={rangoActual}>{rangoEmoji}</span>
+          <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-medium truncate w-full text-center">{rangoActual}</p>
         </motion.div>
       </div>
 
