@@ -154,7 +154,31 @@ export function ClienteView() {
     };
   }, [clienteId]);
 
-  // Generar QR cuando hay cliente
+  // ── Auto-cleanup: si cupon_activo ya fue marcado como 'usado' en
+  //    la tabla cupones, lo limpiamos del estado local para que no se muestre.
+  useEffect(() => {
+    if (!cliente?.cupon_activo) return;
+    supabase
+      .from('cupones')
+      .select('estado')
+      .eq('codigo', cliente.cupon_activo)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data && data.estado !== 'activo') {
+          // El cupón ya fue usado o cancelado — limpiar del estado
+          setCliente(prev => prev ? { ...prev, cupon_activo: null } : prev);
+          const stored = localStorage.getItem('estrella_cliente');
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              localStorage.setItem('estrella_cliente', JSON.stringify({ ...parsed, cupon_activo: null }));
+            } catch { /* ignore */ }
+          }
+        }
+      });
+  }, [cliente?.cupon_activo]);
+
+
   useEffect(() => {
     if (!cliente?.qr_code) return;
     QRCode.toDataURL(cliente.qr_code, {
@@ -272,7 +296,7 @@ export function ClienteView() {
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 1.02, y: -10 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/20 transition-colors duration-300"
+      className="min-h-screen overflow-x-hidden bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/20 transition-colors duration-300"
     >
       {/* Header "” fixed blue like Home page */}
       <header
@@ -682,16 +706,16 @@ export function ClienteView() {
           <motion.div
             initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="w-full"
+            className="w-full overflow-hidden"
           >
             {/* --- DESKTOP: 2-column sidebar layout | MOBILE: single column --- */}
             <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start">
             {/* --- LEFT SIDEBAR (Profile + Progress + QR) --- */}
-            <div className="w-full lg:w-80 xl:w-96 shrink-0 lg:sticky lg:top-24 space-y-4">
+            <div className="w-full lg:w-80 xl:w-96 shrink-0 min-w-0 lg:sticky lg:top-24 space-y-4 overflow-hidden">
 
               {/* Profile Header */}
-              <Card className="border-0 shadow-lg dark:bg-card">
-                <CardContent className="p-5 space-y-4">
+              <Card className="border-0 shadow-lg dark:bg-card overflow-hidden">
+                <CardContent className="p-5 space-y-4 min-w-0">
                   {/* Avatar + nombre */}
                   <div className="flex items-center gap-3">
                     {(() => {
@@ -756,8 +780,9 @@ export function ClienteView() {
                     );
                   })()}
 
-                  {/* Cupón activo */}
-                  {cliente.cupon_activo && (
+                  {/* Cupón activo — solo para clientes NO VIP
+                     Para VIP el cupón se muestra dentro de WalletSection */}
+                  {cliente.cupon_activo && !isVip && (
                     <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
                       className="relative overflow-hidden rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 p-4 text-white shadow-md shadow-orange-500/30">
                       <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/20 rounded-full blur-2xl pointer-events-none" />
@@ -766,12 +791,14 @@ export function ClienteView() {
                           <motion.span animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>🎟️</motion.span>
                           <span className="text-[10px] font-bold uppercase tracking-widest text-white/80">Cupón activo</span>
                         </div>
-                        <p className="font-mono font-black text-2xl tracking-[0.18em] mb-1.5">{cliente.cupon_activo}</p>
+                        {/* break-all evita que un código largo desborde el card */}
+                        <p className="font-mono font-black text-base sm:text-lg tracking-wide break-all mb-1.5">{cliente.cupon_activo}</p>
                         <button onClick={() => { navigator.clipboard.writeText(cliente.cupon_activo!); toast.success('¡Copiado!', 'Listo para usar'); }}
                           className="text-[11px] font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors">📋 Copiar</button>
                       </div>
                     </motion.div>
                   )}
+
 
                   {/* Foto de fachada */}
                   {(cliente as any).foto_fachada_url && (

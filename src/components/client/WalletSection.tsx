@@ -111,7 +111,7 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
   // ── Wallet card (collapsed) ──────────────────────────────────────────────
   if (!showModal) {
     return (
-      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden min-w-0 w-full max-w-full">
         {/* Saldo */}
         <div className="p-5 border-b border-gray-50">
           <div className="flex items-center gap-2 mb-1">
@@ -125,9 +125,9 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
         {/* Cupón activo — bloquea el canje */}
         {cliente.cupon_activo ? (
           <div className="p-4">
-            <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4 space-y-2">
+            <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4 space-y-2 overflow-hidden min-w-0">
               <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider">🎟️ Cupón activo</p>
-              <p className="font-mono font-black text-amber-700 text-xl tracking-widest">{cliente.cupon_activo}</p>
+              <p className="font-mono font-black text-amber-700 text-base tracking-wide break-all">{cliente.cupon_activo}</p>
               <p className="text-xs text-amber-600/80">Usa este código con el repartidor. No puedes generar otro hasta que se marque como usado.</p>
               <button
                 onClick={() => navigator.clipboard.writeText(cliente.cupon_activo!)}
