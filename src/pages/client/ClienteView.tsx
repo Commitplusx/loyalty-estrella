@@ -23,12 +23,15 @@ import { CanjeModal } from '@/components/client/CanjeModal';
 import { WalletSection } from '@/components/client/WalletSection';
 import { ProgressCard } from '@/components/client/ProgressCard';
 import { HistorialTimeline } from '@/components/client/HistorialTimeline';
+import { PinEntry } from '@/components/client/PinEntry';
 import AuthorityCounter from '@/components/client/AuthorityCounter';
 import { useSchedule } from '@/hooks/useSchedule';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import type { Cliente, RegistroMovimiento } from '@/types';
 
-type ViewState = 'search' | 'loading' | 'result' | 'error-not-found' | 'error-generic';
+
+type ViewState = 'search' | 'loading' | 'pin-setup' | 'pin-verify' | 'result' | 'error-not-found' | 'error-generic';
+
 
 export function ClienteView() {
   const { tel: routeTel } = useParams<{ tel?: string }>();
@@ -44,6 +47,15 @@ export function ClienteView() {
   const [activeRegistroId, setActiveRegistroId] = useState<string | null>(null);
 
   const [showCanjeModal, setShowCanjeModal] = useState(false);
+
+  // ── PIN state ────────────────────────────────────────────────────
+  const [pinError, setPinError] = useState(false);
+  const [pinLoading, setPinLoading] = useState(false);
+  const [pinAttempts, setPinAttempts] = useState(0);
+  const [pinConfirm, setPinConfirm] = useState(''); // para el setup de PIN
+  const [pinSetupStep, setPinSetupStep] = useState<'enter' | 'confirm'>('enter');
+  const [pinFirst, setPinFirst] = useState(''); // primer PIN ingresado en setup
+
 
   const { storeState, horasFelices, formatTime, contacto } = useSchedule();
   const { isDark, toggle } = useDarkMode();
@@ -93,18 +105,16 @@ export function ClienteView() {
     if (telParam && telParam.length >= 10) {
       const cleanTel = telParam.replace(/\D/g, '').slice(-10);
       setTelefono(cleanTel);
-      // Evitamos conflictos borrando la sesión local antes de buscar por link directo
-      // con el efecto de restauración que corre al mismo tiempo.
       localStorage.removeItem('estrella_cliente');
       setCliente(null);
-      // Ejecutar búsqueda automática
       setViewState('loading');
       getClienteByTelefono(cleanTel).then(async (data) => {
         if (data && !('found' in data)) {
           const histData = await getHistorialCliente(data.id);
           setHistorial(histData);
           setCliente(data);
-          setViewState('result');
+          // Redirigir a PIN setup o verify
+          setViewState(data.pin ? 'pin-verify' : 'pin-setup');
         } else if (data && 'found' in data) {
           setViewState('error-not-found');
         } else {
@@ -113,6 +123,7 @@ export function ClienteView() {
       });
     }
   }, [routeTel]);
+
 
   // Suscripción en tiempo real
   const clienteId = cliente?.id;
@@ -213,9 +224,75 @@ export function ClienteView() {
       const histData = await getHistorialCliente(data.id);
       setHistorial(histData);
       setCliente(data);
-      setViewState('result');
+      // Si no tiene PIN → obligar a crear uno; si tiene → verificar
+      setViewState(data.pin ? 'pin-verify' : 'pin-setup');
     }
   };
+
+  // ── Verificar PIN ingresado ─────────────────────────────────────────
+  const handlePinVerify = async (pin: string) => {
+    if (!cliente) return;
+    // Máximo 5 intentos
+    if (pinAttempts >= 4) {
+      toast.error('Demasiados intentos', 'Espera unos minutos e intenta de nuevo');
+      return;
+    }
+    setPinLoading(true);
+    const { data } = await supabase.rpc('verify_cliente_pin', {
+      p_telefono: cliente.telefono,
+      p_pin: pin,
+    });
+    setPinLoading(false);
+
+    if (data?.ok) {
+      setPinError(false);
+      setPinAttempts(0);
+      localStorage.setItem('estrella_cliente', JSON.stringify(cliente));
+      setViewState('result');
+    } else {
+      setPinAttempts(prev => prev + 1);
+      setPinError(true);
+      setTimeout(() => setPinError(false), 800); // resetear para re-shake si vuelve a fallar
+      toast.error('PIN incorrecto', `Intento ${pinAttempts + 1}/5`);
+    }
+  };
+
+  // ── Configurar nuevo PIN (2 pasos: ingresar + confirmar) ─────────────────
+  const handlePinSetup = async (pin: string) => {
+    if (!cliente) return;
+    if (pinSetupStep === 'enter') {
+      // Primer ingreso → pedir confirmación
+      setPinFirst(pin);
+      setPinSetupStep('confirm');
+      return;
+    }
+    // Confirmación → verificar que coincidan
+    if (pin !== pinFirst) {
+      setPinError(true);
+      setTimeout(() => setPinError(false), 800);
+      toast.error('Los PIN no coinciden', 'Vuelve a intentarlo');
+      setPinSetupStep('enter');
+      setPinFirst('');
+      return;
+    }
+    // Guardar en DB
+    setPinLoading(true);
+    const { data } = await supabase.rpc('set_cliente_pin', {
+      p_telefono: cliente.telefono,
+      p_pin: pin,
+    });
+    setPinLoading(false);
+    if (data?.ok) {
+      setCliente(prev => prev ? { ...prev, pin } : prev);
+      localStorage.setItem('estrella_cliente', JSON.stringify({ ...cliente, pin }));
+      toast.success('¡PIN creado!', 'Tu cuenta está protegida 🔒');
+      setViewState('result');
+    } else {
+      toast.error('Error al guardar PIN', data?.error || 'Intenta de nuevo');
+      setPinSetupStep('enter');
+    }
+  };
+
 
   const handleReset = () => {
     // Cerrar sesión: limpiamos todo incluyendo la sesión guardada en localStorage
@@ -228,8 +305,16 @@ export function ClienteView() {
     setQrDataUrl(null);
     setShowRating(false);
     setActiveRegistroId(null);
+    // Reset PIN state
+    setPinError(false);
+    setPinLoading(false);
+    setPinAttempts(0);
+    setPinSetupStep('enter');
+    setPinFirst('');
+    setPinConfirm('');
     setTimeout(() => inputRef.current?.focus(), 100);
   };
+
 
   const isVip = cliente?.es_vip === true || (cliente?.envios_totales ? cliente.envios_totales >= 15 : false);
   const metaVip = getMetaPuntos(cliente?.rango, isVip);
@@ -699,6 +784,119 @@ export function ClienteView() {
               </Card>
             </div>
           </motion.div>
+        )}
+
+        {/* ══════════════════════════════════════════════════
+            PIN SETUP — obligar a crear PIN (primer acceso)
+        ══════════════════════════════════════════════════ */}
+        {(viewState === 'pin-setup' || viewState === 'pin-verify') && cliente && (
+          <>
+            {/* Fondo translúcido — solo mobile */}
+            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-30 lg:hidden" />
+
+            {/* ── Mobile: bottom sheet que sube desde abajo ── */}
+            <motion.div
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+              className="fixed bottom-0 inset-x-0 z-40 lg:hidden bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl"
+              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+            >
+              <div className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mt-3 mb-1" />
+              <div className="px-6 py-5 space-y-6">
+                {viewState === 'pin-setup' ? (
+                  <>
+                    <div className="text-center">
+                      <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <span className="text-3xl">🔒</span>
+                      </div>
+                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                        {pinSetupStep === 'enter' ? 'Crea tu PIN de seguridad' : 'Confirma tu PIN'}
+                      </h2>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {pinSetupStep === 'enter'
+                          ? 'Elige 4 dígitos para proteger tu cuenta'
+                          : 'Vuelve a ingresar los mismos 4 dígitos'}
+                      </p>
+                    </div>
+                    <PinEntry key={pinSetupStep} onComplete={handlePinSetup} disabled={pinLoading} error={pinError} />
+                    {pinLoading && <p className="text-center text-sm text-blue-500 animate-pulse">Guardando...</p>}
+                  </>
+                ) : (
+                  <>
+                    <div className="text-center">
+                      <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <span className="text-3xl">🔑</span>
+                      </div>
+                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">Ingresa tu PIN</h2>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Hola, <strong>{cliente.nombre || cliente.telefono}</strong> 👋
+                      </p>
+                    </div>
+                    <PinEntry onComplete={handlePinVerify} disabled={pinLoading} error={pinError} />
+                    {pinLoading && <p className="text-center text-sm text-blue-500 animate-pulse">Verificando...</p>}
+                    {pinAttempts > 0 && (
+                      <p className="text-center text-xs text-red-500">
+                        Intento {pinAttempts}/5 — {5 - pinAttempts} restante{5 - pinAttempts !== 1 ? 's' : ''}
+                      </p>
+                    )}
+                    <button onClick={handleReset} className="w-full text-center text-xs text-gray-400 hover:text-gray-600 py-2">
+                      No soy yo — Cambiar número
+                    </button>
+                  </>
+                )}
+              </div>
+            </motion.div>
+
+            {/* ── Desktop: card centrado ── */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+              className="hidden lg:flex items-center justify-center min-h-[60vh]"
+            >
+              <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-3xl shadow-2xl p-8 space-y-6">
+                {viewState === 'pin-setup' ? (
+                  <>
+                    <div className="text-center">
+                      <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span className="text-4xl">🔒</span>
+                      </div>
+                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                        {pinSetupStep === 'enter' ? 'Crea tu PIN' : 'Confirma tu PIN'}
+                      </h2>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        {pinSetupStep === 'enter'
+                          ? 'Elige 4 dígitos para proteger tu cuenta'
+                          : 'Ingresa nuevamente los mismos 4 dígitos'}
+                      </p>
+                    </div>
+                    <PinEntry key={pinSetupStep} onComplete={handlePinSetup} disabled={pinLoading} error={pinError} />
+                    {pinLoading && <p className="text-center text-sm text-blue-500 animate-pulse">Guardando...</p>}
+                  </>
+                ) : (
+                  <>
+                    <div className="text-center">
+                      <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span className="text-4xl">🔑</span>
+                      </div>
+                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Ingresa tu PIN</h2>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        Hola, <strong>{cliente.nombre || cliente.telefono}</strong> 👋
+                      </p>
+                    </div>
+                    <PinEntry onComplete={handlePinVerify} disabled={pinLoading} error={pinError} />
+                    {pinLoading && <p className="text-center text-sm text-blue-500 animate-pulse">Verificando...</p>}
+                    {pinAttempts > 0 && (
+                      <p className="text-center text-xs text-red-500">
+                        Intento {pinAttempts}/5 — {5 - pinAttempts} restante{5 - pinAttempts !== 1 ? 's' : ''}
+                      </p>
+                    )}
+                    <button onClick={handleReset} className="w-full text-center text-xs text-gray-400 hover:text-gray-600 py-1">
+                      No soy yo — Cambiar número
+                    </button>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </>
         )}
 
         {/* --- RESULT --- */}

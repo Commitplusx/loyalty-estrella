@@ -16,6 +16,7 @@ export interface Cliente {
   costo_envio?: number;
   notas_crm?: string;
   foto_fachada_url?: string | null; // URL de la foto de la fachada para facilitar la entrega.
+  pin?: string | null;              // PIN de 4 dígitos para acceso seguro
   created_at: string;
   updated_at: string;
 }
