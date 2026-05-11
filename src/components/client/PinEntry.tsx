@@ -88,7 +88,7 @@ export function PinEntry({ length = 4, onComplete, disabled = false, error = fal
           onPaste={handlePaste}
           onFocus={e => e.target.select()}
           className={`
-            w-14 h-16 text-center text-2xl font-black rounded-2xl border-2 
+            w-16 h-20 text-center text-3xl font-black rounded-2xl border-2 
             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
             transition-all duration-200 outline-none
             ${error

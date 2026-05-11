@@ -408,11 +408,11 @@ export function ClienteView() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16">
             {/* Logo */}
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm">
-                <img src="/logo.png" className="w-6 h-6 object-contain" alt="Estrella" />
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm shadow-inner">
+                <img src="/logo.png" className="w-7 h-7 object-contain" alt="Estrella" />
               </div>
-              <span className="font-bold text-white tracking-tight">
+              <span className="font-black text-white text-2xl tracking-tighter">
                 Estrella<span className="text-blue-200">.</span>
               </span>
             </div>
@@ -427,8 +427,8 @@ export function ClienteView() {
             <div className="flex items-center gap-2">
               <Badge
                 variant={storeState.isOpen ? 'default' : 'secondary'}
-                className={`sm:hidden text-[10px] px-2 py-0.5 ${storeState.isOpen
-                  ? storeState.isHappyHour ? 'bg-amber-500' : 'bg-green-500'
+                className={`sm:hidden text-[11px] px-3 py-1 font-black ${storeState.isOpen
+                  ? storeState.isHappyHour ? 'bg-amber-500 shadow-lg shadow-amber-500/30' : 'bg-green-500 shadow-lg shadow-green-500/30'
                   : 'bg-white/20 text-white'}`}
               >
                 {storeState.isOpen ? (storeState.isHappyHour ? 'HORA FELIZ' : 'ABIERTO') : 'CERRADO'}
@@ -436,11 +436,11 @@ export function ClienteView() {
               <button
                 onClick={toggle}
                 aria-label="Cambiar tema"
-                className="w-8 h-8 rounded-full flex items-center justify-center bg-white/15 hover:bg-white/25 transition-colors"
+                className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/15 hover:bg-white/25 transition-colors shadow-inner"
               >
                 {isDark
-                  ? <Sun className="w-4 h-4 text-amber-300" />
-                  : <Moon className="w-4 h-4 text-white" />}
+                  ? <Sun className="w-5 h-5 text-amber-300" />
+                  : <Moon className="w-5 h-5 text-white" />}
               </button>
               {cliente && (
                 <Button
@@ -459,7 +459,7 @@ export function ClienteView() {
       </header>
 
       {/* Main "” padding-top to clear fixed header + bottom safe-area for iPhone home bar */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pt-20 sm:pt-24"
+      <main className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pt-20 sm:pt-24"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 2rem)' }}>
 
         {/* --- LOADING --- */}
@@ -621,7 +621,7 @@ export function ClienteView() {
           >
             {/* Left Column (PC) / Bottom (Mobile): Authority Counter y Promos */}
             <div className="space-y-6 order-2 lg:order-1 pt-2 lg:pt-0">
-              <div className="hidden lg:block">
+              <div className="hidden lg:block pt-4">
                 <AuthorityCounter />
               </div>
               <PromosBanner />
@@ -629,15 +629,15 @@ export function ClienteView() {
 
             {/* Center Column: El Formulario Principal */}
             <div className="space-y-6 order-1 lg:order-2">
-              <div className="block lg:hidden">
+              <div className="block lg:hidden pt-6 pb-2">
                 <AuthorityCounter />
               </div>
 
               <div className="text-center">
-                <h1 className="text-3xl lg:text-4xl font-bold text-foreground mb-2">
+                <h1 className="text-4xl lg:text-5xl font-black text-foreground mb-3 leading-tight tracking-tight">
                   Consulta tus <span className="text-gradient">puntos</span>
                 </h1>
-                <p className="text-muted-foreground text-lg mb-4">Ingresa tu numero para ver tu fidelidad</p>
+                <p className="text-muted-foreground text-xl mb-6">Ingresa tu numero para ver tu fidelidad</p>
               </div>
 
               <Card className="border-0 shadow-xl ring-1 ring-orange-100 dark:ring-orange-900/30">
@@ -654,8 +654,8 @@ export function ClienteView() {
                             const onlyDigits = e.target.value.replace(/\D/g, '');
                             setTelefono(onlyDigits);
                           }}
-                          placeholder="Ej: 0999123456"
-                          className="pl-10 h-14 text-lg"
+                          placeholder="Ej: 9631234567"
+                          className="pl-12 h-16 text-xl font-bold rounded-2xl border-2 focus:ring-4 focus:ring-orange-500/20"
                           type="tel"
                           inputMode="numeric"
                           pattern="[0-9]*"
@@ -668,9 +668,9 @@ export function ClienteView() {
                       <Button
                         type="submit"
                         disabled={telefono.length < 10}
-                        className="w-full h-14 bg-gradient-primary hover:opacity-90 text-white font-semibold text-lg disabled:opacity-50"
+                        className="w-full h-16 bg-gradient-primary hover:opacity-90 text-white font-black text-xl rounded-2xl shadow-lg shadow-orange-500/30 disabled:opacity-50 transition-all"
                       >
-                        <Search className="w-5 h-5 mr-2" />
+                        <Search className="w-6 h-6 mr-3" />
                         Consultar mis puntos
                       </Button>
                     </motion.div>
@@ -681,13 +681,13 @@ export function ClienteView() {
                         <span className="flex-shrink-0 mx-4 text-muted-foreground text-sm font-medium">O descubre</span>
                         <div className="flex-grow border-t border-muted"></div>
                       </div>
-                      <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="mt-2">
+                      <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="mt-3">
                         <Button
                           type="button"
                           onClick={() => window.location.href = '/restaurantes'}
-                          className="w-full h-14 bg-white dark:bg-zinc-900 hover:bg-orange-50 dark:hover:bg-zinc-800 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-900/50 font-semibold text-lg"
+                          className="w-full h-16 bg-white dark:bg-zinc-900 hover:bg-orange-50 dark:hover:bg-zinc-800 text-orange-600 dark:text-orange-400 border-2 border-orange-200 dark:border-orange-900/50 font-bold text-xl rounded-2xl"
                         >
-                          <Utensils className="w-5 h-5 mr-2" />
+                          <Utensils className="w-6 h-6 mr-3" />
                           Restaurantes Asociados
                         </Button>
                       </motion.div>
@@ -697,28 +697,28 @@ export function ClienteView() {
               </Card>
 
               {/* Info cards (Mobile only or stacked) */}
-              <div className="grid sm:grid-cols-2 gap-4 lg:hidden">
-                <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
+              <div className="grid sm:grid-cols-2 gap-5 lg:hidden">
+                <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group rounded-3xl">
                   <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                  <CardContent className="p-4 flex items-center gap-4 relative z-10">
-                    <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-orange-200 dark:from-orange-500/20 dark:to-orange-500/10 rounded-xl flex items-center justify-center shrink-0 border border-orange-200 dark:border-orange-500/30">
-                      <Gift className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+                  <CardContent className="p-6 flex items-center gap-5 relative z-10">
+                    <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-200 dark:from-orange-500/20 dark:to-orange-500/10 rounded-2xl flex items-center justify-center shrink-0 border border-orange-200 dark:border-orange-500/30">
+                      <Gift className="w-8 h-8 text-orange-600 dark:text-orange-400" />
                     </div>
                     <div>
-                      <p className="font-extrabold text-foreground tracking-tight">5 = 1 Gratis</p>
-                      <p className="text-sm font-medium text-orange-600/70 dark:text-orange-400/70">Mucha más fidelidad</p>
+                      <p className="font-black text-xl text-foreground tracking-tight">5 = 1 Gratis</p>
+                      <p className="text-base font-bold text-orange-600/70 dark:text-orange-400/70">Mucha más fidelidad</p>
                     </div>
                   </CardContent>
                 </Card>
-                <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
+                <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group rounded-3xl">
                   <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-orange-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                  <CardContent className="p-4 flex items-center gap-4 relative z-10">
-                    <div className="w-12 h-12 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center shrink-0 shadow-inner shadow-orange-500/50">
-                      <Sparkles className="w-6 h-6 text-white" />
+                  <CardContent className="p-6 flex items-center gap-5 relative z-10">
+                    <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center shrink-0 shadow-inner shadow-orange-500/50">
+                      <Sparkles className="w-8 h-8 text-white" />
                     </div>
                     <div>
-                      <p className="font-extrabold text-foreground tracking-tight">Hora Feliz</p>
-                      <p className="text-sm font-medium text-amber-600/70 dark:text-amber-500/70">Tus envíos a $35</p>
+                      <p className="font-black text-xl text-foreground tracking-tight">Hora Feliz</p>
+                      <p className="text-base font-bold text-amber-600/70 dark:text-amber-500/70">Tus envíos a $35</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -757,13 +757,13 @@ export function ClienteView() {
               {/* Horario */}
               <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
                 <CardContent className="p-6">
-                  <div className="flex items-center gap-2 mb-6">
-                    <Clock className="w-6 h-6 text-orange-500" />
-                    <h3 className="font-bold text-xl text-foreground">Horario de Atención</h3>
+                  <div className="flex items-center gap-3 mb-8">
+                    <Clock className="w-8 h-8 text-orange-500" />
+                    <h3 className="font-black text-2xl text-foreground">Horario de Atención</h3>
                   </div>
-                  <div className="flex flex-col xl:flex-row xl:items-center justify-between p-4 bg-muted/30 dark:bg-muted/50 rounded-xl mb-4 gap-2">
-                    <span className="text-muted-foreground font-medium text-sm lg:text-base">Lunes a Domingo</span>
-                    <span className="font-bold text-foreground text-sm lg:text-base">9:00 AM - 10:00 PM</span>
+                  <div className="flex flex-col xl:flex-row xl:items-center justify-between p-5 bg-muted/30 dark:bg-muted/50 rounded-2xl mb-5 gap-2 border-2 border-dashed border-muted">
+                    <span className="text-muted-foreground font-bold text-lg">Lunes a Domingo</span>
+                    <span className="font-black text-foreground text-lg">9:00 AM - 10:00 PM</span>
                   </div>
                   {horasFelices.filter(h => h.activo).length > 0 && (
                     <div className="relative overflow-hidden p-5 bg-gradient-to-br from-amber-500 to-orange-500 text-white rounded-2xl shadow-lg shadow-orange-500/20 mt-2">
@@ -771,13 +771,13 @@ export function ClienteView() {
                       <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white/20 rounded-full blur-3xl pointer-events-none"></div>
                       <div className="absolute bottom-0 left-0 -mb-4 -ml-4 w-24 h-24 bg-black/10 rounded-full blur-2xl pointer-events-none"></div>
                       
-                      <div className="relative z-10 flex items-center gap-3 mb-5">
-                        <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm shadow-inner">
-                          <Sparkles className="w-6 h-6 text-yellow-100" />
+                      <div className="relative z-10 flex items-center gap-4 mb-6">
+                        <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm shadow-inner">
+                          <Sparkles className="w-8 h-8 text-yellow-100" />
                         </div>
                         <div>
-                          <h4 className="font-extrabold text-xl lg:text-xl text-white tracking-tight leading-tight drop-shadow-sm">Horas Felices</h4>
-                          <p className="text-orange-100 text-xs font-semibold uppercase tracking-wider">Envíos a solo $35</p>
+                          <h4 className="font-black text-2xl lg:text-2xl text-white tracking-tight leading-tight drop-shadow-sm">Horas Felices</h4>
+                          <p className="text-orange-100 text-sm font-bold uppercase tracking-wider">Envíos a solo $35</p>
                         </div>
                       </div>
                       
@@ -808,7 +808,7 @@ export function ClienteView() {
         {(viewState === 'pin-setup' || viewState === 'pin-verify') && cliente && (
           <>
             {/* Fondo translúcido — solo mobile */}
-            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-30 lg:hidden" />
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-30 lg:hidden" />
 
             {/* ── Mobile: bottom sheet que sube desde abajo ── */}
             <motion.div
@@ -818,17 +818,17 @@ export function ClienteView() {
               style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
             >
               <div className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mt-3 mb-1" />
-              <div className="px-6 py-5 space-y-6">
+              <div className="px-6 py-8 space-y-8">
                 {viewState === 'pin-setup' ? (
                   <>
                     <div className="text-center">
-                      <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <span className="text-3xl">🔒</span>
+                      <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
+                        <span className="text-4xl">🔒</span>
                       </div>
-                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                      <h2 className="text-2xl font-black text-gray-900 dark:text-white leading-tight">
                         {pinSetupStep === 'enter' ? 'Crea tu PIN de seguridad' : 'Confirma tu PIN'}
                       </h2>
-                      <p className="text-sm text-muted-foreground mt-1">
+                      <p className="text-base text-muted-foreground mt-2 font-medium">
                         {pinSetupStep === 'enter'
                           ? 'Elige 4 dígitos para proteger tu cuenta'
                           : 'Vuelve a ingresar los mismos 4 dígitos'}
@@ -840,22 +840,22 @@ export function ClienteView() {
                 ) : (
                   <>
                     <div className="text-center">
-                      <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <span className="text-3xl">🔑</span>
+                      <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
+                        <span className="text-4xl">🔑</span>
                       </div>
-                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">Ingresa tu PIN</h2>
-                      <p className="text-sm text-muted-foreground mt-1">
+                      <h2 className="text-2xl font-black text-gray-900 dark:text-white leading-tight">Ingresa tu PIN</h2>
+                      <p className="text-base text-muted-foreground mt-2 font-medium">
                         Hola, <strong>{cliente.nombre || cliente.telefono}</strong> 👋
                       </p>
                     </div>
                     <PinEntry onComplete={handlePinVerify} disabled={pinLoading} error={pinError} />
                     {pinLoading && <p className="text-center text-sm text-blue-500 animate-pulse">Verificando...</p>}
                     {pinAttempts > 0 && (
-                      <p className="text-center text-xs text-red-500">
+                      <p className="text-center text-sm font-bold text-red-500 bg-red-50 dark:bg-red-900/20 py-2.5 rounded-xl">
                         Intento {pinAttempts}/5 — {5 - pinAttempts} restante{5 - pinAttempts !== 1 ? 's' : ''}
                       </p>
                     )}
-                    <button onClick={handleReset} className="w-full text-center text-xs text-gray-400 hover:text-gray-600 py-2">
+                    <button onClick={handleReset} className="w-full text-center text-sm font-bold text-gray-400 hover:text-gray-600 py-3 mt-2">
                       No soy yo — Cambiar número
                     </button>
                   </>
@@ -923,15 +923,15 @@ export function ClienteView() {
             className="w-full overflow-hidden"
           >
             {/* --- DESKTOP: 2-column sidebar layout | MOBILE: single column --- */}
-            <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start">
+            <div className="flex flex-col lg:flex-row gap-4 lg:gap-8 items-start">
             {/* --- LEFT SIDEBAR (Profile + Progress + QR) --- */}
-            <div className="w-full lg:w-80 xl:w-96 shrink-0 min-w-0 lg:sticky lg:top-24 space-y-4 overflow-hidden">
+            <div className="w-full lg:w-80 xl:w-96 shrink-0 min-w-0 lg:sticky lg:top-24 space-y-3 overflow-hidden">
 
               {/* Profile Header */}
               <Card className="border-0 shadow-lg dark:bg-card overflow-hidden">
-                <CardContent className="p-5 space-y-4 min-w-0">
+                <CardContent className="p-6 space-y-5 min-w-0">
                   {/* Avatar + nombre */}
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-4">
                     {(() => {
                       const initial = (cliente.nombre || '?')[0].toUpperCase();
                       const avatarColors = [
@@ -940,18 +940,18 @@ export function ClienteView() {
                       ];
                       const colorIdx = (cliente.telefono?.charCodeAt(cliente.telefono.length - 1) || 0) % avatarColors.length;
                       return isVip ? (
-                        <div className="w-14 h-14 rounded-full flex items-center justify-center shrink-0 bg-amber-100 shadow-md">
-                          <Crown className="w-7 h-7 text-amber-500" />
+                        <div className="w-24 h-24 rounded-full flex items-center justify-center shrink-0 bg-amber-100 shadow-xl">
+                          <Crown className="w-12 h-12 text-amber-500" />
                         </div>
                       ) : (
-                        <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 ${avatarColors[colorIdx]} shadow-md`}>
-                          <span className="text-xl font-black text-white">{initial}</span>
+                        <div className={`w-24 h-24 rounded-full flex items-center justify-center shrink-0 ${avatarColors[colorIdx]} shadow-xl`}>
+                          <span className="text-4xl font-black text-white">{initial}</span>
                         </div>
                       );
                     })()}
                     <div className="min-w-0 flex-1">
-                      <h1 className="text-base font-bold text-gray-900 dark:text-white truncate">{cliente.nombre}</h1>
-                      <p className="text-xs text-gray-400">{cliente.telefono}{isVip && <span className="ml-2 text-amber-500 font-semibold">· VIP</span>}</p>
+                      <h1 className="text-2xl font-bold text-gray-900 dark:text-white truncate">{cliente.nombre}</h1>
+                      <p className="text-base text-gray-400 mt-0.5">{cliente.telefono}{isVip && <span className="ml-2 text-amber-500 font-semibold">· VIP</span>}</p>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <button onClick={handleShare} title="Compartir" className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-500 transition-colors">
@@ -976,15 +976,15 @@ export function ClienteView() {
                     const envTot = cliente.envios_totales || 0;
                     const pct = Math.min(100, Math.round(((envTot - cfg.currentMeta) / (cfg.nextMeta - cfg.currentMeta)) * 100));
                     return (
-                      <div className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border ${cfg.color}`}>
-                        <span className="text-lg">{cfg.emoji}</span>
+                      <div className={`flex items-center gap-4 px-5 py-4 rounded-2xl border-2 ${cfg.color}`}>
+                        <span className="text-4xl">{cfg.emoji}</span>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-bold uppercase tracking-wider">{cfg.label}</span>
-                            <span className="text-[10px] font-medium opacity-70">{envTot} · {cfg.nextLabel}</span>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-lg font-bold uppercase tracking-wide">{cfg.label}</span>
+                            <span className="text-sm font-medium opacity-70">{envTot} · {cfg.nextLabel}</span>
                           </div>
-                          <div className="h-1.5 bg-black/10 rounded-full overflow-hidden">
-                            <motion.div className="h-full bg-current rounded-full opacity-60"
+                          <div className="h-4 bg-black/10 rounded-full overflow-hidden">
+                            <motion.div className="h-full bg-current rounded-full opacity-80"
                               initial={{ width: 0 }} animate={{ width: `${pct}%` }}
                               transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
                             />
@@ -1028,32 +1028,32 @@ export function ClienteView() {
             </div>{/* end left sidebar */}
 
             {/* --- RIGHT CONTENT AREA --- */}
-            <div className="flex-1 min-w-0 space-y-6">
+            <div className="flex-1 min-w-0 overflow-hidden w-full space-y-6">
 
               {/* Progress + QR side by side on desktop */}
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-5 items-start">
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-5 items-start w-full min-w-0 overflow-hidden">
 
               {/* Progress card - full width on mobile, left slot on desktop */}
-              <div className="space-y-6">
+              <div className="space-y-6 min-w-0 overflow-hidden w-full">
                 {/* Mobile toggle - hidden on desktop */}
-                <div className="flex lg:hidden justify-center gap-2">
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <div className="flex lg:hidden justify-center gap-3">
+                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex-1 max-w-[180px]">
                     <Button
                       variant={!showQR ? 'default' : 'outline'}
                       onClick={() => setShowQR(false)}
-                      className={!showQR ? 'bg-gradient-primary text-white' : ''}
+                      className={`w-full py-6 text-base font-bold rounded-2xl ${!showQR ? 'bg-gradient-primary text-white shadow-lg shadow-orange-500/20' : 'text-gray-500'}`}
                     >
-                      <TrendingUp className="w-4 h-4 mr-2" />
+                      <TrendingUp className="w-5 h-5 mr-2" />
                       Mi Progreso
                     </Button>
                   </motion.div>
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex-1 max-w-[180px]">
                     <Button
                       variant={showQR ? 'default' : 'outline'}
                       onClick={() => setShowQR(true)}
-                      className={showQR ? 'bg-gradient-primary text-white' : ''}
+                      className={`w-full py-6 text-base font-bold rounded-2xl ${showQR ? 'bg-gradient-primary text-white shadow-lg shadow-orange-500/20' : 'text-gray-500'}`}
                     >
-                      <QrCode className="w-4 h-4 mr-2" />
+                      <QrCode className="w-5 h-5 mr-2" />
                       Mi QR
                     </Button>
                   </motion.div>
@@ -1130,7 +1130,7 @@ export function ClienteView() {
               </div>{/* end progress+QR grid */}
 
               {/* --- Stats + Historial (full width below progress+QR) --- */}
-              <div className="space-y-5">
+              <div className="space-y-5 min-w-0 overflow-hidden w-full">
                 {/* Wrapped Stats */}
                 <ClientStats cliente={cliente} historial={historial} />
 

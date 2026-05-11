@@ -114,12 +114,12 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden min-w-0 w-full max-w-full">
         {/* Saldo */}
         <div className="p-5 border-b border-gray-50">
-          <div className="flex items-center gap-2 mb-1">
-            <Wallet className="w-4 h-4 text-amber-500" />
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Billetera VIP</span>
+          <div className="flex items-center gap-2 mb-2">
+            <Wallet className="w-5 h-5 text-amber-500" />
+            <span className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Billetera VIP</span>
           </div>
-          <p className="text-3xl font-black text-gray-900 mt-2">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">Saldo disponible</p>
+          <p className="text-5xl font-black text-gray-900 mt-2">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
+          <p className="text-sm text-gray-400 mt-1">Saldo disponible</p>
         </div>
 
         {/* Cupón activo — bloquea el canje */}
@@ -142,15 +142,15 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
             {(cliente.saldo_billetera || 0) > 0 ? (
               <button
                 onClick={() => { setShowModal(true); setWalletMode('select'); }}
-                className="w-full py-2.5 rounded-xl bg-amber-500 text-white font-semibold text-sm flex items-center justify-center gap-2 hover:bg-amber-600 transition-colors"
+                className="w-full py-4 rounded-2xl bg-amber-500 text-white font-bold text-lg flex items-center justify-center gap-3 hover:bg-amber-600 transition-colors shadow-md shadow-amber-500/30"
               >
-                <Wallet className="w-4 h-4" />
+                <Wallet className="w-6 h-6" />
                 Canjear saldo
               </button>
             ) : (
               <p className="text-center text-gray-400 text-xs py-1">Acumula saldo realizando envíos</p>
             )}
-            <p className="text-center text-xs text-gray-400">💡 Descuento en comida o envío gratis (hasta $45)</p>
+            <p className="text-center text-sm text-gray-400 mt-1">💡 Descuento en comida o envío gratis (hasta $45)</p>
           </div>
         )}
       </div>
@@ -177,36 +177,36 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
             {/* Opción 1: Comida */}
             <button
               onClick={() => { setWalletMode('food'); setWalletMsg(''); }}
-              className="w-full p-4 rounded-2xl border-2 border-orange-200 hover:border-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all text-left group"
+              className="w-full p-5 rounded-2xl border-2 border-orange-200 hover:border-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all text-left group"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center group-hover:bg-orange-200 transition-colors">
-                  <Utensils className="w-6 h-6 text-orange-500" />
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center group-hover:bg-orange-200 transition-colors">
+                  <Utensils className="w-7 h-7 text-orange-500" />
                 </div>
                 <div>
-                  <p className="font-bold text-gray-900 dark:text-white">Descuento en Comida</p>
-                  <p className="text-xs text-gray-500">Descuenta cualquier monto de tu pedido</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-white">Descuento en Comida</p>
+                  <p className="text-sm text-gray-500">Descuenta cualquier monto de tu saldo</p>
                 </div>
               </div>
             </button>
             {/* Opción 2: Envío gratis */}
             <button
               onClick={() => { setWalletMode('delivery'); setWalletMsg(''); }}
-              className="w-full p-4 rounded-2xl border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-left group"
+              className="w-full p-5 rounded-2xl border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-left group"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                  <Truck className="w-6 h-6 text-blue-500" />
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                  <Truck className="w-7 h-7 text-blue-500" />
                 </div>
                 <div>
-                  <p className="font-bold text-gray-900 dark:text-white">Envío Gratis</p>
-                  <p className="text-xs text-gray-500">Cubre hasta ${MAX_COBERTURA_ENVIO_GRATIS} de costo de entrega</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-white">Envío Gratis</p>
+                  <p className="text-sm text-gray-500">Cubre hasta ${MAX_COBERTURA_ENVIO_GRATIS} de costo de entrega</p>
                 </div>
               </div>
             </button>
             <button
               onClick={resetModal}
-              className="w-full py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              className="w-full py-4 text-base font-bold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
             >
               Cancelar y volver
             </button>
@@ -239,9 +239,9 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
             <button
               disabled={walletLoading || !foodAmount || parseFloat(foodAmount) <= 0 || parseFloat(foodAmount) > (cliente.saldo_billetera || 0)}
               onClick={handleCanjeComida}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:from-orange-600 hover:to-amber-600 transition-all shadow-lg"
+              className="w-full py-5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black text-xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed hover:from-orange-600 hover:to-amber-600 transition-all shadow-lg active:scale-[0.98]"
             >
-              {walletLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
+              {walletLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : <CheckCircle2 className="w-6 h-6" />}
               Confirmar Descuento
             </button>
           </>

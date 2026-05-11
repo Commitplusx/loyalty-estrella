@@ -64,21 +64,21 @@ export default function AuthorityCounter() {
   ];
 
   return (
-    <div ref={containerRef} className="grid grid-cols-3 lg:grid-cols-1 gap-2.5 sm:gap-3">
+    <div ref={containerRef} className="grid grid-cols-3 lg:grid-cols-1 gap-3 sm:gap-4">
       {stats.map((s, i) => (
         <motion.div key={s.label}
           initial={{ opacity: 0, y: 20 }}
           animate={inView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: splashExtraDelay / 1000 + i * 0.1 }}
-          className={`relative overflow-hidden rounded-xl sm:rounded-2xl p-3 sm:p-5 ${s.bg} shadow-xl ${s.glow}`}
+          className={`relative overflow-hidden rounded-2xl p-4 sm:p-6 ${s.bg} shadow-xl ${s.glow}`}
         >
           <div className="absolute -top-4 -right-4 w-16 h-16 sm:w-20 sm:h-20 rounded-full blur-2xl bg-white/15 pointer-events-none" />
-          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg bg-white/15 flex items-center justify-center mb-2 sm:mb-3 backdrop-blur-sm">
-            <s.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-white/15 flex items-center justify-center mb-2 sm:mb-4 backdrop-blur-sm">
+            <s.icon className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-white" />
           </div>
-          <p className="text-lg sm:text-3xl font-black text-white tracking-tight leading-none">{s.value}</p>
-          <p className="text-[10px] sm:text-xs font-semibold text-white/70 mt-0.5 sm:mt-1 leading-tight">{s.label}</p>
-          <p className="hidden sm:block text-[10px] text-white/40 mt-0.5">{s.sub}</p>
+          <p className="text-xl sm:text-4xl font-black text-white tracking-tight leading-none">{s.value}</p>
+          <p className="text-[11px] sm:text-sm font-bold text-white/80 mt-1 sm:mt-1.5 leading-tight uppercase tracking-wide">{s.label}</p>
+          <p className="hidden sm:block text-xs text-white/40 mt-1">{s.sub}</p>
           <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
         </motion.div>
       ))}

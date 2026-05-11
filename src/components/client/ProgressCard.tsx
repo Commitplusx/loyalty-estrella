@@ -29,21 +29,21 @@ export function ProgressCard({
       {/* Progress Card — minimalist */}
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         <div className="p-5 border-b border-gray-50">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-1">Tu Progreso</p>
-              <p className="text-3xl font-black text-gray-900">
+              <p className="text-sm text-gray-400 uppercase tracking-wider font-bold mb-1">Tu Progreso</p>
+              <p className="text-5xl font-black text-gray-900">
                 <motion.span>{displayPointsRounded}</motion.span>
-                <span className="text-lg text-gray-300 font-medium"> / {metaVip}</span>
+                <span className="text-2xl text-gray-300 font-medium ml-1">/ {metaVip}</span>
               </p>
             </div>
-            <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
-              <Gift className="w-6 h-6 text-blue-500" />
+            <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center shadow-inner">
+              <Gift className="w-8 h-8 text-blue-500" />
             </div>
           </div>
-          <div className="bg-gray-100 rounded-full h-2 overflow-hidden">
+          <div className="bg-gray-100 rounded-full h-4 overflow-hidden border border-gray-200">
             <motion.div
-              className="bg-blue-500 h-full rounded-full"
+              className="bg-blue-600 h-full rounded-full shadow-[0_0_12px_rgba(37,99,235,0.4)]"
               initial={{ width: '0%' }}
               animate={{ width: `${progreso}%` }}
               transition={{ duration: 1.2, ease: 'easeOut', delay: 0.2 }}
@@ -55,16 +55,16 @@ export function ProgressCard({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 1.3 }}
-              className="mt-3 flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2"
+              className="mt-4 flex items-center gap-2 bg-green-50 border-2 border-green-200 rounded-2xl px-4 py-3"
             >
               <motion.span
                 animate={{ scale: [1, 1.3, 1] }}
                 transition={{ duration: 0.8, repeat: Infinity, ease: 'easeInOut' }}
-                className="text-lg"
+                className="text-2xl"
               >
                 🎉
               </motion.span>
-              <p className="text-xs font-bold text-green-700">¡Solo te falta <span className="text-green-600">1 envío</span> para el gratis!</p>
+              <p className="text-sm font-bold text-green-700">¡Solo te falta <span className="text-green-600">1 envío</span> para el gratis!</p>
             </motion.div>
           )}
           {enviosRestantes === 0 && cliente.envios_totales > 0 && (
@@ -79,7 +79,7 @@ export function ProgressCard({
             </motion.div>
           )}
           {enviosRestantes > 1 && (
-            <p className="text-xs text-gray-400 mt-2 text-center">
+            <p className="text-sm font-medium text-gray-500 mt-3 text-center">
               {enviosRestantes} envío{enviosRestantes > 1 ? 's' : ''} más para envío gratis
             </p>
           )}
@@ -91,11 +91,11 @@ export function ProgressCard({
               return (
                 <div
                   key={idx}
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500 ${
-                    filled ? 'bg-blue-500 shadow-sm shadow-blue-300' : 'bg-gray-100'
+                  className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 ${
+                    filled ? 'bg-blue-600 shadow-md shadow-blue-400/40' : 'bg-gray-100'
                   }`}
                 >
-                  <Star className={`w-5 h-5 ${filled ? 'text-white fill-white' : 'text-gray-300'}`} />
+                  <Star className={`w-6 h-6 ${filled ? 'text-white fill-white' : 'text-gray-300'}`} />
                 </div>
               );
             })}
@@ -120,9 +120,9 @@ export function ProgressCard({
       {/* Botón de Canje */}
       <button
         onClick={onCanjear}
-        className="w-full mt-3 py-3 rounded-xl bg-blue-600 text-white font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors shadow-sm"
+        className="w-full mt-4 py-5 rounded-2xl bg-blue-600 text-white font-black text-xl flex items-center justify-center gap-3 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 active:scale-[0.98]"
       >
-        <Ticket className="w-5 h-5" />
+        <Ticket className="w-6 h-6" />
         Canjear Beneficio
       </button>
     </>
