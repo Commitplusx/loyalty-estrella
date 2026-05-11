@@ -69,20 +69,22 @@ export function ClienteView() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Al montar, restauramos la sesión del cliente desde localStorage (intencional).
+  // Al montar, restauramos la sesión. Si el cliente ya tiene PIN → directo al perfil.
+  // Si no tiene PIN → forzar a crear uno antes de ver el perfil.
   useEffect(() => {
     const saved = localStorage.getItem('estrella_cliente');
     if (saved) {
       try {
         const parsed: Cliente = JSON.parse(saved);
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setCliente(parsed);
-        setViewState('result');
-        // También recargamos el historial actualizado y los datos frescos del cliente
+        // Si la sesión guardada ya tiene PIN, mostramos perfil directo (sesión previa válida)
+        setViewState(parsed.pin ? 'result' : 'pin-setup');
         getHistorialCliente(parsed.id).then(setHistorial).catch(() => {});
         getClienteByTelefono(parsed.telefono).then(freshData => {
           if (freshData && !('found' in freshData)) {
             setCliente(freshData);
+            // Si los datos frescos no tienen PIN, forzar setup
+            if (!freshData.pin) setViewState('pin-setup');
           }
         }).catch(() => {});
       } catch {
