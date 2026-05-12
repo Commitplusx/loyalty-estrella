@@ -25,6 +25,7 @@ import { ProgressCard } from '@/components/client/ProgressCard';
 import { HistorialTimeline } from '@/components/client/HistorialTimeline';
 import { PinEntry } from '@/components/client/PinEntry';
 import AuthorityCounter from '@/components/client/AuthorityCounter';
+import { OnboardingWelcome } from '@/components/client/OnboardingWelcome';
 import { useSchedule } from '@/hooks/useSchedule';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import type { Cliente, RegistroMovimiento } from '@/types';
@@ -42,6 +43,15 @@ export function ClienteView() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [historial, setHistorial] = useState<RegistroMovimiento[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Onboarding: mostrar solo en primera visita (sin sesión guardada ni deep link)
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    const done = localStorage.getItem('estrella_onboarding_done');
+    const hasSession = !!localStorage.getItem('estrella_cliente');
+    const hasDeepLink = window.location.pathname.includes('/loyalty/') ||
+      new URLSearchParams(window.location.search).has('tel');
+    return !done && !hasSession && !hasDeepLink;
+  });
 
   const [showRating, setShowRating] = useState(false);
   const [activeRegistroId, setActiveRegistroId] = useState<string | null>(null);
@@ -399,6 +409,13 @@ export function ClienteView() {
       transition={{ duration: 0.3, ease: 'easeOut' }}
       className="min-h-screen overflow-x-hidden bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/20 transition-colors duration-300"
     >
+      {/* Onboarding primera visita */}
+      {showOnboarding && (
+        <OnboardingWelcome onFinish={() => {
+          setShowOnboarding(false);
+          setTimeout(() => inputRef.current?.focus(), 300);
+        }} />
+      )}
       {/* Header "” fixed blue like Home page */}
       <header
         className={`fixed top-0 inset-x-0 z-50 bg-blue-600 transition-all duration-300
@@ -940,25 +957,25 @@ export function ClienteView() {
                       ];
                       const colorIdx = (cliente.telefono?.charCodeAt(cliente.telefono.length - 1) || 0) % avatarColors.length;
                       return isVip ? (
-                        <div className="w-24 h-24 rounded-full flex items-center justify-center shrink-0 bg-amber-100 shadow-xl">
-                          <Crown className="w-12 h-12 text-amber-500" />
+                        <div className="w-28 h-28 rounded-full flex items-center justify-center shrink-0 bg-amber-100 shadow-xl">
+                          <Crown className="w-14 h-14 text-amber-500" />
                         </div>
                       ) : (
-                        <div className={`w-24 h-24 rounded-full flex items-center justify-center shrink-0 ${avatarColors[colorIdx]} shadow-xl`}>
-                          <span className="text-4xl font-black text-white">{initial}</span>
+                        <div className={`w-28 h-28 rounded-full flex items-center justify-center shrink-0 ${avatarColors[colorIdx]} shadow-xl`}>
+                          <span className="text-5xl font-black text-white">{initial}</span>
                         </div>
                       );
                     })()}
                     <div className="min-w-0 flex-1">
-                      <h1 className="text-2xl font-bold text-gray-900 dark:text-white truncate">{cliente.nombre}</h1>
-                      <p className="text-base text-gray-400 mt-0.5">{cliente.telefono}{isVip && <span className="ml-2 text-amber-500 font-semibold">· VIP</span>}</p>
+                      <h1 className="text-3xl font-black text-gray-900 dark:text-white truncate">{cliente.nombre}</h1>
+                      <p className="text-base text-gray-400 mt-1 font-medium">{cliente.telefono}{isVip && <span className="ml-2 text-amber-500 font-bold">&middot; VIP</span>}</p>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <button onClick={handleShare} title="Compartir" className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-500 transition-colors">
-                        <Share2 className="w-3.5 h-3.5" />
+                    <div className="flex items-center gap-2">
+                      <button onClick={handleShare} title="Compartir" className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-500 transition-colors">
+                        <Share2 className="w-5 h-5" />
                       </button>
-                      <button onClick={handleReset} className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-                        <X className="w-4 h-4" />
+                      <button onClick={handleReset} className="w-10 h-10 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+                        <X className="w-5 h-5" />
                       </button>
                     </div>
                   </div>
@@ -976,12 +993,12 @@ export function ClienteView() {
                     const envTot = cliente.envios_totales || 0;
                     const pct = Math.min(100, Math.round(((envTot - cfg.currentMeta) / (cfg.nextMeta - cfg.currentMeta)) * 100));
                     return (
-                      <div className={`flex items-center gap-4 px-5 py-4 rounded-2xl border-2 ${cfg.color}`}>
-                        <span className="text-4xl">{cfg.emoji}</span>
+                      <div className={`flex items-center gap-4 px-5 py-5 rounded-2xl border-2 ${cfg.color}`}>
+                        <span className="text-5xl">{cfg.emoji}</span>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-lg font-bold uppercase tracking-wide">{cfg.label}</span>
-                            <span className="text-sm font-medium opacity-70">{envTot} · {cfg.nextLabel}</span>
+                          <div className="flex items-center justify-between mb-2.5">
+                            <span className="text-xl font-black uppercase tracking-wide">{cfg.label}</span>
+                            <span className="text-base font-bold opacity-70">{envTot} &middot; {cfg.nextLabel}</span>
                           </div>
                           <div className="h-4 bg-black/10 rounded-full overflow-hidden">
                             <motion.div className="h-full bg-current rounded-full opacity-80"
@@ -1001,14 +1018,13 @@ export function ClienteView() {
                       className="relative overflow-hidden rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 p-4 text-white shadow-md shadow-orange-500/30">
                       <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/20 rounded-full blur-2xl pointer-events-none" />
                       <div className="relative z-10">
-                        <div className="flex items-center gap-1.5 mb-1.5">
+                        <div className="flex items-center gap-2.5 mb-2">
                           <motion.span animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>🎟️</motion.span>
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-white/80">Cupón activo</span>
+                          <span className="text-xs font-black uppercase tracking-widest text-white/80">Cupón activo</span>
                         </div>
-                        {/* break-all evita que un código largo desborde el card */}
-                        <p className="font-mono font-black text-base sm:text-lg tracking-wide break-all mb-1.5">{cliente.cupon_activo}</p>
+                        <p className="font-mono font-black text-xl tracking-wide break-all mb-3">{cliente.cupon_activo}</p>
                         <button onClick={() => { navigator.clipboard.writeText(cliente.cupon_activo!); toast.success('¡Copiado!', 'Listo para usar'); }}
-                          className="text-[11px] font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors">📋 Copiar</button>
+                          className="text-sm font-black bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl transition-colors">📋 Copiar</button>
                       </div>
                     </motion.div>
                   )}

@@ -268,7 +268,7 @@ serve(async (req: Request) => {
       }
       if (slashText.startsWith('/cancelar ')) {
         const codigo = slashText.replace('/cancelar ', '').trim().toUpperCase()
-        const { data: adminUser } = await supabase.from('admin_users').select('id').eq('telefono', from10).maybeSingle()
+        const { data: adminUser } = await supabase.from('admins').select('id').eq('telefono', from10).maybeSingle()
         const { data, error } = await supabase.rpc('cancelar_cupon', {
           p_codigo: codigo,
           p_admin_id: adminUser?.id || null

@@ -26,13 +26,13 @@ export function ClientStats({ cliente, historial }: ClientStatsProps) {
   const rangoNext = isVip ? null : (rangoActual === 'bronce' ? 'Plata' : rangoActual === 'plata' ? 'Oro' : 'VIP');
 
   // Clase base compartida para que las 3 tarjetas tengan exactamente el mismo tamaño y centrado
-  const cardClass = "relative overflow-hidden rounded-xl bg-white dark:bg-card border border-gray-100 dark:border-gray-800 p-4 text-center shadow-sm flex flex-col items-center justify-center gap-1";
-  const bgIconClass = "w-8 h-8 absolute -right-1 -top-1 opacity-20";
+  const cardClass = "relative overflow-hidden rounded-2xl bg-white dark:bg-card border border-gray-100 dark:border-gray-800 p-5 text-center shadow-md flex flex-col items-center justify-center gap-2";
+  const bgIconClass = "w-12 h-12 absolute -right-2 -top-2 opacity-15";
 
   return (
     <div className="mb-6">
-      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-        <Award className="w-5 h-5 text-orange-500" />
+      <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+        <Award className="w-6 h-6 text-orange-500" />
         Tu Resumen {currentYear}
       </h3>
       
@@ -44,8 +44,8 @@ export function ClientStats({ cliente, historial }: ClientStatsProps) {
           className={cardClass}
         >
           <CalendarDays className={`${bgIconClass} text-orange-400`} />
-          <p className="text-2xl font-black text-gray-900 dark:text-white leading-none">{enviosEsteAno}</p>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-medium">Envíos</p>
+          <p className="text-4xl font-black text-gray-900 dark:text-white leading-none">{enviosEsteAno}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold mt-0.5">Envíos</p>
         </motion.div>
 
         <motion.div 
@@ -55,8 +55,8 @@ export function ClientStats({ cliente, historial }: ClientStatsProps) {
           className={cardClass}
         >
           <DollarSign className={`${bgIconClass} text-emerald-400`} />
-          <p className="text-2xl font-black text-gray-900 dark:text-white leading-none">${ahorroEstimado}</p>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-medium">Ahorro</p>
+          <p className="text-4xl font-black text-gray-900 dark:text-white leading-none">${ahorroEstimado}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold mt-0.5">Ahorro</p>
         </motion.div>
 
         <motion.div 
@@ -67,14 +67,14 @@ export function ClientStats({ cliente, historial }: ClientStatsProps) {
         >
           <Star className={`${bgIconClass} text-amber-400`} />
           {/* El emoji al mismo font-size que los números de las otras 2 tarjetas */}
-          <span className="text-2xl leading-none" role="img" aria-label={rangoActual}>{rangoEmoji}</span>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-medium truncate w-full text-center">{rangoActual}</p>
+          <span className="text-4xl leading-none" role="img" aria-label={rangoActual}>{rangoEmoji}</span>
+          <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold truncate w-full text-center mt-0.5">{rangoActual}</p>
         </motion.div>
       </div>
 
       {rangoNext && (
-        <p className="text-center text-[11px] text-gray-400 dark:text-gray-500 mt-2">
-          Sigue pidiendo para llegar al nivel <strong className="text-orange-500">{rangoNext}</strong>
+        <p className="text-center text-sm font-medium text-gray-500 dark:text-gray-400 mt-3">
+          Sigue pidiendo para llegar al nivel <strong className="text-orange-500 font-black">{rangoNext}</strong>
         </p>
       )}
     </div>

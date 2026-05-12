@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Generador QR — Estrella Moto Servicio</title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f0f0f;
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      gap: 32px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #fff;
+    }
+    h1 span { color: #ef4444; }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #888;
+      margin-top: 4px;
+      text-align: center;
+    }
+
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 24px;
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+
+    #preview {
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      /* Canvas will be shown here */
+    }
+
+    .controls {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #888;
+      margin-bottom: 2px;
+      display: block;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #333;
+      background: #111;
+      color: #fff;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    input[type="text"]:focus { border-color: #ef4444; }
+
+    .style-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .style-btn {
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 2px solid #333;
+      background: #111;
+      color: #aaa;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+    }
+    .style-btn.active {
+      border-color: #ef4444;
+      color: #fff;
+      background: #1f0a0a;
+    }
+    .style-btn:hover:not(.active) { border-color: #555; color: #fff; }
+
+    .btn-download {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      background: linear-gradient(135deg, #ef4444, #b91c1c);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 800;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+      transition: opacity 0.15s, transform 0.1s;
+      box-shadow: 0 4px 20px rgba(239,68,68,0.35);
+    }
+    .btn-download:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-download:active { transform: scale(0.98); }
+
+    .info {
+      font-size: 0.72rem;
+      color: #555;
+      text-align: center;
+      line-height: 1.6;
+    }
+    .info strong { color: #888; }
+
+    .size-info {
+      font-size: 0.72rem;
+      color: #ef4444;
+      font-weight: 700;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div style="text-align:center">
+    <h1>QR Code — <span>Estrella</span></h1>
+    <p class="subtitle">Generador de alta resolución para imprenta</p>
+  </div>
+
+  <div class="card">
+    <!-- Preview -->
+    <div id="preview"></div>
+    <p class="size-info" id="sizeInfo"></p>
+
+    <div class="controls">
+
+      <!-- URL -->
+      <div>
+        <label>URL destino</label>
+        <input type="text" id="urlInput" value="https://www.app-estrella.shop" oninput="generate()" />
+      </div>
+
+      <!-- Estilo -->
+      <div>
+        <label>Estilo</label>
+        <div class="style-grid">
+          <button class="style-btn active" onclick="setStyle('dark')" id="btn-dark">⚫ Oscuro (recomendado)</button>
+          <button class="style-btn" onclick="setStyle('light')" id="btn-light">⚪ Claro</button>
+          <button class="style-btn" onclick="setStyle('brand-dark')" id="btn-brand-dark">🔴 Rojo sobre negro</button>
+          <button class="style-btn" onclick="setStyle('brand-light')" id="btn-brand-light">🔴 Rojo sobre blanco</button>
+        </div>
+      </div>
+
+      <!-- Tamaño de exportación -->
+      <div>
+        <label>Tamaño para descarga</label>
+        <div class="style-grid">
+          <button class="style-btn active" onclick="setSize(1200)" id="btn-1200">1200px <br><span style="font-weight:400;color:#666">digital</span></button>
+          <button class="style-btn" onclick="setSize(2000)" id="btn-2000">2000px <br><span style="font-weight:400;color:#666">imprenta estándar</span></button>
+          <button class="style-btn" onclick="setSize(3000)" id="btn-3000">3000px <br><span style="font-weight:400;color:#666">imprenta gran formato</span></button>
+          <button class="style-btn" onclick="setSize(4000)" id="btn-4000">4000px <br><span style="font-weight:400;color:#666">máxima calidad</span></button>
+        </div>
+      </div>
+
+      <button class="btn-download" onclick="download()">⬇ Descargar PNG</button>
+    </div>
+  </div>
+
+  <p class="info">
+    <strong>Corrección de error: H (30%)</strong> — el logo puede cubrir hasta el 30% del QR<br>
+    y seguirá siendo escaneable correctamente.
+  </p>
+
+<script>
+  let currentStyle = 'dark';
+  let currentSize = 1200;
+
+  const STYLES = {
+    'dark':        { dark: '#ffffff', light: '#000000', bg: '#000000' },
+    'light':       { dark: '#000000', light: '#ffffff', bg: '#ffffff' },
+    'brand-dark':  { dark: '#ef4444', light: '#000000', bg: '#000000' },
+    'brand-light': { dark: '#cc1111', light: '#ffffff', bg: '#ffffff' },
+  };
+
+  function setStyle(s) {
+    currentStyle = s;
+    document.querySelectorAll('[id^="btn-"]').forEach(b => {
+      if (['btn-dark','btn-light','btn-brand-dark','btn-brand-light'].includes(b.id))
+        b.classList.remove('active');
+    });
+    document.getElementById('btn-' + s).classList.add('active');
+    generate();
+  }
+
+  function setSize(sz) {
+    currentSize = sz;
+    [1200,2000,3000,4000].forEach(s => {
+      const btn = document.getElementById('btn-' + s);
+      if (btn) btn.classList.remove('active');
+    });
+    const btn = document.getElementById('btn-' + sz);
+    if (btn) btn.classList.add('active');
+    document.getElementById('sizeInfo').textContent =
+      `Descarga: ${sz} × ${sz} px`;
+  }
+
+  function generate() {
+    const url = document.getElementById('urlInput').value.trim() || 'https://www.app-estrella.shop';
+    const style = STYLES[currentStyle];
+    const PREVIEW_SIZE = 320;
+
+    // Generate QR as data URL at preview size
+    QRCode.toDataURL(url, {
+      errorCorrectionLevel: 'H',
+      width: PREVIEW_SIZE,
+      margin: 2,
+      color: { dark: style.dark, light: style.light }
+    }, function(err, dataUrl) {
+      if (err) { console.error(err); return; }
+
+      const qrImg = new Image();
+      qrImg.onload = function() {
+        const canvas = document.createElement('canvas');
+        canvas.width = PREVIEW_SIZE;
+        canvas.height = PREVIEW_SIZE;
+        const ctx = canvas.getContext('2d');
+
+        // Background
+        ctx.fillStyle = style.bg;
+        ctx.fillRect(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
+
+        // QR
+        ctx.drawImage(qrImg, 0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
+
+        // Logo overlay
+        const logoImg = new Image();
+        // Use relative path (file is in project root, logo is in public/)
+        logoImg.src = './public/logo.png';
+        logoImg.onload = function() {
+          const logoSize = Math.round(PREVIEW_SIZE * 0.28);
+          const logoX = Math.round((PREVIEW_SIZE - logoSize) / 2);
+          const logoY = Math.round((PREVIEW_SIZE - logoSize) / 2);
+          const radius = Math.round(logoSize * 0.15);
+
+          // White/black padding square behind logo
+          ctx.save();
+          roundRect(ctx, logoX - 4, logoY - 4, logoSize + 8, logoSize + 8, radius + 4);
+          ctx.fillStyle = style.bg;
+          ctx.fill();
+          ctx.restore();
+
+          // Logo
+          ctx.save();
+          roundRect(ctx, logoX, logoY, logoSize, logoSize, radius);
+          ctx.clip();
+          ctx.drawImage(logoImg, logoX, logoY, logoSize, logoSize);
+          ctx.restore();
+
+          // Update preview
+          const container = document.getElementById('preview');
+          container.innerHTML = '';
+          container.appendChild(canvas);
+        };
+        logoImg.onerror = function() {
+          // No logo found, just show QR
+          const container = document.getElementById('preview');
+          container.innerHTML = '';
+          container.appendChild(canvas);
+        };
+      };
+      qrImg.src = dataUrl;
+    });
+  }
+
+  function download() {
+    const url = document.getElementById('urlInput').value.trim() || 'https://www.app-estrella.shop';
+    const style = STYLES[currentStyle];
+    const SIZE = currentSize;
+
+    QRCode.toDataURL(url, {
+      errorCorrectionLevel: 'H',
+      width: SIZE,
+      margin: 2,
+      color: { dark: style.dark, light: style.light }
+    }, function(err, dataUrl) {
+      if (err) { console.error(err); return; }
+
+      const qrImg = new Image();
+      qrImg.onload = function() {
+        const canvas = document.createElement('canvas');
+        canvas.width = SIZE;
+        canvas.height = SIZE;
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = style.bg;
+        ctx.fillRect(0, 0, SIZE, SIZE);
+        ctx.drawImage(qrImg, 0, 0, SIZE, SIZE);
+
+        const logoImg = new Image();
+        logoImg.src = './public/logo.png';
+        logoImg.onload = function() {
+          const logoSize = Math.round(SIZE * 0.28);
+          const logoX = Math.round((SIZE - logoSize) / 2);
+          const logoY = Math.round((SIZE - logoSize) / 2);
+          const radius = Math.round(logoSize * 0.15);
+          const pad = Math.round(SIZE * 0.012);
+
+          ctx.save();
+          roundRect(ctx, logoX - pad, logoY - pad, logoSize + pad*2, logoSize + pad*2, radius + pad);
+          ctx.fillStyle = style.bg;
+          ctx.fill();
+          ctx.restore();
+
+          ctx.save();
+          roundRect(ctx, logoX, logoY, logoSize, logoSize, radius);
+          ctx.clip();
+          ctx.drawImage(logoImg, logoX, logoY, logoSize, logoSize);
+          ctx.restore();
+
+          // Download
+          const link = document.createElement('a');
+          link.download = `qr-estrella-${SIZE}px-${currentStyle}.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+        };
+        logoImg.onerror = function() {
+          // Download without logo
+          const link = document.createElement('a');
+          link.download = `qr-estrella-${SIZE}px.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+        };
+      };
+      qrImg.src = dataUrl;
+    });
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  // Init
+  setSize(2000);
+  generate();
+</script>
+</body>
+</html>
