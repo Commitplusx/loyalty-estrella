@@ -31,8 +31,10 @@ const VALID_ACTIONS: AIRespuesta['accion'][] = [
   'AGREGAR_NOTA_CLIENTE', 'REPORTE_SEMANAL', 'MARCAR_VIP',
   'VER_HISTORIAL_CLIENTE', 'RECORDATORIO_REPARTIDOR', 'REVISAR_ENTREGADOS',
   'AGREGAR_REPARTIDOR', 'ELIMINAR_REPARTIDOR', 'ESTADO_REPARTIDOR',
-  'VER_ATRASOS' | 'CARGAR_SALDO' | 'ANUNCIO_REPARTIDORES' | 'UBICACION_RESTAURANTE',
-  'ENTREGAR_TODOS' | 'CANCELAR_TODOS' | 'ENVIAR_QR' | 'VER_RESTAURANTES' | 'AGREGAR_CLIENTE' | 'ENVIAR_TERMINOS' | 'REGISTRAR_RESTAURANTE',
+  // Fix: comas separando cada accion (antes usaba | bitwise OR en runtime)
+  'VER_ATRASOS', 'CARGAR_SALDO', 'ANUNCIO_REPARTIDORES', 'UBICACION_RESTAURANTE',
+  'ENTREGAR_TODOS', 'CANCELAR_TODOS', 'ENVIAR_QR', 'VER_RESTAURANTES',
+  'AGREGAR_CLIENTE', 'ENVIAR_TERMINOS', 'REGISTRAR_RESTAURANTE',
   'USAR_CUPON', 'CANCELAR_CUPON'
 ]
 
@@ -337,13 +339,41 @@ export async function conversacionDeepSeek(
     // El formato es compatible con el estándar de OpenAI.
     let rawContent = (data.choices?.[0]?.message?.content || '').trim()
 
-    // Manejo de respuestas vacías (puede ocurrir durante picos de carga).
-    if (!rawContent || rawContent.length < 5) {
-      const msg = '❌ DeepSeek devolvió contenido vacío. Finish reason: ' + (data.choices?.[0]?.finish_reason || 'unknown');
-      console.error(msg)
-      await logError('whatsapp-bot', `DeepSeek Empty Response`, { finish_reason: data.choices?.[0]?.finish_reason, admin10 }, 'error');
-      await _cbFail(supabase)
-      return { errorObj: msg }
+    // Manejo de respuestas vacías (ocurre cuando el historial acumula demasiados tokens).
+    // Fix: reintentar SIN historial para liberar contexto y obtener respuesta válida.
+    if (!rawContent || rawContent.length < 10) {
+      console.warn(`⚠️ DeepSeek respuesta muy corta (${rawContent.length} chars, ${data.usage?.completion_tokens} tokens). Reintentando sin historial...`)
+      const messagesNoHistory = [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: String(nuevoTexto).substring(0, 500) },
+      ]
+      let res2: Response
+      try {
+        const ctrl2 = new AbortController()
+        const tmr2 = setTimeout(() => ctrl2.abort(), 12000)
+        res2 = await fetch('https://api.deepseek.com/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'deepseek-chat', response_format: { type: 'json_object' }, messages: messagesNoHistory, max_tokens: 2048, temperature: 0.0 }),
+          signal: ctrl2.signal,
+        })
+        clearTimeout(tmr2)
+      } catch (e2) {
+        const msg = '❌ DeepSeek devolvió contenido vacío. Finish reason: ' + (data.choices?.[0]?.finish_reason || 'unknown')
+        console.error(msg)
+        await _cbFail(supabase)
+        return { errorObj: msg }
+      }
+      const data2 = await res2.json()
+      rawContent = (data2.choices?.[0]?.message?.content || '').trim()
+      console.log(`🔄 [Retry sin historial] Tokens — input: ${data2.usage?.prompt_tokens} | output: ${data2.usage?.completion_tokens}`)
+      if (!rawContent || rawContent.length < 10) {
+        const msg = '❌ DeepSeek devolvió contenido vacío incluso sin historial. Finish reason: ' + (data2.choices?.[0]?.finish_reason || 'unknown')
+        console.error(msg)
+        await logError('whatsapp-bot', 'DeepSeek Empty Response (retry)', { finish_reason: data2.choices?.[0]?.finish_reason, admin10 }, 'error')
+        await _cbFail(supabase)
+        return { errorObj: msg }
+      }
     }
 
     let cleanJSON = rawContent.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
