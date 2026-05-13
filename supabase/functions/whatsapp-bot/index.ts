@@ -456,11 +456,20 @@ serve(async (req: Request) => {
           return await exitSafely(new Response('OK', { status: 200 }))
         }
 
-        // Asignación rápida de restaurante
+        // Bug #4 Fix: asignación rápida de restaurante CON TTL de 4h para evitar pedidos zombi
         const { data: pendingMem } = await supabase.from('bot_memory').select('history').eq('phone', `admin_rest_pending_${admin10}`).maybeSingle()
-        if (pendingMem?.history?.[0]?.pedidos?.length > 0) {
-          const assignRes = await handleAdminAssignRest(supabase, fromPhone, admin10, texto, pendingMem.history[0])
-          if (assignRes) return assignRes
+        const pendingData = pendingMem?.history?.[0]
+        const MAX_PENDING_MS = 4 * 60 * 60 * 1000 // 4 horas máximo
+        if (pendingData?.pedidos?.length > 0) {
+          const esReciente = pendingData.timestamp && (Date.now() - pendingData.timestamp) < MAX_PENDING_MS
+          if (esReciente) {
+            const assignRes = await handleAdminAssignRest(supabase, fromPhone, admin10, texto, pendingData)
+            if (assignRes) return assignRes
+          } else {
+            // Pedidos de más de 4h: limpiar silenciosamente para no interferir con el flujo normal
+            await supabase.from('bot_memory').delete().eq('phone', `admin_rest_pending_${admin10}`)
+            console.log(`[BOT] Pedidos restaurante expirados (>4h) limpiados para admin ${admin10}`)
+          }
         }
 
         // Ejecutar agente Claude Admin

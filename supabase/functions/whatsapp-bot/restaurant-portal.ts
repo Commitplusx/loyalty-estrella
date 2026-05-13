@@ -426,7 +426,14 @@ async function notificarAdmin(
 
   // Limpieza de memoria
   await guardarEstado(supabase, memKey, { ...ESTADO_IDLE })
-  if (adminPhone) await sendWA(adminPhone, adminMsg)
+  // Bug #2 Fix: validar que adminPhone sea un número WA válido (mín. 12 dígitos con prefijo 52)
+  const adminPhoneValido = adminPhone && adminPhone.replace(/\D/g, '').length >= 12
+  if (adminPhoneValido) {
+    await sendWA(adminPhone, adminMsg)
+  } else {
+    console.error('[PORTAL] ADMIN_PHONES no configurado o inválido — pedidos NO notificados al admin')
+    await sendWA(fromPhone, `⚠️ *Error interno*: no se pudo notificar al administrador automáticamente.\nPor favor, contacta directamente a tu coordinador.`)
+  }
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -446,7 +453,12 @@ export async function handleRestaurantPortal(
 
   // Validar si el remitente estÃ¡ verificado en la tabla de restaurantes (BÃºsqueda Ultra-Robusta)
   // Nota: Recuperamos todos para evitar problemas de RLS si la query exacta falla por Ã­ndices o tipos.
-  const { data: todosRest, error: dbErr } = await supabase.from('restaurantes').select('id, nombre, telefono, activo')
+  // Bug #1 Fix: filtrar activo=true y limitar a 200 para evitar full table scan en cada webhook
+  const { data: todosRest, error: dbErr } = await supabase
+    .from('restaurantes')
+    .select('id, nombre, telefono, activo')
+    .eq('activo', true)
+    .limit(200)
 
   if (dbErr) {
     console.error('[RESTAURANT PORTAL] DB Error:', dbErr)
@@ -700,7 +712,7 @@ export async function handleRestaurantPortal(
       if (!pedidoActualFinal.clienteTel) nuevaFase = 'collecting_phone'
       else if (!pedidoActualFinal.descripcion) nuevaFase = 'collecting_desc'
       else if (!pedidoActualFinal.direccion) nuevaFase = 'collecting_dir'
-      else if (!pedidoActualFinal.tiempo_estimado) nuevaFase = 'collecting_time'
+      // Bug #3 Fix: tiempo_estimado es OPCIONAL — eliminado collecting_time para no bloquear pedidos
       else nuevaFase = 'collecting_extras'
     } else {
       nuevaFase = 'idle'
@@ -738,7 +750,7 @@ export async function handleRestaurantPortal(
   
   for (const p of pedidosAcumulados) {
     if (p.clienteTel) {
-      const { data: cliRep } = await supabase.from('clientes').select('reputacion, etiquetas').ilike('telefono', `%${p.clienteTel}%`).limit(1).maybeSingle()
+      const { data: cliRep } = await supabase.from('clientes').select('reputacion, etiquetas').in('telefono', [p.clienteTel]).maybeSingle()
       if (cliRep) {
         if (cliRep.reputacion === 'vetado') {
           bloqueadoPorVeto = true
