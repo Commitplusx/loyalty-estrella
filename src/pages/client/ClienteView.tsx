@@ -130,6 +130,10 @@ export function ClienteView() {
       setViewState('loading');
       getClienteByTelefono(cleanTel).then(async (data) => {
         if (data && !('found' in data)) {
+          if (data.acepta_terminos === false) {
+            setViewState('error-not-found');
+            return;
+          }
           const histData = await getHistorialCliente(data.id);
           setHistorial(histData);
           setCliente(data);
@@ -241,6 +245,10 @@ export function ClienteView() {
     } else if ('found' in data) {
       setViewState('error-not-found');
     } else {
+      if (data.acepta_terminos === false) {
+        setViewState('error-not-found');
+        return;
+      }
       const histData = await getHistorialCliente(data.id);
       setHistorial(histData);
       setCliente(data);
@@ -568,7 +576,7 @@ export function ClienteView() {
           </motion.div>
         )}
 
-        {/* â”€â”€ ERROR: NOT REGISTERED â”€â”€ */}
+        {/* ── ERROR: NOT REGISTERED ── */}
         {viewState === 'error-not-found' && (
           <div className="space-y-6">
             <Button variant="ghost" onClick={handleReset} className="text-gray-500">
@@ -579,34 +587,41 @@ export function ClienteView() {
                 <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
                   <AlertCircle className="w-10 h-10 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold mb-2">numero no registrado</h2>
+                <h2 className="text-2xl font-bold mb-2">Número no registrado</h2>
                 <p className="text-orange-100">
-                  El numero <strong className="text-white">{telefono}</strong> aún no tiene cuenta en Estrella Delivery.
+                  El número <strong className="text-white">{telefono}</strong> no tiene una cuenta VIP activa.
                 </p>
               </div>
               <CardContent className="p-6 space-y-4 text-center">
                 <p className="text-gray-700 font-medium">
-                  Para crear tu cuenta y empezar a acumular puntos, pide a un repartidor o al administrador que te registre en el sistema.
+                  Para poder acceder a tu billetera y acumular puntos, necesitas registrarte en nuestro programa de lealtad.
                 </p>
-                <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-xl text-left">
-                  <Phone className="w-8 h-8 text-blue-500 shrink-0" />
+                <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-xl text-left border border-blue-100">
+                  <Gift className="w-8 h-8 text-blue-500 shrink-0" />
                   <div>
-                    <p className="font-semibold text-gray-800 text-sm">¿Cómo registrarte?</p>
+                    <p className="font-semibold text-gray-800 text-sm">¡El registro es gratis!</p>
                     <p className="text-gray-500 text-sm">
-                      En tu próximo pedido, pide al repartidor que registre tu numero. ¡Es gratis y empieza a contar de inmediato!
+                      Únete hoy mismo a través de WhatsApp y comienza a disfrutar de envíos gratis y beneficios exclusivos.
                     </p>
                   </div>
                 </div>
-                <Button onClick={handleReset} className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white h-12">
+                <Button 
+                  onClick={() => window.location.href = `${whatsappUrl}?text=Quiero%20registrarme`} 
+                  className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white h-12 font-semibold shadow-lg shadow-green-500/30"
+                >
+                  <Phone className="w-5 h-5 mr-2" />
+                  Registrarme por WhatsApp
+                </Button>
+                <Button onClick={handleReset} variant="outline" className="w-full text-gray-600 border-gray-200 h-12">
                   <Search className="w-4 h-4 mr-2" />
-                  Buscar otro numero
+                  Buscar otro número
                 </Button>
               </CardContent>
             </Card>
           </div>
         )}
 
-        {/* â”€â”€ ERROR: GENERIC â”€â”€ */}
+        {/* ── ERROR: GENERIC ── */}
         {viewState === 'error-generic' && (
           <div className="space-y-4">
             <Button variant="ghost" onClick={handleReset} className="text-gray-500">
