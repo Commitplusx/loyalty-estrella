@@ -78,6 +78,20 @@ export async function crearPedidoDesdeBot(
     if (messageId)           insertData.wb_message_id = messageId
     if (rep?.user_id)        insertData.repartidor_id = rep.user_id
 
+    // Registro Silencioso (Express): Agregar al cliente a la base de datos si no existe, 
+    // sin enviarle términos, para que el repartidor pueda adjuntarle fotos de fachada.
+    if (datos.clienteTel && datos.clienteTel.length === 10) {
+      const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${datos.clienteTel}`
+      await supabase.from('clientes').upsert({
+        telefono: datos.clienteTel,
+        nombre: datos.clienteNombre || 'Cliente Express',
+        direccion: datos.direccion || null,
+        puntos: 0,
+        acepta_terminos: false,
+        qr_code: loyaltyUrl
+      }, { onConflict: 'telefono', ignoreDuplicates: true })
+    }
+
     const { data: inserted, error } = await supabase
       .from('pedidos')
       .insert(insertData)

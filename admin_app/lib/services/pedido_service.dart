@@ -68,6 +68,24 @@ class PedidoService {
     String? direccion,
   }) async {
     try {
+      // 1. Registro Silencioso: Asegurar que el cliente exista en la BD para fotos de fachada
+      if (clienteTel.length == 10) {
+        try {
+          final loyaltyUrl = 'https://www.app-estrella.shop/loyalty/$clienteTel';
+          await supabase.from('clientes').upsert({
+            'telefono': clienteTel,
+            'nombre': (clienteNombre != null && clienteNombre.isNotEmpty) ? clienteNombre : 'Cliente Express',
+            'direccion': (direccion != null && direccion.isNotEmpty) ? direccion : null,
+            'puntos': 0,
+            'acepta_terminos': false,
+            'qr_code': loyaltyUrl
+          }, onConflict: 'telefono', ignoreDuplicates: true);
+        } catch (e) {
+          print('Error en registro silencioso: $e');
+        }
+      }
+
+      // 2. Insertar Pedido
       final inserted = await supabase
           .from('pedidos')
           .insert({

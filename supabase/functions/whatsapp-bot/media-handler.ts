@@ -60,60 +60,106 @@ async function uploadToStorage(
   return data?.publicUrl || null
 }
 
-// ── Handler principal: Admin envía foto para un cliente ───────────────────────
+// ── Handler principal: Admin/Repartidor envía foto ────────────────────────────
 export async function handleAdminPhoto(
   supabase: Supa,
   fromPhone: string,
-  imageMsg: any
+  from10: string,
+  imageMsg: any,
+  esAdmin: boolean = false
 ): Promise<Response> {
   const mediaId = imageMsg.id
-  const caption = imageMsg.caption || ''
+  const caption = (imageMsg.caption || '').trim()
 
-  // Extraer teléfono del caption (ej: "foto de 9631234567" o solo "9631234567")
-  const telMatch = caption.match(/(\d{10,13})/)
-  let tel10 = telMatch ? extract10Digits(telMatch[1]) : null
+  let tel10: string | null = null
+  let clienteId: string | null = null
+  let clienteNombre: string = ''
 
-  // Si no hay teléfono en el caption, buscar en el contexto reciente (bot_memory)
+  // ── 1. Revisar si hay sesión de captura activa ────────────────────────────
+  const { data: sesionActiva } = await supabase.from('bot_memory')
+    .select('history').eq('phone', `capture_mode_${from10}`).maybeSingle()
+
+  if (sesionActiva?.history?.[0]) {
+    tel10 = sesionActiva.history[0].clienteTel
+    clienteId = sesionActiva.history[0].clienteId
+    clienteNombre = sesionActiva.history[0].clienteNombre || tel10
+  }
+
+  // ── 2. Si no hay sesión, buscar número en el caption ──────────────────────
   if (!tel10) {
-    const adminPhone10 = extract10Digits(fromPhone)
+    const telMatch = caption.match(/(\d{10,13})/)
+    tel10 = telMatch ? extract10Digits(telMatch[1]) : null
+  }
+
+  // ── 3. Si aún no hay número, buscar en contexto reciente del admin ─────────
+  if (!tel10) {
     const { data: ctx } = await supabase.from('bot_memory')
-      .select('history')
-      .eq('phone', `admin_last_client_${adminPhone10}`)
-      .maybeSingle()
-    
+      .select('history').eq('phone', `admin_last_client_${from10}`).maybeSingle()
     if (ctx?.history?.[0]?.clienteTel) {
       tel10 = extract10Digits(ctx.history[0].clienteTel)
     }
   }
 
   if (!tel10) {
-    await sendWA(fromPhone, '⚠️ No pude identificar a qué cliente asociar esta foto.\n\nEnvía la imagen con el teléfono en el caption:\n_Ejemplo: envía la foto con texto "9631234567"_')
+    if (esAdmin) {
+      await sendWA(fromPhone,
+        `⚠️ No sé a qué cliente asociar esta foto.\n\n` +
+        `Opciones:\n` +
+        `📌 Activa una sesión primero: */fachada 9631234567*\n` +
+        `📸 O envía la foto con el número en el caption`
+      )
+    } else {
+      // Repartidor (BUG-06 fix: mensaje más claro y menos técnico para el mensajero)
+      await sendWA(fromPhone,
+        `⚠️ No pude guardar la foto porque no sé de qué cliente es.\n\n` +
+        `Para guardarla, *reenvía la foto* y escribe el número de teléfono del cliente (10 dígitos) como mensaje adjunto (caption).`
+      )
+    }
     return new Response('OK', { status: 200 })
   }
 
-  // Verificar que el cliente existe
-  const { data: cliente } = await supabase.from('clientes')
-    .select('id, nombre')
-    .ilike('telefono', `%${tel10}%`)
-    .limit(1).maybeSingle()
-
-  if (!cliente) {
-    await sendWA(fromPhone, `⚠️ No encontré un cliente con el número *${tel10}*. Regístralo primero.`)
-    return new Response('OK', { status: 200 })
+  // ── 4. Buscar cliente si no lo tenemos de la sesión ───────────────────────
+  if (!clienteId) {
+    const { data: c } = await supabase.from('clientes')
+      .select('id, nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+    
+    if (!c) {
+      // Registro silencioso automático
+      const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
+      const { data: nuevo } = await supabase.from('clientes').insert({
+        telefono: tel10,
+        nombre: 'Cliente Express',
+        puntos: 0,
+        acepta_terminos: false,
+        qr_code: loyaltyUrl
+      }).select('id, nombre').single()
+      
+      if (nuevo) {
+        clienteId = nuevo.id
+        clienteNombre = nuevo.nombre
+        await sendWA(fromPhone, `ℹ️ El cliente no existía. Lo registré silenciosamente para guardar la foto.`)
+      } else {
+        await sendWA(fromPhone, `⚠️ No pude crear el registro para *${tel10}*.`)
+        return new Response('OK', { status: 200 })
+      }
+    } else {
+      clienteId = c.id
+      clienteNombre = c.nombre
+    }
   }
 
-  await sendWA(fromPhone, `📸 Descargando foto de *${cliente.nombre}*...`)
+  await sendWA(fromPhone, `📸 Guardando foto de *${clienteNombre}*...`)
 
-  // Descargar de WhatsApp
+  // ── 5. Descargar de WhatsApp ──────────────────────────────────────────────
   const media = await downloadWhatsAppMedia(mediaId)
   if (!media) {
-    await sendWA(fromPhone, `❌ No pude descargar la imagen de WhatsApp. Intenta de nuevo.`)
+    await sendWA(fromPhone, `❌ No pude descargar la imagen. Intenta de nuevo.`)
     return new Response('OK', { status: 200 })
   }
 
-  // Subir a Storage
+  // ── 6. Subir a Storage ────────────────────────────────────────────────────
   const ext = media.mimeType.includes('png') ? 'png' : 'jpg'
-  const filePath = `${tel10}/foto_${Date.now()}.${ext}`
+  const filePath = `${tel10}/fachada_${Date.now()}.${ext}`
   const publicUrl = await uploadToStorage(supabase, filePath, media.buffer, media.mimeType)
 
   if (!publicUrl) {
@@ -121,24 +167,43 @@ export async function handleAdminPhoto(
     return new Response('OK', { status: 200 })
   }
 
-  // Guardar URL en el cliente
-  await supabase.from('clientes')
-    .update({ foto_fachada_url: publicUrl })
-    .eq('id', cliente.id)
+  // ── 7. Guardar URL en clientes + nota si hay caption ─────────────────────
+  const updates: Record<string, any> = { foto_fachada_url: publicUrl }
+  if (caption && !caption.match(/^\d+$/)) {
+    // El caption tiene texto descriptivo, guardarlo como nota
+    const { data: c } = await supabase.from('clientes').select('notas_crm').eq('id', clienteId).maybeSingle()
+    const notaActual = c?.notas_crm || ''
+    const fecha = new Date().toLocaleDateString('es-MX')
+    updates.notas_crm = notaActual
+      ? `${notaActual}\n[${fecha}] 📸 ${caption}`
+      : `[${fecha}] 📸 ${caption}`
+  }
 
-  await sendWA(fromPhone, `✅ *Foto guardada* para ${cliente.nombre} (${tel10}).\n📸 ${publicUrl}`)
+  await supabase.from('clientes').update(updates).eq('id', clienteId)
+
+  await sendWA(fromPhone,
+    `✅ *Foto guardada* — ${clienteNombre} (${tel10})\n` +
+    `${caption && !caption.match(/^\d+$/) ? `📝 Nota: _${caption}_\n` : ''}` +
+    `_Escribe /fin para cerrar la sesión o sigue mandando más fotos/notas._`
+  )
   return new Response('OK', { status: 200 })
 }
 
-// ── Enviar foto del cliente si existe ─────────────────────────────────────────
+// ── Enviar foto de fachada con nota como caption ──────────────────────────────
 export async function enviarFotoCliente(
   fromPhone: string,
   fotoUrl: string | null,
-  clienteNombre: string
+  clienteNombre: string,
+  notasCrm?: string | null
 ): Promise<void> {
   if (!fotoUrl) return
   try {
-    await sendWAImage(fromPhone, fotoUrl, `📸 Foto de ${clienteNombre}`)
+    // Usar la nota más reciente como caption — más útil que el nombre
+    const primeraLinea = notasCrm?.split('\n').pop()?.trim() || ''
+    const caption = primeraLinea.length > 0
+      ? `📸 ${primeraLinea.substring(0, 900)}`
+      : `📸 Fachada de ${clienteNombre}`
+    await sendWAImage(fromPhone, fotoUrl, caption)
   } catch (e) {
     console.error('[MEDIA] Error enviando foto:', e)
   }

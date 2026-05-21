@@ -207,12 +207,18 @@ export async function handleAdminMessage(
         const cant = Number(d.puntosASumar) || 1
         let lastRes: any = null
         let rpcError: any = null
+        // BUGFIX: Rastrear si en CUALQUIER iteración se activó el ascenso VIP,
+        // ya que lastRes solo guarda la última iteración y el flag se pierde.
+        let vipAscendidoEnAlgunaIter = false
         for (let i = 0; i < cant; i++) {
           const { data, error } = await supabase.rpc('fn_registrar_entrega', {
             p_cliente_tel: tel10
           })
           if (error) { rpcError = error; console.error(`[SUMAR_PUNTOS] RPC error iter ${i}:`, error); break }
-          else if (data?.ok) lastRes = data
+          else if (data?.ok) {
+            lastRes = data
+            if (data.recien_ascendido) vipAscendidoEnAlgunaIter = true
+          }
           else { console.warn(`[SUMAR_PUNTOS] RPC retornó ok=false iter ${i}:`, data); break }
         }
 
@@ -240,8 +246,14 @@ export async function handleAdminMessage(
         if (lastRes.puede_canjear && lastRes.puntos === 5) {
           promoAviso += `\n\n🎉 *¡TIENE ENVÍO GRATIS DISPONIBLE!* 🎉\nEste cliente acaba de ganar un envío gratis.`
         }
-        if (lastRes.recien_ascendido) {
+        if (vipAscendidoEnAlgunaIter) {
           promoAviso += `\n\n👑 *¡NUEVO VIP!* 👑\nEl cliente completó 3 ciclos (15 envíos) y ahora es VIP.`
+          // Notificar al CLIENTE que ahora es VIP (texto libre, funciona si hay ventana 24h)
+          try {
+            await sendWA(`52${tel10}`, `👑 *¡Felicidades, ${c.nombre || 'Cliente'}!* 👑\n\nHas sido promovido a *Cliente VIP* ⭐ de Estrella Delivery.\n\nA partir de ahora, por cada envío que pidas acumularás *saldo real en pesos* en tu billetera digital. 💰\n\n¡Gracias por tu gran lealtad! 🌟`)
+          } catch (e) {
+            console.error('[SUMAR_PUNTOS] Error enviando bienvenida VIP al cliente:', e)
+          }
         }
 
         await sendWA(fromPhone, `🌟 Sumados *${cant} pts* a ${c.nombre || tel10}.\nTotal: *${lastRes.puntos} pts* ✅${saldoInfo}${promoAviso}`)
@@ -485,7 +497,7 @@ Al registrarte:
           )
           // Limpiar pending_reg ya que el cliente fue procesado
           await supabase.from('bot_memory').delete().eq('phone', `pending_reg_${tel10}`)
-          await sendWA(fromPhone, `✅ *Cliente Registrado: ${d.clienteNombre}*\n📱 ${tel10}\n\n📋 T&C enviados por chat (sin costo). ⏳ Cuando acepte, recibirá su QR automáticamente.`)
+          await sendWA(fromPhone, `✅ *Cliente Registrado: ${d.clienteNombre}*\n📱 ${tel10}\n\n📋 T&C enviados. ⏳ Cuando acepte, recibirá su QR automáticamente.`)
         } else {
           // ── Plantilla Meta (necesaria cuando no hay ventana de conversación) ──
           const tycResult = await sendWATemplate(`52${tel10}`, 'estrella_terminos_condiciones', [d.clienteNombre || 'Cliente'])
@@ -563,10 +575,27 @@ Al registrarte:
       break
     }
     case 'MARCAR_VIP': {
-      const { data: cli } = await supabase.from('clientes').select('id, nombre, es_vip').ilike('telefono', `%${extract10Digits(d.clienteTel)}%`).limit(1).maybeSingle()
+      const tel10Vip = extract10Digits(d.clienteTel)
+      const { data: cli } = await supabase.from('clientes').select('id, nombre, es_vip, telefono').ilike('telefono', `%${tel10Vip}%`).limit(1).maybeSingle()
       if (cli) {
-        await supabase.from('clientes').update({ es_vip: !cli.es_vip }).eq('id', cli.id)
-        await sendWA(fromPhone, `⭐ *VIP*\n${!cli.es_vip ? 'Es VIP' : 'Ya no es VIP'}`)
+        const nuevoEstado = !cli.es_vip
+        await supabase.from('clientes').update({
+          es_vip: nuevoEstado,
+          // Si lo subimos a VIP, iniciar su ciclo VIP
+          ...(nuevoEstado ? { entregas_ciclo: 0, ciclo_inicio_at: new Date().toISOString() } : {})
+        }).eq('id', cli.id)
+
+        if (nuevoEstado) {
+          // Notificar al cliente que ahora es VIP
+          try {
+            await sendWA(`52${tel10Vip}`, `👑 *¡Felicidades, ${cli.nombre || 'Cliente'}!* 👑\n\nHas sido promovido a *Cliente VIP* ⭐ de Estrella Delivery.\n\nA partir de ahora, por cada envío que pidas acumularás *saldo real en pesos* en tu billetera digital. 💰\n\n¡Gracias por tu gran lealtad! 🌟`)
+          } catch (e) {
+            console.error('[MARCAR_VIP] Error enviando bienvenida VIP al cliente:', e)
+          }
+          await sendWA(fromPhone, `👑 *${cli.nombre || tel10Vip}* ahora es *VIP*. ✅\nSe le notificó por WhatsApp.`)
+        } else {
+          await sendWA(fromPhone, `⭐ *${cli.nombre || tel10Vip}* ya *no es VIP*.`)
+        }
       } else { await sendWA(fromPhone, `🔍 No encontrado.`) }
       break
     }
@@ -939,37 +968,32 @@ export async function handleTerminos(supabase: Supa, fromPhone: string, buttonId
     console.log(`✅ [T&C] Cliente ${tel10} HA ACEPTADO los términos.`)
     await supabase.from('clientes').update({ acepta_terminos: true }).ilike('telefono', `%${tel10}%`)
 
-    // 2. Avisar al cliente
-    await sendWA(fromPhone, "✅ ¡Gracias por aceptar! Ahora ya puedes disfrutar de todos los beneficios de Estrella Delivery. 🌟")
+    // 2. Enviar QR y mensaje de Bienvenida incondicional
+    const { data: cli } = await supabase.from('clientes').select('nombre, puntos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+    const nombreCli = cli?.nombre ? cli.nombre.split(' ')[0] : 'Cliente'
+    const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data=${encodeURIComponent(loyaltyUrl)}`
 
-    // 3. Revisar acciones pendientes
-    // 3.A QR Pendiente
-    const { data: pendingQR } = await supabase.from('bot_memory').select('history').eq('phone', `pending_qr_${tel10}`).maybeSingle()
-    if (pendingQR?.history?.[0]) {
-      console.log(`🔄 [T&C] Ejecutando ENVÍO DE QR PENDIENTE para ${tel10}...`)
-      const { data: cli } = await supabase.from('clientes').select('nombre, puntos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
-      
-      const nombreCli = cli?.nombre || 'Cliente'
-      const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
-      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data=${encodeURIComponent(loyaltyUrl)}`
-      
-      const mensajeBienvenida = `🎉 *¡Felicidades ${nombreCli}, ya eres VIP!* 🎉
+    const mensajeBienvenida = `🎉 *¡Excelente, ${nombreCli}! Bienvenido a la familia Estrella* 🎉
 
-Tu registro se completó con éxito. Aquí te entregamos tu *Tarjeta de Lealtad Digital* (QR). 🎟️
+Tu registro está 100% completado. Aquí tienes tu *Tarjeta de Lealtad Digital* (QR). 🎟️
 
-Guarda esta imagen. Con ella y con tu número acumularás puntos en cada pedido que hagas.
+Guárdala muy bien en tus favoritos. Con ella irás acumulando recompensas en cada pedido que hagas. 🍔🍣
 
-🌐 *Tu portal de beneficios:*
+🌐 *Revisa tu perfil y beneficios aquí:*
 👉 ${loyaltyUrl}
 
 ¡Gracias por preferir Estrella Delivery! 🛵💨`
 
-      await sendWAImage(`52${tel10}`, qrImageUrl, mensajeBienvenida)
+    await sendWAImage(`52${tel10}`, qrImageUrl, mensajeBienvenida)
 
-      const adminPhone = pendingQR.history[0].admin
-      if (adminPhone) await sendWA(adminPhone, `✅ El cliente *${tel10}* aceptó términos. Le envié su QR y mensaje de bienvenida.`)
-      await supabase.from('bot_memory').delete().eq('phone', `pending_qr_${tel10}`)
+    // Notificar al admin si había un pendiente de admin en cache
+    const { data: pendingQR } = await supabase.from('bot_memory').select('history').eq('phone', `pending_qr_${tel10}`).maybeSingle()
+    if (pendingQR?.history?.[0]?.admin) {
+      await sendWA(pendingQR.history[0].admin, `✅ El cliente *${tel10}* aceptó términos. Le envié su QR y mensaje de bienvenida.`)
     }
+    // Siempre intentamos limpiarlo por si había uno
+    await supabase.from('bot_memory').delete().eq('phone', `pending_qr_${tel10}`)
 
     // 3.B Puntos Pendientes
     const { data: pendingPts } = await supabase.from('bot_memory').select('history').eq('phone', `pending_pts_${tel10}`).maybeSingle()
@@ -981,12 +1005,16 @@ Guarda esta imagen. Con ella y con tu número acumularás puntos en cada pedido 
         const cant = Number(puntos) || 1
         let lastRes: any = null
         let rpcErrTerminos: any = null
+        let vipAscendidoEnAlgunaIter = false
         for (let i = 0; i < cant; i++) {
           const { data, error } = await supabase.rpc('fn_registrar_entrega', {
             p_cliente_tel: tel10
           })
           if (error) { rpcErrTerminos = error; break }
-          if (data?.ok) lastRes = data
+          if (data?.ok) {
+            lastRes = data
+            if (data.recien_ascendido) vipAscendidoEnAlgunaIter = true
+          }
           else break
         }
         if (!lastRes) {
@@ -995,6 +1023,15 @@ Guarda esta imagen. Con ella y con tu número acumularás puntos en cada pedido 
         } else {
           // El RPC ya actualiza clientes.puntos atómicamente — no hacemos update manual
           await sendWATemplate(`52${tel10}`, 'estrella_puntos_acumulados', [cli.nombre || 'Cliente', puntos.toString(), lastRes.puntos.toString()], undefined, tel10)
+
+          if (vipAscendidoEnAlgunaIter) {
+            try {
+              await sendWA(`52${tel10}`, `👑 *¡Felicidades, ${cli.nombre || 'Cliente'}!* 👑\n\nHas sido promovido a *Cliente VIP* ⭐ de Estrella Delivery.\n\nA partir de ahora, por cada envío que pidas acumularás *saldo real en pesos* en tu billetera digital. 💰\n\n¡Gracias por tu gran lealtad! 🌟`)
+            } catch (e) {
+              console.error('[T&C PUNTOS] Error enviando bienvenida VIP:', e)
+            }
+          }
+
           if (admin) await sendWA(admin, `✅ El cliente *${tel10}* aceptó términos. Le sumé los ${puntos} pts pendientes. Total: *${lastRes.puntos} pts*.`)
         }
       }

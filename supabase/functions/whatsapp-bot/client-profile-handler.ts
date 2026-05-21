@@ -88,12 +88,34 @@ export async function handleActualizarDireccion(
     .ilike('telefono', `%${tel10}%`)
     .limit(1).maybeSingle()
 
-  if (!cli) { await sendWA(fromPhone, `🔍 No encontré al cliente ${tel10}.`); return }
+  let cliId = cli?.id
+  let cliNombre = cli?.nombre
 
-  await supabase.from('clientes')
-    .update({ direccion: direccion.trim() })
-    .eq('id', cli.id)
+  if (!cli) {
+    const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
+    const { data: nuevo } = await supabase.from('clientes').insert({
+      telefono: tel10,
+      nombre: 'Cliente Express',
+      direccion: direccion.trim(),
+      puntos: 0,
+      acepta_terminos: false,
+      qr_code: loyaltyUrl
+    }).select('id, nombre').single()
+    
+    if (nuevo) {
+      cliId = nuevo.id
+      cliNombre = nuevo.nombre
+      await sendWA(fromPhone, `ℹ️ El número *${tel10}* no estaba registrado. Lo he agregado silenciosamente a la base de datos.`)
+    } else {
+      await sendWA(fromPhone, `❌ Error creando al cliente silencioso ${tel10}.`)
+      return
+    }
+  } else {
+    await supabase.from('clientes')
+      .update({ direccion: direccion.trim() })
+      .eq('id', cliId)
+  }
 
-  await sendWA(fromPhone, `🏠 *Dirección guardada*\n👤 ${cli.nombre}\n📍 ${direccion.trim()}`)
-  await guardarContextoCliente(supabase, fromPhone, tel10, cli.nombre)
+  await sendWA(fromPhone, `🏠 *Dirección guardada*\n👤 ${cliNombre}\n📍 ${direccion.trim()}`)
+  await guardarContextoCliente(supabase, fromPhone, tel10, cliNombre || 'Cliente')
 }

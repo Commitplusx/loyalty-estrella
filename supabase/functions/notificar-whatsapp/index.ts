@@ -458,8 +458,20 @@ serve(async (req: Request) => {
 
     // B. Notificar al Cliente
     if (tipo !== 'asignacion' && pedido.cliente_tel) {
-        let repNom = 'tu repartidor'
-        if (pedido.repartidor_id) {
+        const tel10 = pedido.cliente_tel.replace(/\D/g, '').slice(-10)
+        
+        // REGLA ESTRICTA DE PRIVACIDAD: Solo notificar a clientes VIP (acepta_terminos = true)
+        const { data: clInfo } = await supabase
+          .from('clientes')
+          .select('acepta_terminos, puntos, rango, es_vip, nombre')
+          .eq('telefono', tel10)
+          .maybeSingle()
+
+        if (!clInfo || clInfo.acepta_terminos !== true) {
+          results.push(`🚫 Cliente ${tel10} silencioso o no registrado. Notificaciones bloqueadas por privacidad.`)
+        } else {
+          let repNom = 'tu repartidor'
+          if (pedido.repartidor_id) {
           // Buscar por user_id O por id para cubrir repartidores sin cuenta Auth
           const { data: r } = await supabase.from('repartidores').select('nombre')
             .or(`user_id.eq.${pedido.repartidor_id},id.eq.${pedido.repartidor_id}`)
@@ -509,9 +521,10 @@ serve(async (req: Request) => {
             console.warn('Error en auto-notificación de ciclo:', eP)
           }
         }
-      } else if (tipo !== 'asignacion') {
-        results.push('⚠️ Cliente sin teléfono')
-      }
+      } // Fin del bloque 'else' (Si es cliente VIP)
+    } else if (tipo !== 'asignacion') {
+      results.push('⚠️ Cliente sin teléfono')
+    }
 
     console.log("Final Actions:", results)
     return new Response(JSON.stringify({ ok: true, actions: results }), {

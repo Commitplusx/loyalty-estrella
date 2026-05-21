@@ -146,22 +146,29 @@ serve(async (req: Request) => {
     // ── IDENTIFICAR ROL PARA ETIQUETAS DE CHATWOOT Y LOGICA ──
     let userLabel = 'cliente'
     let cachedRepData: { id: string; user_id: string; nombre: string; alias: string } | null = null
+    let cachedRestData: { id: string; nombre: string } | null = null
 
     if (esAdmin) {
       userLabel = 'admin'
     } else {
-      // Ejecución paralela de roles para reducir latencia (Escalabilidad Fase 2)
-      const [resRep] = await Promise.all([
+      // Consulta paralela de todos los roles posibles
+      const [resRep, resRest, modoOverride] = await Promise.all([
         supabase.from('repartidores').select('id, user_id, nombre, alias').ilike('telefono', `%${from10}%`).limit(1).maybeSingle(),
-        // AISLADO: supabase.from('restaurantes').select('id').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
+        supabase.from('restaurantes').select('id, nombre').ilike('telefono', `%${from10}%`).limit(1).maybeSingle(),
+        supabase.from('bot_memory').select('history').eq('phone', `modo_activo_${from10}`).maybeSingle()
       ])
 
-      if (resRep.data) {
+      // Si hay un override de modo forzado por el admin, respetarlo
+      const modoForzado = modoOverride.data?.history?.[0]?.modo as string | undefined
+
+      if (resRep.data && modoForzado !== 'restaurante' && modoForzado !== 'cliente') {
         userLabel = 'repartidor'
         cachedRepData = resRep.data
-      } /* else if (resRest.data) {
+      } else if (resRest.data && modoForzado !== 'cliente') {
         userLabel = 'restaurante'
-      } */
+        cachedRestData = resRest.data
+      }
+      // Si modoForzado === 'cliente', cae al default 'cliente' aunque tenga otros roles
     }
 
     // ── SYNC A CHATWOOT CRM — guarda el promise para usarlo en la respuesta del bot ──
@@ -207,10 +214,61 @@ serve(async (req: Request) => {
       return await exitSafely(new Response('OK', { status: 200 }))
     }
 
-    // ── INTERCEPTOR DE MULTIMEDIA Y FORMATOS NO SOPORTADOS ──
-    if (['audio', 'image', 'document', 'sticker', 'video', 'voice'].includes(msgType)) {
-      if (!esAdmin) {
-        await sendWA(fromPhone, `🤖 Por favor envíanos la información únicamente en *texto*. Aún no proceso notas de voz, fotos o documentos. ¡Gracias!`)
+    // ── INTERCEPTOR DE UBICACIÓN (location pin de WhatsApp) ──────────────────
+    // Acepta location en pasos 2 (colonia) o 3 (dirección) del flujo de registro.
+    // No depende de clienteDB — usa directamente el reg_state guardado.
+    if (msgType === 'location') {
+      const locData = msg.location as { latitude?: number; longitude?: number; address?: string; name?: string } | undefined
+
+      // Leer siempre el reg_state actual para saber si estamos en registro
+      const { data: regRaw } = await supabase.from('bot_memory')
+        .select('history').eq('phone', `reg_state_${from10}`).maybeSingle()
+      const regState = regRaw?.history?.[0]
+      const regStep = regState?.step ?? -1
+
+      if (locData?.latitude && locData?.longitude && (regStep === 2 || regStep === 3)) {
+        // Compartir ubicación en paso 2 (colonia) o paso 3 (dirección) → ambos aceptados
+        const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
+        fetch(`${SUPABASE_PROJECT_URL}/functions/v1/whatsapp-ai`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fromPhone, from10,
+            texto: locData.address || locData.name || `${locData.latitude},${locData.longitude}`,
+            isRepartidor: false, repartidorInfo: null,
+            isClient: false, clienteCtx: null,
+            regState,
+            locationData: {
+              lat: locData.latitude,
+              lng: locData.longitude,
+              address: locData.address,
+              name: locData.name
+            }
+          })
+        }).catch(err => console.error('[LOC] Error enviando a whatsapp-ai:', err))
+        return await exitSafely(new Response('OK', { status: 200 }))
+      }
+
+      // Location fuera de registro o sin coordenadas → ignorar silenciosamente
+      return await exitSafely(new Response('OK', { status: 200 }))
+    }
+
+    // ── INTERCEPTOR DE MULTIMEDIA Y FORMATOS NO SOPORTADOS ──────────────────
+    if (['audio', 'image', 'document', 'sticker', 'video', 'voice', 'unsupported'].includes(msgType)) {
+
+      // Imágenes de admin/repartidor → puede ir a handleAdminPhoto (sesión o caption)
+      if (msgType === 'image' && (esAdmin || userLabel === 'repartidor')) {
+        const { handleAdminPhoto } = await import('./media-handler.ts')
+        return await exitSafely(await handleAdminPhoto(supabase, fromPhone, from10, msg.image, esAdmin))
+      }
+
+      // Todo lo demás lo rechazamos para clientes
+      if (!esAdmin && userLabel !== 'repartidor') {
+        if (msgType === 'unsupported') {
+          await sendWA(fromPhone, `⚠️ Parece que enviaste una *ubicación en tiempo real* o formato no soportado. Por favor usa la opción de enviar *Ubicación actual (fija)* o escribe tu dirección.`)
+        } else {
+          await sendWA(fromPhone, `🤖 Por favor envíanos la información únicamente en *texto*. Aún no proceso notas de voz, fotos o documentos. ¡Gracias!`)
+        }
       }
       return await exitSafely(new Response('OK', { status: 200 }))
     }
@@ -219,26 +277,95 @@ serve(async (req: Request) => {
     if (msgType === 'interactive' || msgType === 'button') {
       const buttonId = (msg.interactive?.button_reply?.id || msg.button?.payload || msg.button?.text) as string | undefined
       if (buttonId) {
+        // Botones de confirmación de registro del propio cliente (SI/NO)
+        if (buttonId.toUpperCase().startsWith('REG_CONFIRM_')) {
+          const esSi = buttonId.toUpperCase().startsWith('REG_CONFIRM_SI_')
+          // Redirigimos como texto al flujo asíncrono para que el estado máquina lo procese
+          const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
+          const { data: regData } = await supabase.from('bot_memory')
+            .select('history').eq('phone', `reg_state_${from10}`).maybeSingle()
+          const regState = regData?.history?.[0] ?? { tel: from10, step: 3 }
+
+          fetch(`${SUPABASE_PROJECT_URL}/functions/v1/whatsapp-ai`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fromPhone, from10,
+              texto: esSi ? 'sí' : 'no',
+              isRepartidor: false, repartidorInfo: null,
+              isClient: true, clienteCtx: null,
+              regState
+            })
+          }).catch(err => console.error('Error REG_CONFIRM:', err))
+          return await exitSafely(new Response('OK', { status: 200 }))
+        }
+
         // Botones de aceptación/rechazo de registro (para admin)
         if (esAdmin && (buttonId.startsWith('reg_accept_') || buttonId.startsWith('reg_reject_'))) {
-          const clientTel = buttonId.split('_').pop() || ''
+          // BUG-05 fix: extraer sólo los 10 dígitos del teléfono del buttonId
+          const telMatch = buttonId.match(/(\d{10})$/)
+          const clientTel = telMatch ? telMatch[1] : buttonId.replace(/^reg_(accept|reject)_/, '')
+          if (!clientTel || clientTel.length < 10) {
+            await sendWA(fromPhone, `⚠️ No pude identificar el teléfono del cliente desde el botón.`)
+            return await exitSafely(new Response('OK', { status: 200 }))
+          }
+          const { data: pendingReg } = await supabase.from('bot_memory')
+            .select('history').eq('phone', `pending_reg_${clientTel}`).maybeSingle()
+          const regInfo = pendingReg?.history?.[0]
+
           if (buttonId.startsWith('reg_accept_')) {
-            const { data: pendingReg } = await supabase.from('bot_memory')
-              .select('history').eq('phone', `pending_reg_${clientTel}`).maybeSingle()
-            const regInfo = pendingReg?.history?.[0]
-            if (regInfo) {
-              const { handleAdminMessage } = await import('./admin-handler.ts')
-              return await exitSafely(await handleAdminMessage(supabase, fromPhone, messageId, `Registra a ${regInfo.nombre} ${clientTel} colonia ${regInfo.colonia || 'Sin colonia'}`))
-            } else {
-              await sendWA(fromPhone, `⚠️ No encontré los datos de la solicitud para el número ${clientTel}. Es posible que ya haya sido procesada.`)
+            if (!regInfo) {
+              await sendWA(fromPhone, `⚠️ No encontré la solicitud para ${clientTel}. Es posible que ya fue procesada.`)
               return await exitSafely(new Response('OK', { status: 200 }))
             }
+            // ── Registro directo en BD — BUG-04 fix: sin nanoid externo, usar crypto nativo ──────
+            const rndBytes = crypto.getRandomValues(new Uint8Array(4))
+            const rndHex = Array.from(rndBytes).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase()
+            const qrCode = `QR-${clientTel}-${rndHex}`
+            const { error: insertErr } = await supabase.from('clientes').upsert({
+              telefono: clientTel,
+              nombre: regInfo.nombre,
+              direccion: regInfo.colonia ? `${regInfo.colonia}, ${regInfo.direccion || ''}`.trim() : (regInfo.direccion || null),
+              lat_frecuente: regInfo.lat || null,
+              lng_frecuente: regInfo.lng || null,
+              puntos: 0,
+              es_vip: false,
+              acepta_terminos: false,
+              qr_code: qrCode,
+              created_at: new Date().toISOString()
+            }, { onConflict: 'telefono' })
+
+            if (insertErr) {
+              console.error('[REG_ACCEPT] Error al insertar cliente:', insertErr)
+              await sendWA(fromPhone, `❌ Error al registrar a ${regInfo.nombre}. Intenta con /rol ${clientTel} cliente ${regInfo.nombre}`)
+            } else {
+              await supabase.from('bot_memory').delete().eq('phone', `pending_reg_${clientTel}`)
+              
+              // ── Enviar T&C con Botones ──
+              const tycUrl = `https://www.app-estrella.shop/terminos`
+              const tycTexto = `🌟 *¡Hola, ${regInfo.nombre.split(' ')[0]}! Nos alegra mucho que te unas a Estrella Delivery.* 🛵💨\n\nAl registrarte, entrarás a nuestro programa de lealtad donde:\n✅ Acumulas saldo y puntos con cada envío.\n🎁 Tienes acceso a promociones exclusivas.\n\nPara poder darte tu tarjeta VIP digital, por favor confirma que aceptas nuestros términos y condiciones. 👇\n\n🔗 *Léelos aquí:* ${tycUrl}`
+
+              await sendWA(`52${clientTel}`, tycTexto)
+              const { sendInteractiveButtons } = await import('./whatsapp.ts')
+              await sendInteractiveButtons(
+                `52${clientTel}`,
+                `¿Aceptas los términos y condiciones?`,
+                [
+                  { id: 'ACEPTAR_TERMINOS', title: '✅ Aceptar' },
+                  { id: 'RECHAZAR_TERMINOS', title: '❌ Rechazar' }
+                ]
+              )
+              
+              await sendWA(fromPhone, `✅ *Cliente Registrado: ${regInfo.nombre}* (${clientTel})\n\n📋 T&C enviados. ⏳ Cuando acepte, recibirá su QR automáticamente.`)
+            }
+            return await exitSafely(new Response('OK', { status: 200 }))
+
           } else {
-            const { data: pendingReg } = await supabase.from('bot_memory')
-              .select('history').eq('phone', `pending_reg_${clientTel}`).maybeSingle()
-            const regInfo = pendingReg?.history?.[0]
+            // Rechazo
             await supabase.from('bot_memory').delete().eq('phone', `pending_reg_${clientTel}`)
-            await sendWA(`52${clientTel}`, `Lo sentimos 🙏 Tu solicitud de registro fue revisada y no pudo ser aprobada en este momento. Si crees que es un error, contáctanos directamente.`)
+            await sendWA(`52${clientTel}`,
+              `Lo sentimos 🙏 Tu solicitud no pudo ser aprobada en este momento.\nSi crees que es un error, contáctanos directamente.`
+            )
             await sendWA(fromPhone, `❌ Solicitud de *${regInfo?.nombre || clientTel}* rechazada. El cliente fue notificado.`)
             return await exitSafely(new Response('OK', { status: 200 }))
           }
@@ -269,151 +396,12 @@ serve(async (req: Request) => {
     // Deben ir ANTES del flujo admin normal para no pasar por la IA
     if (esAdmin && msgType === 'text') {
       const slashText = (msg.text?.body as string || '').trim().toLowerCase()
-      if (slashText === '/repartidor') {
-        await supabase.from('bot_memory').upsert({
-          phone: `admin_mode_${from10}`,
-          history: [{ mode: 'repartidor', activado: Date.now() }],
-          updated_at: new Date().toISOString()
-        })
-        await sendWA(fromPhone, `🛵 *Modo Repartidor activado.*\nAhora recibirás pedidos como mensajero y puedes aceptarlos con el botón.\n\nEscribe */admin* para regresar a modo administrador.`)
-        return await exitSafely(new Response('OK', { status: 200 }))
-      }
-      if (slashText === '/admin') {
-        await supabase.from('bot_memory').delete().eq('phone', `admin_mode_${from10}`)
-        await sendWA(fromPhone, `👔 *Modo Admin activado.*\nYa tienes acceso completo al panel de administración.`)
-        return await exitSafely(new Response('OK', { status: 200 }))
-      }
-      if (slashText.startsWith('/usar ')) {
-        const codigo = slashText.replace('/usar ', '').trim().toUpperCase()
-        const { data, error } = await supabase.rpc('usar_cupon', { p_codigo: codigo })
-        if (error) await sendWA(fromPhone, `❌ Error interno: ${error.message}`)
-        else if (!data?.ok) await sendWA(fromPhone, `❌ Error: ${data?.error || 'Cupón no encontrado'}`)
-        else await sendWA(fromPhone, `✅ *Cupón Usado*\n\nSe ha marcado como usado el cupón *${codigo}* del cliente *${data.cliente_nombre}* (${data.cliente_tel}).\nYa puede generar uno nuevo.`)
-        return await exitSafely(new Response('OK', { status: 200 }))
-      }
-      if (slashText.startsWith('/cancelar ')) {
-        const codigo = slashText.replace('/cancelar ', '').trim().toUpperCase()
-        const { data: adminUser } = await supabase.from('admins').select('id').eq('telefono', from10).maybeSingle()
-        const { data, error } = await supabase.rpc('cancelar_cupon', {
-          p_codigo: codigo,
-          p_admin_id: adminUser?.id || null
-        })
-        if (error) await sendWA(fromPhone, `❌ Error interno: ${error.message}`)
-        else if (!data?.ok) await sendWA(fromPhone, `❌ Error: ${data?.error || 'Cupón no encontrado'}`)
-        else await sendWA(fromPhone, `✅ *Cupón Cancelado*\n\nSe ha cancelado el cupón *${codigo}* del cliente *${data.cliente_nombre}*.\nSe han devuelto *$${data.monto_reembolsado}* a su billetera.`)
-        return await exitSafely(new Response('OK', { status: 200 }))
-      }
-
-      if (slashText === '/testdiscord') {
-        await logError(
-          'whatsapp-bot',
-          '🔥 Prueba manual de Webhook iniciada por el administrador',
-          { user: fromPhone, test: true, timestamp: new Date().toISOString() },
-          'critical'
-        );
-        await sendWA(fromPhone, `📡 *Test Enviado*\nAcabo de disparar un error crítico de prueba. Si configuraste bien el \`DISCORD_WEBHOOK_URL\` en Supabase, el mensaje debió llegar al canal de Discord ahora mismo.`);
-        return await exitSafely(new Response('OK', { status: 200 }))
-      }
-
-      // ── COMANDOS DE EMERGENCIA (funcionan SIN DeepSeek) ──────────────────────
-      // Estos comandos permiten operar el negocio cuando la IA está caída.
-      if (slashText.startsWith('/pedido ')) {
-        // Formato: /pedido 9631234567 2 tacos pastor de Makitan
-        const args = (msg.text?.body as string).slice(8).trim()
-        const telMatch = args.match(/^(\d{10})\s+(.+)$/s)
-        if (!telMatch) {
-          await sendWA(fromPhone, `⚠️ Formato: */pedido 9631234567 descripción del pedido*`)
-          return await exitSafely(new Response('OK', { status: 200 }))
-        }
-        const [, cTel, desc] = telMatch
-        const pData = { clienteTel: cTel, clienteNombre: null, restaurante: null, descripcion: desc, direccion: null, repartidorAlias: null }
-        const r = await crearPedidoDesdeBot(supabase, pData, undefined, undefined, messageId)
-        if (r.ok && r.pedidoId) {
-          await sendWA(fromPhone, `✅ *Pedido creado (modo manual)*\n📞 Cliente: ${cTel}\n📦 ${desc}\n🔗 ${pedidoLink(r.pedidoId)}`)
-        } else {
-          await sendWA(fromPhone, `❌ Error: ${r.error || 'No se pudo crear el pedido'}`)
-        }
-        return await exitSafely(new Response('OK', { status: 200 }))
-      }
-
-      if (slashText.startsWith('/puntos ')) {
-        // Formato: /puntos 9631234567 [cantidad]
-        const args = slashText.slice(8).trim().split(/\s+/)
-        const cTel = args[0]?.replace(/\D/g, '').slice(-10)
-        const cant = parseInt(args[1] || '1') || 1
-        if (!cTel || cTel.length !== 10) {
-          await sendWA(fromPhone, `⚠️ Formato: */puntos 9631234567* o */puntos 9631234567 3*`)
-          return await exitSafely(new Response('OK', { status: 200 }))
-        }
-        let lastRes: any = null, rpcErr: any = null
-        for (let i = 0; i < cant; i++) {
-          const { data, error } = await supabase.rpc('fn_registrar_entrega', { p_cliente_tel: cTel })
-          if (error) { rpcErr = error; break }
-          if (data?.ok) lastRes = data
-        }
-        if (lastRes) {
-          await sendWA(fromPhone, `✅ *${cant} punto(s)* sumados a ${cTel}. Total: *${lastRes.puntos} pts*`)
-        } else {
-          await sendWA(fromPhone, `❌ Error: ${rpcErr?.message || 'Cliente no encontrado'}`)
-        }
-        return await exitSafely(new Response('OK', { status: 200 }))
-      }
-
-      if (slashText.startsWith('/buscar ')) {
-        const cTel = slashText.slice(8).trim().replace(/\D/g, '').slice(-10)
-        if (!cTel || cTel.length !== 10) {
-          await sendWA(fromPhone, `⚠️ Formato: */buscar 9631234567*`)
-          return await exitSafely(new Response('OK', { status: 200 }))
-        }
-        const { data: c } = await supabase.from('clientes')
-          .select('nombre, telefono, puntos, es_vip, rango, saldo_billetera, envios_totales, envios_gratis_disponibles, cupon_activo, notas_crm')
-          .ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
-        if (c) {
-          await sendWA(fromPhone,
-            `🔍 *${c.nombre || 'Sin nombre'}*\n📞 ${c.telefono}\n⭐ Puntos: ${c.puntos} | Rango: ${c.rango || 'bronce'}\n🎁 Envíos gratis: ${c.envios_gratis_disponibles}\n💰 Billetera: $${c.saldo_billetera || 0}\n🛵 Total entregas: ${c.envios_totales}\n${c.es_vip ? '👑 VIP' : ''}${c.cupon_activo ? `\n🎟️ Cupón: ${c.cupon_activo}` : ''}${c.notas_crm ? `\n📝 ${c.notas_crm.slice(0, 200)}` : ''}`)
-        } else {
-          await sendWA(fromPhone, `❌ Cliente no encontrado con ese número.`)
-        }
-        return await exitSafely(new Response('OK', { status: 200 }))
-      }
-
-      if (slashText.startsWith('/saldo ')) {
-        // Formato: /saldo 9631234567 150.50
-        const args = slashText.slice(7).trim().split(/\s+/)
-        const cTel = args[0]?.replace(/\D/g, '').slice(-10)
-        const monto = parseFloat(args[1] || '0')
-        if (!cTel || cTel.length !== 10 || isNaN(monto) || monto <= 0) {
-          await sendWA(fromPhone, `⚠️ Formato: */saldo 9631234567 150.50*`)
-          return await exitSafely(new Response('OK', { status: 200 }))
-        }
-        const { data: c } = await supabase.from('clientes').select('id, nombre, saldo_billetera').ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
-        if (c) {
-          const nuevoSaldo = (c.saldo_billetera || 0) + monto
-          await supabase.from('clientes').update({ saldo_billetera: nuevoSaldo }).eq('id', c.id)
-          await sendWA(fromPhone, `✅ *$${monto}* cargados a ${c.nombre || cTel}.\n💰 Saldo anterior: $${c.saldo_billetera || 0}\n💰 Saldo nuevo: *$${nuevoSaldo}*`)
-          // TODO: Race condition — si dos admins cargan saldo al mismo tiempo, uno se pierde.
-          // Migrar a un RPC atómico: UPDATE clientes SET saldo_billetera = saldo_billetera + p_monto
-        } else {
-          await sendWA(fromPhone, `❌ Cliente no encontrado.`)
-        }
-        return await exitSafely(new Response('OK', { status: 200 }))
-      }
-
-
-
-      if (slashText === '/ayuda' || slashText === '/help') {
-        await sendWA(fromPhone,
-          `📋 *COMANDOS DE EMERGENCIA*\n_(Funcionan sin IA)_\n\n` +
-          `📦 */pedido 963XXXXXXX descripción* — Crear pedido\n` +
-          `⭐ */puntos 963XXXXXXX [cantidad]* — Sumar puntos\n` +
-          `🔍 */buscar 963XXXXXXX* — Ver datos del cliente\n` +
-          `💰 */saldo 963XXXXXXX monto* — Cargar billetera\n` +
-          `🎟️ */usar CODIGO* — Marcar cupón como usado\n` +
-          `🚫 */cancelar CODIGO* — Cancelar cupón\n` +
-          `🛵 */repartidor* — Modo repartidor\n` +
-          `👔 */admin* — Modo administrador\n\n` +
-          `_Estos comandos no requieren IA y siempre funcionan._`)
-        return await exitSafely(new Response('OK', { status: 200 }))
+      
+      // Si empieza con '/', procesar como Slash Command
+      if (slashText.startsWith('/')) {
+        const { handleSlashCommands } = await import('./slash-commands-handler.ts')
+        const slashRes = await handleSlashCommands(supabase, fromPhone, from10, slashText, messageId)
+        if (slashRes) return await exitSafely(slashRes)
       }
     }
 
@@ -454,30 +442,35 @@ serve(async (req: Request) => {
         const texto = msg.text.body as string
         if (texto.toLowerCase() === 'debug_restaurantes') {
           const { data } = await supabase.from('restaurantes').select('nombre, telefono, activo').limit(50)
-          if (data) await sendWA(fromPhone, `📍 *RESTAURANTES REGISTRADOS:*\n${data.map((r: any) => `- ${r.nombre}: ${r.telefono} [${r.activo ? '✅' : '❌'}]`).join('\n')}`)
+          if (data) await sendWA(fromPhone, `📍 *RESTAURANTES REGISTRADOS:\n${data.map((r: any) => `- ${r.nombre}: ${r.telefono} [${r.activo ? '✅' : '❌'}]`).join('\n')}`)
           return await exitSafely(new Response('OK', { status: 200 }))
         }
 
-        // Bug #4 Fix: asignación rápida de restaurante CON TTL de 4h para evitar pedidos zombi
-        // AISLADO PARA ENFOCARSE EN LEALTAD:
-        /*
-        const { data: pendingMem } = await supabase.from('bot_memory').select('history').eq('phone', `admin_rest_pending_${admin10}`).maybeSingle()
-        const pendingData = pendingMem?.history?.[0]
-        const MAX_PENDING_MS = 4 * 60 * 60 * 1000 // 4 horas máximo
-        if (pendingData?.pedidos?.length > 0) {
-          const esReciente = pendingData.timestamp && (Date.now() - pendingData.timestamp) < MAX_PENDING_MS
-          if (esReciente) {
-            const assignRes = await handleAdminAssignRest(supabase, fromPhone, admin10, texto, pendingData)
-            if (assignRes) return assignRes
-          } else {
-            // Pedidos de más de 4h: limpiar silenciosamente para no interferir con el flujo normal
-            await supabase.from('bot_memory').delete().eq('phone', `admin_rest_pending_${admin10}`)
-            console.log(`[BOT] Pedidos restaurante expirados (>4h) limpiados para admin ${admin10}`)
+        // ── Captura de nota en sesión /fachada activa ─────────────────────
+        if (!texto.startsWith('/')) {
+          const { data: capSesion } = await supabase.from('bot_memory')
+            .select('history').eq('phone', `capture_mode_${from10}`).maybeSingle()
+          const sesionData = capSesion?.history?.[0]
+
+          // TTL: auto-cerrar si la sesión expiró (2h)
+          if (sesionData && sesionData.expira && Date.now() > sesionData.expira) {
+            await supabase.from('bot_memory').delete().eq('phone', `capture_mode_${from10}`)
+            await sendWA(fromPhone, `⏰ La sesión de captura de *${sesionData.clienteNombre}* expiró (2h). Iníciala de nuevo con /fachada si la necesitas.`)
+            // Deja caer al agente Admin normalmente
+          } else if (sesionData?.clienteId) {
+            const { data: cli } = await supabase.from('clientes').select('notas_crm').eq('id', sesionData.clienteId).maybeSingle()
+            const notaActual = cli?.notas_crm || ''
+            const fecha = new Date().toLocaleDateString('es-MX')
+            const notaNueva = notaActual
+              ? `${notaActual}\n[${fecha}] 💬 ${texto}`
+              : `[${fecha}] 💬 ${texto}`
+            await supabase.from('clientes').update({ notas_crm: notaNueva }).eq('id', sesionData.clienteId)
+            await sendWA(fromPhone, `📝 Nota guardada para *${sesionData.clienteNombre}*:\n_${texto}_`)
+            return await exitSafely(new Response('OK', { status: 200 }))
           }
         }
-        */
 
-        // Ejecutar agente Claude Admin
+        // Ejecutar agente Admin
         return await handleAdminMessage(supabase, fromPhone, messageId, texto)
       }
     }
@@ -515,11 +508,35 @@ serve(async (req: Request) => {
         }
 
         if (msgType === 'text') {
-          return await handleRepMessage(supabase, fromPhone, from10, msg.text?.body as string, adminAsRep)
+          const textoRep = msg.text?.body as string
+          // BUG-03 fix: si el repartidor tiene sesión /fachada activa, guardar texto como nota
+          if (textoRep && !textoRep.startsWith('/')) {
+            const { data: capSesionRep } = await supabase.from('bot_memory')
+              .select('history').eq('phone', `capture_mode_${from10}`).maybeSingle()
+            const sesionRep = capSesionRep?.history?.[0]
+            if (sesionRep?.clienteId && sesionRep.expira && Date.now() < sesionRep.expira) {
+              const { data: cliRep } = await supabase.from('clientes').select('notas_crm').eq('id', sesionRep.clienteId).maybeSingle()
+              const notaAnterior = cliRep?.notas_crm || ''
+              const fecha = new Date().toLocaleDateString('es-MX')
+              await supabase.from('clientes').update({
+                notas_crm: notaAnterior ? `${notaAnterior}\n[${fecha}] 💬 ${textoRep}` : `[${fecha}] 💬 ${textoRep}`
+              }).eq('id', sesionRep.clienteId)
+              await sendWA(fromPhone, `📝 Nota guardada para *${sesionRep.clienteNombre}*:\n_${textoRep}_`)
+              return await exitSafely(new Response('OK', { status: 200 }))
+            }
+          }
+          return await handleRepMessage(supabase, fromPhone, from10, textoRep, adminAsRep)
         }
 
         await sendWA(fromPhone, `🛵 *Modo Repartidor activo.*\nEnvía texto o usa los botones de pedido.\n\nEscribe */admin* para regresar a modo administrador.`)
         return await exitSafely(new Response('OK', { status: 200 }))
+      }
+
+      // 3.B MODO B2B RESTAURANTE ──
+      if (cachedRestData && msgType === 'text') {
+        const { handleRestaurantCommand } = await import('./restaurant-b2b-handler.ts')
+        const restResponse = await handleRestaurantCommand(supabase, fromPhone, cachedRestData.id, msg.text?.body as string)
+        if (restResponse) return await exitSafely(restResponse)
       }
 
       // AISLADO PARA ENFOCARSE EN LEALTAD:
@@ -579,8 +596,8 @@ serve(async (req: Request) => {
           .select('nombre, puntos, es_vip, reputacion, saldo_billetera, envios_totales, rango, acepta_terminos')
           .ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
 
-        // Preparar contexto para la IA
-        const clienteCtx = clienteDB ? {
+        // Preparar contexto para la IA (Solo si el cliente ya aceptó términos y es VIP)
+        const clienteCtx = (clienteDB && clienteDB.acepta_terminos === true) ? {
           nombre: clienteDB.nombre,
           puntos: clienteDB.puntos ?? 0,
           esVip: clienteDB.es_vip === true,
@@ -593,119 +610,46 @@ serve(async (req: Request) => {
         const { conversacionDeepSeek } = await import('./ai.ts')
 
         // ── Server-side registration state tracker ─────────────────────────────
-        // Load explicitly saved reg state (never inferred from free text).
-        let regState: { nombre?: string; tel?: string; colonia?: string } | undefined = undefined
-        if (!clienteDB) {
+        // Carga el estado explícito del registro (paso, nombre, colonia, tel).
+        // La máquina de estados en whatsapp-ai usa este objeto para saber en qué paso está.
+        let regState: { nombre?: string; tel?: string; colonia?: string; step?: number } | undefined = undefined
+        if (!clienteDB || clienteDB.acepta_terminos === false) {
           const { data: regData } = await supabase.from('bot_memory')
             .select('history').eq('phone', `reg_state_${from10}`).maybeSingle()
           if (regData?.history?.[0]) {
-            regState = regData.history[0] as { nombre?: string; tel?: string; colonia?: string }
+            regState = regData.history[0] as { nombre?: string; tel?: string; colonia?: string; step?: number }
           }
-          // Auto-populate phone from WhatsApp number — no need to ask
-          if (!regState) regState = { tel: from10 }
+          // Siempre pre-llenar el teléfono — nunca se lo pedimos al cliente
+          if (!regState) regState = { tel: from10, step: 0 }
           else if (!regState.tel) regState.tel = from10
           console.log('📋 RegState loaded:', JSON.stringify(regState))
         }
 
-        const resAI = await conversacionDeepSeek(supabase, fromPhone, msg.text.body as string, false, null, true, clienteCtx, regState)
+        // DESACOPLE ASÍNCRONO (Background Task):
+        // En lugar de hacer await conversacionDeepSeek, invocamos la nueva Edge Function en segundo plano.
+        // Esto evita que Meta colapse por Timeouts si la IA tarda más de 3 segundos.
+        const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
+        
+        fetch(`${SUPABASE_PROJECT_URL}/functions/v1/whatsapp-ai`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            fromPhone,
+            from10,
+            texto: msg.text.body as string,
+            isRepartidor: !!cachedRepData,
+            repartidorInfo: cachedRepData,
+            isClient: true,
+            clienteCtx,
+            regState
+          })
+        }).catch(err => console.error('Error invocando whatsapp-ai:', err))
 
-        if (resAI?.errorObj) {
-          await sendWA(fromPhone, `⚠️ Tuvimos un problema procesando tu mensaje. Reintenta en unos minutos.`)
-          return await exitSafely(new Response('OK', { status: 200 }))
-        }
-        if (resAI?.respuesta) {
-          if (resAI.respuesta.accion === 'REGISTRAR_RESTAURANTE') {
-            const nombre = resAI.respuesta.datosAExtraer?.nombre_restaurante
-            const correo = resAI.respuesta.datosAExtraer?.correo
-
-            await supabase.from('restaurantes_solicitudes').insert({
-              nombre_restaurante: nombre, correo, telefono: from10
-            })
-
-            const adminMsg = `🔔 *Nueva Solicitud de Restaurante*\n\nRestaurante: ${nombre}\nCorreo: ${correo}\nTeléfono: wa.me/52${from10}\n\nPara aprobar o rechazar, haz clic en el enlace seguro:`
-            const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
-            const functionUrl = `${SUPABASE_PROJECT_URL}/functions/v1/admin-approval`
-            const approvalSecret = Deno.env.get('ADMIN_APPROVAL_SECRET') || ''
-
-            await sendWA(`52${admin10}`, adminMsg)
-            await sendWA(`52${admin10}`, `✅ APROBAR: ${functionUrl}?action=accept&tel=${from10}&secret=${approvalSecret}`)
-            await sendWA(`52${admin10}`, `❌ RECHAZAR: ${functionUrl}?action=reject&tel=${from10}&secret=${approvalSecret}`)
-
-            await sendWA(fromPhone, `🎉 ¡Excelente *${nombre}*!\n\nTu solicitud ha sido enviada al equipo de administración. Recibirás un mensaje aquí mismo en cuanto sea aprobada para que puedas acceder al portal con tu correo *${correo}*.`)
-
-            await supabase.from('bot_memory').delete().eq('phone', from10)
-          } else if (resAI.respuesta.accion === 'SOLICITAR_REGISTRO') {
-            // Cliente no registrado quiere unirse al programa
-            const cNombre = resAI.respuesta.datosAExtraer?.clienteNombre || ''
-            const cTel = extract10Digits(resAI.respuesta.datosAExtraer?.clienteTel || from10) || from10
-            const cColonia = resAI.respuesta.datosAExtraer?.colonia || ''
-
-            if (cNombre && cColonia) {
-              // Guardar solicitud pendiente en bot_memory
-              await supabase.from('bot_memory').upsert({
-                phone: `pending_reg_${cTel}`,
-                history: [{ nombre: cNombre, telefono: cTel, colonia: cColonia, solicitado: new Date().toISOString() }],
-                updated_at: new Date().toISOString()
-              })
-
-              // Notificar al admin con botones de Aceptar / Rechazar
-              const { sendInteractiveButtons } = await import('./whatsapp.ts')
-              await sendInteractiveButtons(
-                `52${admin10}`,
-                `📋 *SOLICITUD DE REGISTRO*
-
-👤 Nombre: *${cNombre}*
-📱 Tel: wa.me/52${cTel}
-🏠 Colonia: ${cColonia}`,
-                [
-                  { id: `reg_accept_${cTel}`, title: '✅ Aceptar' },
-                  { id: `reg_reject_${cTel}`, title: '❌ Rechazar' }
-                ]
-              )
-
-              const aiMsg = `¡Perfecto! Te registro ahora mismo 🚀|||En un momento recibirás la confirmación 😊`
-              await sendWAMulti(fromPhone, aiMsg)
-
-              // Limpiar historial de conversación del cliente y reg_state
-              await supabase.from('bot_memory').delete().eq('phone', from10)
-              await supabase.from('bot_memory').delete().eq('phone', `reg_state_${from10}`)
-            } else {
-              // Faltan datos — la IA no extrajo el JSON correctamente.
-              // NO mandamos el mensaje de la IA porque sería una mentira (ej. "ya lo envié").
-              const fallbackMsg = 'Disculpa, el sistema no pudo capturar todos tus datos. 😕|||Por favor, escríbeme en un solo mensaje tu *Nombre*, *Teléfono* y *Colonia* para intentarlo de nuevo. 🙏'
-              await sendWAMulti(fromPhone, fallbackMsg)
-              if (resAI.nuevoHistorial) {
-                const { guardarMemoria } = await import('./db.ts')
-                await guardarMemoria(supabase, from10, resAI.nuevoHistorial)
-              }
-            }
-          } else {
-            const aiMsg = typeof resAI.respuesta?.mensajeUsuario === 'string' && resAI.respuesta.mensajeUsuario.trim()
-              ? resAI.respuesta.mensajeUsuario
-              : '¡Hola! Estoy aquí para ayudarte. ¿En qué puedo asistirte hoy? 😊'
-            await sendWAMulti(fromPhone, aiMsg)
-            if (resAI.nuevoHistorial) {
-              const { guardarMemoria } = await import('./db.ts')
-              await guardarMemoria(supabase, from10, resAI.nuevoHistorial)
-            }
-            // Persist any newly extracted registration data explicitly
-            if (!clienteDB && resAI.respuesta?.datosAExtraer) {
-              const d = resAI.respuesta.datosAExtraer
-              const newNombre = (d as any).clienteNombre || regState?.nombre
-              const newTel = (d as any).clienteTel || regState?.tel
-              const newColonia = (d as any).colonia || regState?.colonia
-              if (newNombre || newTel || newColonia) {
-                const updatedState = { nombre: newNombre, tel: newTel, colonia: newColonia }
-                await supabase.from('bot_memory').upsert({
-                  phone: `reg_state_${from10}`,
-                  history: [updatedState],
-                  updated_at: new Date().toISOString()
-                })
-                console.log('💾 RegState saved:', JSON.stringify(updatedState))
-              }
-            }
-          }
-        }
+        // Respondemos inmediatamente a Meta con 200 OK para no tener timeout
+        return await exitSafely(new Response('OK', { status: 200 }))
       } else {
         // Mensaje multimedia de cliente (imagen, audio, etc.)
         const profileName = body?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.profile?.name

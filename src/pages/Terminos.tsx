@@ -131,12 +131,27 @@ export function Terminos() {
               </div>
               <div className="bg-white/5 border border-white/10 rounded-3xl p-8 space-y-4">
                 <p className="text-gray-300 text-sm leading-relaxed">
-                  En cumplimiento con la Ley Federal de Protección de Datos Personales en Posesión de los Particulares, sus datos (teléfono y nombre) se utilizan únicamente para la gestión logística.
+                  En cumplimiento con la Ley Federal de Protección de Datos Personales en Posesión de los Particulares, al solicitar nuestros servicios usted otorga su <span className="text-white font-bold">consentimiento tácito</span> para el uso logístico de sus datos (teléfono, domicilio y coordenadas GPS). 
                 </p>
-                <div className="flex items-start gap-3 bg-orange-500/5 border border-orange-500/10 p-4 rounded-xl">
+                
+                <div className="bg-white/5 border border-white/10 p-5 rounded-xl space-y-2 mt-4">
+                  <h4 className="text-white font-bold text-sm">Uso de Fotografías de Fachada</h4>
+                  <p className="text-gray-400 text-xs leading-relaxed">
+                    Para asegurar entregas eficientes y exactas, nuestros repartidores están autorizados a capturar fotografías <span className="italic">exclusivamente del exterior de su domicilio</span> (fachada, número o portón). Está estrictamente prohibido capturar rostros, placas vehiculares privadas o el interior de la propiedad. Estas fotografías son de uso 100% interno para referencia logística y no se comparten con terceros.
+                  </p>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 p-5 rounded-xl space-y-2 mt-2">
+                  <h4 className="text-white font-bold text-sm">Comunicaciones y Marketing</h4>
+                  <p className="text-gray-400 text-xs leading-relaxed">
+                    Si usted no ha aceptado activamente el programa de lealtad VIP, sus datos se conservarán únicamente como "Registro Silencioso" para agilizar futuras entregas que usted solicite. Queda estrictamente prohibido el uso de su contacto para el envío de promociones, publicidad o SPAM.
+                  </p>
+                </div>
+
+                <div className="flex items-start gap-3 bg-orange-500/5 border border-orange-500/10 p-4 rounded-xl mt-4">
                   <Shield className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
                   <p className="text-xs text-orange-200/80">
-                    Usted tiene derecho a solicitar el acceso, rectificación, cancelación u oposición (Derechos ARCO) de sus datos enviando un mensaje a nuestro centro de atención en WhatsApp. Tenga en cuenta que la eliminación de sus datos implica la pérdida total de sus puntos acumulados.
+                    Usted tiene derecho a solicitar el acceso, rectificación, cancelación u oposición (Derechos ARCO) de sus datos enviando un mensaje a nuestro WhatsApp. Tenga en cuenta que la eliminación de sus datos implica la pérdida total de puntos y del historial logístico de entregas.
                   </p>
                 </div>
               </div>

@@ -54,6 +54,7 @@ REGLAS DEL ASISTENTE:
 4. NO ALUCINES: NUNCA inventes nombres, teléfonos o estados. El handler consulta la BD real.
 5. FORMULARIO DE REGISTRO: Si piden "agregar cliente" sin datos, usa RESPONDER con mensajeUsuario:
 "📝 *NUEVO CLIENTE / LEALTAD*\n👤 Nombre: \n📞 Teléfono: \n🌟 Puntos: 0"
+6. REGISTRO SILENCIOSO: Si el admin pide "agregar silenciosamente", "no le mandes mensaje", o "cómo agrego una fachada de alguien que no está", usa RESPONDER para decirle: "Para registrar un cliente silenciosamente sin enviarle mensajes, usa el comando: */noregistrado [10_digitos]*"
 
 HERRAMIENTAS DISPONIBLES:
 - CREAR_PEDIDO: Requiere restaurante, clienteTel, descripcion.
@@ -99,6 +100,7 @@ Reglas Estrictas:
 1. PROACTIVIDAD.
 2. NUNCA le digas "Jefe". Llámalo por su nombre "${repartidorInfo?.nombre}". Ni uses jergas militares.
 3. Si el repartidor indica texto normal ("Ya voy", "Voy retrasado", "Sale", "Gracias", etc), simplemente usa RESPONDER, reconoce el mensaje y sé breve.
+4. FOTOS Y CLIENTES NO REGISTRADOS: Si el repartidor pregunta cómo guardar una foto para alguien que no existe, dile: "Solo reenvía la foto con el número de teléfono como pie de foto y yo lo registro en automático. O también puedes usar el comando */noregistrado [10_digitos]*"
 
 SALIDA ESTRICTA (Únicamente un objeto JSON):
 {
@@ -168,6 +170,7 @@ REGLAS:
 5. ${ctx?.reputacion === 'malo' || ctx?.reputacion === 'regular' ? 'NO menciones su reputación. Atiéndelo normal.' : ctx?.reputacion === 'excelente' ? 'Hazle saber que es un cliente muy valorado 🌟' : 'Sé amable con todos.'}
 6. Si quieren registrar un restaurante, usa REGISTRAR_RESTAURANTE.
 7. SOLICITAR_REGISTRO SOLO cuando tengas los 3 datos Y el cliente los haya confirmado.
+8. POLÍTICA DE PRIVACIDAD: Si el cliente pregunta por sus datos o por qué le toman foto a su casa, explícale que: "Por seguridad de nuestros repartidores y agilidad logística tomamos fotos 100% EXTERIORES de la fachada (sin rostros). Si no eres VIP, tus datos jamás se usan para enviarte publicidad. Todo esto en cumplimiento con la LFPDPPP."
 
 HERRAMIENTAS:
 - RESPONDER: Chatear, saludar, informar puntos, pedir datos.
