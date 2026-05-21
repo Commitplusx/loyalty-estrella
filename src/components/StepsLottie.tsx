@@ -140,7 +140,45 @@ export function StepsLottie() {
             ))}
           </div>
 
-          {/* Transición suave entre diapositivas */}
+          {/* Área de animaciones Lottie pre-montadas (SIN DESMONTAR para evitar memory leak en Firefox) */}
+          <div className="relative h-48 sm:h-56 mt-5 mx-8">
+            {STEPS.map((s, idx) => {
+              const data = animCache[idx];
+              return (
+                <div 
+                  key={idx} 
+                  className="absolute inset-0 transition-opacity duration-300"
+                  style={{ 
+                    opacity: idx === active ? 1 : 0, 
+                    pointerEvents: idx === active ? 'auto' : 'none',
+                    willChange: 'opacity'
+                  }}
+                >
+                  {data === undefined ? (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className={`w-24 h-24 ${s.fallbackBg} rounded-3xl animate-pulse`} />
+                    </div>
+                  ) : data === 'failed' ? (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className={`w-24 h-24 ${s.fallbackBg} rounded-3xl flex items-center justify-center`}>
+                        <s.FallbackIcon className={`w-12 h-12 ${s.fallbackIcon}`} />
+                      </div>
+                    </div>
+                  ) : (
+                    <Lottie
+                      animationData={data}
+                      loop
+                      autoplay
+                      className="w-full h-full transform-gpu"
+                      rendererSettings={{ preserveAspectRatio: 'xMidYMid meet' }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Transición suave entre textos (solo el texto se desmonta) */}
           <AnimatePresence mode="wait" custom={direction}>
             <motion.div
               key={active}
@@ -150,13 +188,8 @@ export function StepsLottie() {
               exit={{ opacity: 0, x: direction * -28 }}
               transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
               style={{ willChange: 'transform, opacity' }}
-              className="flex-1 flex flex-col justify-between"
+              className="flex-1 flex flex-col justify-end"
             >
-              {/* Lottie area */}
-              <div className="px-8 pt-5 pb-2 h-48 sm:h-56">
-                {renderAnim()}
-              </div>
-
               {/* Text */}
               <div className="px-8 pb-8">
                 <span className={`inline-block text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded-full text-white ${step.barColor} mb-3`}>

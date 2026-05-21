@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, useInView, Variants } from 'framer-motion';
+import { motion, useInView, type Variants } from 'framer-motion';
 import { ArrowRight, Phone, Star, Gift, Zap, Shield, Heart, Truck, MapPin, Sparkles, CheckCircle, Clock, Store, ChevronRight } from 'lucide-react';
 import { useSchedule } from '@/hooks/useSchedule';
 import { supabase } from '@/lib/supabase';
@@ -174,6 +174,40 @@ export function Home() {
         </div>
       </section>
 
+      {/* ── GALERÍA DE PUBLICIDAD ── */}
+      {publicidadUrls.length > 0 && (
+        <section className="py-16 px-5 bg-gray-50/50 border-y border-gray-100 overflow-hidden">
+          <div className="max-w-6xl mx-auto">
+            <Reveal className="mb-10 text-center">
+              <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-3">En Acción</p>
+              <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-gray-900">Luciendo nuestros envíos</h2>
+              <p className="text-gray-500 mt-3 max-w-lg mx-auto">Un pequeño vistazo a nuestras entregas del día y los comercios locales que confían en nosotros.</p>
+            </Reveal>
+
+            <div className="flex overflow-x-auto pb-8 -mx-5 px-5 snap-x snap-mandatory hide-scrollbar gap-4" style={{ scrollbarWidth: 'none' }}>
+              {publicidadUrls.map((url, i) => (
+                <Reveal key={i} custom={i} variants={scaleIn}
+                  className="shrink-0 snap-center w-[160px] sm:w-[220px] aspect-[3/4] rounded-2xl overflow-hidden shadow-md border border-gray-200 relative group cursor-pointer"
+                >
+                  <img 
+                    src={`https://images.weserv.nl/?url=${encodeURIComponent(url)}&w=400&q=75&output=webp`}
+                    alt={`Publicidad ${i + 1}`} 
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out bg-gray-100" 
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                </Reveal>
+              ))}
+            </div>
+            
+            <style dangerouslySetInnerHTML={{ __html: `
+              .hide-scrollbar::-webkit-scrollbar { display: none; }
+            `}} />
+          </div>
+        </section>
+      )}
+
       {/* ── FEATURES ── */}
       <section className="py-24 px-5 max-w-5xl mx-auto">
         <Reveal className="mb-14 text-center">
@@ -275,38 +309,6 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── GALERÍA DE PUBLICIDAD ── */}
-      {publicidadUrls.length > 0 && (
-        <section className="py-20 px-5 bg-gray-50/50 border-y border-gray-100 overflow-hidden">
-          <div className="max-w-6xl mx-auto">
-            <Reveal className="mb-12 text-center">
-              <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-3">Descubre</p>
-              <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-gray-900">Lo Más Nuevo</h2>
-              <p className="text-gray-500 mt-3 max-w-lg mx-auto">Promociones, entregas y novedades destacadas de Estrella Delivery.</p>
-            </Reveal>
-
-            <div className="flex overflow-x-auto pb-8 -mx-5 px-5 snap-x snap-mandatory hide-scrollbar gap-5" style={{ scrollbarWidth: 'none' }}>
-              {publicidadUrls.map((url, i) => (
-                <Reveal key={i} custom={i} variants={scaleIn}
-                  className="shrink-0 snap-center w-[280px] sm:w-[320px] aspect-[4/5] rounded-3xl overflow-hidden shadow-lg border border-gray-200 relative group cursor-pointer"
-                >
-                  <img 
-                    src={url} 
-                    alt={`Publicidad ${i + 1}`} 
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out" 
-                    loading="lazy"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                </Reveal>
-              ))}
-            </div>
-            
-            <style dangerouslySetInnerHTML={{ __html: `
-              .hide-scrollbar::-webkit-scrollbar { display: none; }
-            `}} />
-          </div>
-        </section>
-      )}
 
       {/* ── RESTAURANTES SOCIOS (AISLADO) ── 
       {restaurantes.length > 0 && (
@@ -349,8 +351,7 @@ export function Home() {
           <div className="bg-blue-600 rounded-3xl p-12 sm:p-16 text-center text-white relative overflow-hidden">
             <div className="absolute inset-0 opacity-10"
               style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
-            <motion.div className="absolute -top-16 -right-16 w-64 h-64 bg-white/10 rounded-full blur-3xl"
-              animate={{ scale: [1, 1.15, 1] }} transition={{ duration: 6, repeat: Infinity }} />
+            <div className="absolute -top-16 -right-16 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
             <div className="relative z-10">
               <p className="text-blue-100 text-xs font-bold uppercase tracking-widest mb-4">Únete hoy</p>
               <h2 className="text-3xl sm:text-5xl font-black mb-5 tracking-tight">
