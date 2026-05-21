@@ -80,7 +80,6 @@ export function StepsLottie() {
   /* Área de renderizado de la animación (con los datos ya cargados en memoria) */
   const renderAnim = () => {
     if (cachedData === undefined) {
-      // Estado de carga inicial (skeleton neutral).
       return (
         <div className="w-full h-full flex items-center justify-center">
           <div className={`w-24 h-24 ${step.fallbackBg} rounded-3xl animate-pulse`} />
@@ -88,7 +87,6 @@ export function StepsLottie() {
       );
     }
     if (cachedData === 'failed') {
-      // Si falla la carga del JSON, mostramos un icono de respaldo limpio.
       return (
         <div className="w-full h-full flex items-center justify-center">
           <div className={`w-24 h-24 ${step.fallbackBg} rounded-3xl flex items-center justify-center`}>
@@ -97,13 +95,12 @@ export function StepsLottie() {
         </div>
       );
     }
-    // Datos listos para mostrarse sin retardos.
     return (
       <Lottie
         animationData={cachedData}
         loop
         autoplay
-        className="w-full h-full"
+        className="w-full h-full transform-gpu"
         rendererSettings={{ preserveAspectRatio: 'xMidYMid meet' }}
       />
     );
@@ -111,57 +108,75 @@ export function StepsLottie() {
 
   return (
     <div className="max-w-xl mx-auto select-none">
-      {/* Card */}
-      <div className={`bg-gradient-to-br ${step.color} rounded-3xl overflow-hidden border border-white/80 shadow-xl shadow-gray-200/60 transition-colors duration-500`}>
+      {/* Card con fondos optimizados por opacidad para evitar repaints del renderizador */}
+      <div className="relative rounded-3xl overflow-hidden border border-white/80 shadow-xl shadow-gray-200/60 h-[380px] sm:h-[420px] bg-white transform-gpu">
+        {/* Capas de degradado independientes animadas por GPU (opacity) */}
+        {STEPS.map((s, idx) => (
+          <div
+            key={idx}
+            className={`absolute inset-0 bg-gradient-to-br ${s.color} transition-opacity duration-500 ease-in-out`}
+            style={{
+              opacity: idx === active ? 1 : 0,
+              zIndex: 0,
+              willChange: 'opacity',
+            }}
+          />
+        ))}
 
-        {/* Top progress bars */}
-        <div className="flex gap-1.5 px-6 pt-5">
-          {STEPS.map((s, i) => (
-            <button
-              key={i}
-              onClick={() => goTo(i, i > active ? 1 : -1)}
-              aria-label={`Ir al paso ${i + 1}`}
-              className={`h-1 rounded-full transition-all duration-300 ${
-                i === active ? `flex-1 ${s.barColor}` : 'w-6 bg-gray-200 hover:bg-gray-300'
-              }`}
-            />
-          ))}
+        {/* Contenedor relativo para posicionar los elementos arriba del fondo */}
+        <div className="relative z-10 h-full flex flex-col justify-between">
+          {/* Top progress bars */}
+          <div className="flex gap-1.5 px-6 pt-5">
+            {STEPS.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => goTo(i, i > active ? 1 : -1)}
+                aria-label={`Ir al paso ${i + 1}`}
+                className={`h-1 rounded-full transition-all duration-300 ${
+                  i === active ? `flex-1 ${s.barColor}` : 'w-6 bg-gray-200/70 hover:bg-gray-300'
+                }`}
+                style={{ willChange: 'flex-grow, width' }}
+              />
+            ))}
+          </div>
+
+          {/* Transición suave entre diapositivas */}
+          <AnimatePresence mode="wait" custom={direction}>
+            <motion.div
+              key={active}
+              custom={direction}
+              initial={{ opacity: 0, x: direction * 28 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: direction * -28 }}
+              transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+              style={{ willChange: 'transform, opacity' }}
+              className="flex-1 flex flex-col justify-between"
+            >
+              {/* Lottie area */}
+              <div className="px-8 pt-5 pb-2 h-48 sm:h-56">
+                {renderAnim()}
+              </div>
+
+              {/* Text */}
+              <div className="px-8 pb-8">
+                <span className={`inline-block text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded-full text-white ${step.barColor} mb-3`}>
+                  Paso {step.num}
+                </span>
+                <h3 className="text-xl sm:text-2xl font-black text-gray-900 mb-2 tracking-tight">
+                  {step.title}
+                </h3>
+                <p className="text-sm text-gray-600 leading-relaxed">{step.desc}</p>
+              </div>
+            </motion.div>
+          </AnimatePresence>
         </div>
-
-        {/* Transición suave entre diapositivas */}
-        <AnimatePresence mode="wait" custom={direction}>
-          <motion.div
-            key={active}
-            custom={direction}
-            initial={{ opacity: 0, x: direction * 32 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: direction * -32 }}
-            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-          >
-            {/* Lottie area */}
-            <div className="px-8 pt-5 pb-2 h-52 sm:h-60">
-              {renderAnim()}
-            </div>
-
-            {/* Text */}
-            <div className="px-8 pb-8">
-              <span className={`inline-block text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded-full text-white ${step.barColor} mb-3`}>
-                Paso {step.num}
-              </span>
-              <h3 className="text-xl sm:text-2xl font-black text-gray-900 mb-2 tracking-tight">
-                {step.title}
-              </h3>
-              <p className="text-sm text-gray-500 leading-relaxed">{step.desc}</p>
-            </div>
-          </motion.div>
-        </AnimatePresence>
       </div>
 
       {/* Controls row */}
       <div className="flex items-center justify-between mt-4 px-1">
         <button
           onClick={prev}
-          className="w-10 h-10 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 hover:text-blue-600 hover:border-blue-200 transition-colors"
+          className="w-10 h-10 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 hover:text-blue-600 hover:border-blue-200 transition-all duration-150 transform-gpu active:scale-95"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
@@ -182,13 +197,13 @@ export function StepsLottie() {
 
         <button
           onClick={next}
-          className="w-10 h-10 rounded-full bg-blue-600 shadow-md shadow-blue-600/30 flex items-center justify-center text-white hover:bg-blue-700 transition-colors"
+          className="w-10 h-10 rounded-full bg-blue-600 shadow-md shadow-blue-600/30 flex items-center justify-center text-white hover:bg-blue-700 transition-all duration-150 transform-gpu active:scale-95"
         >
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Barra de progreso visual del avance automático */}
+      {/* Barra de progreso visual del avance automático - Acelerado por hardware */}
       <div className="mt-3 h-0.5 bg-gray-100 rounded-full overflow-hidden">
         <motion.div
           key={active}
@@ -196,6 +211,7 @@ export function StepsLottie() {
           initial={{ scaleX: 0 }}
           animate={{ scaleX: 1 }}
           transition={{ duration: AUTO_ADVANCE_MS / 1000, ease: 'linear' }}
+          style={{ willChange: 'transform' }}
         />
       </div>
     </div>
