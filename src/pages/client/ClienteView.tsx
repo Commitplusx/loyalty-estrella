@@ -437,7 +437,7 @@ export function ClienteView() {
             {/* Estado tienda */}
             <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-white/15 text-white backdrop-blur-sm">
               <span className={`w-1.5 h-1.5 rounded-full ${storeState.isOpen ? 'bg-green-400 animate-pulse' : 'bg-red-300'}`} />
-              {storeState.isOpen ? (storeState.isHappyHour ? '🔥 Hora Feliz' : 'Abierto') : 'Cerrado'}
+              {storeState.isOpen ? 'Abierto' : 'Cerrado'}
             </div>
 
             {/* Controles derechos */}
@@ -445,10 +445,10 @@ export function ClienteView() {
               <Badge
                 variant={storeState.isOpen ? 'default' : 'secondary'}
                 className={`sm:hidden text-[11px] px-3 py-1 font-black ${storeState.isOpen
-                  ? storeState.isHappyHour ? 'bg-amber-500 shadow-lg shadow-amber-500/30' : 'bg-green-500 shadow-lg shadow-green-500/30'
+                  ? 'bg-green-500 shadow-lg shadow-green-500/30'
                   : 'bg-white/20 text-white'}`}
               >
-                {storeState.isOpen ? (storeState.isHappyHour ? 'HORA FELIZ' : 'ABIERTO') : 'CERRADO'}
+                {storeState.isOpen ? 'ABIERTO' : 'CERRADO'}
               </Badge>
               <button
                 onClick={toggle}
@@ -633,11 +633,11 @@ export function ClienteView() {
             animate={{ opacity: 1, y: 0 }} 
             exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.3 }}
-            className="grid lg:grid-cols-[1fr_minmax(auto,450px)_1fr] gap-6 lg:gap-8 items-start"
-          style={{ background: 'transparent' }}
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1fr_minmax(auto,450px)_1fr] gap-6 lg:gap-8 items-start"
+            style={{ background: 'transparent' }}
           >
             {/* Left Column (PC) / Bottom (Mobile): Authority Counter y Promos */}
-            <div className="space-y-6 order-2 lg:order-1 pt-2 lg:pt-0">
+            <div className="space-y-6 order-2 lg:order-1 pt-2 lg:pt-0 md:col-span-2 lg:col-span-1">
               <div className="hidden lg:block pt-4">
                 <AuthorityCounter />
               </div>
@@ -645,7 +645,7 @@ export function ClienteView() {
             </div>
 
             {/* Center Column: El Formulario Principal */}
-            <div className="space-y-6 order-1 lg:order-2">
+            <div className="space-y-6 order-1 lg:order-2 md:col-span-2 lg:col-span-1">
               <div className="block lg:hidden pt-6 pb-2">
                 <AuthorityCounter />
               </div>
@@ -701,7 +701,7 @@ export function ClienteView() {
                       <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="mt-3">
                         <Button
                           type="button"
-                          onClick={() => window.location.href = '/restaurantes'}
+                          onClick={() => toast.success('¡Próximamente! 🚀', 'Estamos afiliando nuevos restaurantes para ti muy pronto.')}
                           className="w-full h-16 bg-white dark:bg-zinc-900 hover:bg-orange-50 dark:hover:bg-zinc-800 text-orange-600 dark:text-orange-400 border-2 border-orange-200 dark:border-orange-900/50 font-bold text-xl rounded-2xl"
                         >
                           <Utensils className="w-6 h-6 mr-3" />
@@ -728,14 +728,14 @@ export function ClienteView() {
                   </CardContent>
                 </Card>
                 <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group rounded-3xl">
-                  <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-orange-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                   <CardContent className="p-6 flex items-center gap-5 relative z-10">
-                    <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center shrink-0 shadow-inner shadow-orange-500/50">
-                      <Sparkles className="w-8 h-8 text-white" />
+                    <div className="w-16 h-16 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-2xl flex items-center justify-center shrink-0 shadow-inner shadow-indigo-500/50">
+                      <Truck className="w-8 h-8 text-white" />
                     </div>
                     <div>
-                      <p className="font-black text-xl text-foreground tracking-tight">Hora Feliz</p>
-                      <p className="text-base font-bold text-amber-600/70 dark:text-amber-500/70">Tus envíos a $35</p>
+                      <p className="font-black text-xl text-foreground tracking-tight">Compromiso</p>
+                      <p className="text-base font-bold text-blue-600/70 dark:text-blue-400/70">Tus envíos garantizados</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -758,14 +758,14 @@ export function ClienteView() {
                   </CardContent>
                 </Card>
                 <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-orange-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                   <CardContent className="p-4 flex items-center gap-4 relative z-10">
-                    <div className="w-12 h-12 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center shrink-0 shadow-inner shadow-orange-500/50">
-                      <Sparkles className="w-6 h-6 text-white" />
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-xl flex items-center justify-center shrink-0 shadow-inner shadow-indigo-500/50">
+                      <Truck className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <p className="font-extrabold text-foreground tracking-tight">Hora Feliz</p>
-                      <p className="text-sm font-medium text-amber-600/70 dark:text-amber-500/70">Tus envíos a $35</p>
+                      <p className="font-extrabold text-foreground tracking-tight">Compromiso</p>
+                      <p className="text-sm font-medium text-blue-600/70 dark:text-blue-400/70">Tus envíos garantizados</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -778,41 +778,10 @@ export function ClienteView() {
                     <Clock className="w-8 h-8 text-orange-500" />
                     <h3 className="font-black text-2xl text-foreground">Horario de Atención</h3>
                   </div>
-                  <div className="flex flex-col xl:flex-row xl:items-center justify-between p-5 bg-muted/30 dark:bg-muted/50 rounded-2xl mb-5 gap-2 border-2 border-dashed border-muted">
+                  <div className="flex flex-col xl:flex-row xl:items-center justify-between p-5 bg-muted/30 dark:bg-muted/50 rounded-2xl mb-2 gap-2 border-2 border-dashed border-muted">
                     <span className="text-muted-foreground font-bold text-lg">Lunes a Domingo</span>
                     <span className="font-black text-foreground text-lg">9:00 AM - 10:00 PM</span>
                   </div>
-                  {horasFelices.filter(h => h.activo).length > 0 && (
-                    <div className="relative overflow-hidden p-5 bg-gradient-to-br from-amber-500 to-orange-500 text-white rounded-2xl shadow-lg shadow-orange-500/20 mt-2">
-                      {/* Artistic glows */}
-                      <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white/20 rounded-full blur-3xl pointer-events-none"></div>
-                      <div className="absolute bottom-0 left-0 -mb-4 -ml-4 w-24 h-24 bg-black/10 rounded-full blur-2xl pointer-events-none"></div>
-                      
-                      <div className="relative z-10 flex items-center gap-4 mb-6">
-                        <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm shadow-inner">
-                          <Sparkles className="w-8 h-8 text-yellow-100" />
-                        </div>
-                        <div>
-                          <h4 className="font-black text-2xl lg:text-2xl text-white tracking-tight leading-tight drop-shadow-sm">Horas Felices</h4>
-                          <p className="text-orange-100 text-sm font-bold uppercase tracking-wider">Envíos a solo $35</p>
-                        </div>
-                      </div>
-                      
-                      <div className="relative z-10 grid gap-2.5">
-                        {horasFelices.filter(h => h.activo).map((hora) => (
-                          <div key={hora.dia} className="flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-3 px-3 py-3 sm:px-4 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 shadow-sm transition-all hover:bg-white/20">
-                            <span className="text-white font-medium flex items-center gap-2 text-sm lg:text-base drop-shadow-sm">
-                              <span className="w-2 h-2 bg-yellow-300 rounded-full animate-pulse shadow-[0_0_8px_rgba(253,224,71,0.8)] shrink-0"></span>
-                              <span className="truncate">{hora.nombre}</span>
-                            </span>
-                            <span className="font-bold text-yellow-100 tracking-wide bg-black/20 px-2 py-1 sm:px-3 sm:py-1 rounded-lg text-xs sm:text-sm backdrop-blur-sm shadow-inner w-fit">
-                              {formatTime(hora.hora_inicio)} - {formatTime(hora.hora_fin)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             </div>
