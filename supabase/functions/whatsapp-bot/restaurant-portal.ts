@@ -98,13 +98,7 @@ function extraerTelefonos(texto: string): string[] {
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // REGLA GEOGRÁFICA "HORA FELIZ" (Lun & Sab, 17:00-19:00, Centro Comitán)
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-function esHoraFeliz(): boolean {
-  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" }))
-  const dia = now.getDay()
-  const hora = now.getHours()
-  if (![1, 6].includes(dia)) return false
-  return (hora >= 17 && hora < 19)
-}
+// (Función esHoraFeliz eliminada — no se usaba en ningún lugar)
 
 async function leerEstado(supabase: SupabaseClient, memKey: string): Promise<EstadoSesion> {
   try {

@@ -339,9 +339,7 @@ export function SplashScreen({ onComplete }: Props) {
               50%      { transform: translate3d(0,var(--dy),0);   opacity: 0.65; }
             }
             .splash-particle {
-              animation: splashParticle var(--dur,3s) ease-in-out infinite;
-              animation-duration: inherit;
-              animation-delay: inherit;
+              animation: splashParticle 3s ease-in-out infinite;
             }
 
             @keyframes splashDot {

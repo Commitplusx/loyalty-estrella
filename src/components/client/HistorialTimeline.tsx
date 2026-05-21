@@ -48,8 +48,10 @@ export function HistorialTimeline({ historial }: HistorialTimelineProps) {
         ))}
       </div>
       <div className="space-y-3">
-        {historial.length === 0 ? (
-          <p className="text-gray-500 italic text-center text-sm py-4">Aún no hay movimientos</p>
+        {filtered.length === 0 ? (
+          <p className="text-gray-500 italic text-center text-sm py-4">
+            {historial.length === 0 ? 'Aún no hay movimientos' : 'No hay movimientos de este tipo'}
+          </p>
         ) : (
           filtered
             .slice(0, historialLimit)

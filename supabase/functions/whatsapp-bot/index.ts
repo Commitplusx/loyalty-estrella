@@ -151,17 +151,17 @@ serve(async (req: Request) => {
       userLabel = 'admin'
     } else {
       // Ejecución paralela de roles para reducir latencia (Escalabilidad Fase 2)
-      const [resRep, resRest] = await Promise.all([
+      const [resRep] = await Promise.all([
         supabase.from('repartidores').select('id, user_id, nombre, alias').ilike('telefono', `%${from10}%`).limit(1).maybeSingle(),
-        supabase.from('restaurantes').select('id').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
+        // AISLADO: supabase.from('restaurantes').select('id').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
       ])
 
       if (resRep.data) {
         userLabel = 'repartidor'
         cachedRepData = resRep.data
-      } else if (resRest.data) {
+      } /* else if (resRest.data) {
         userLabel = 'restaurante'
-      }
+      } */
     }
 
     // ── SYNC A CHATWOOT CRM — guarda el promise para usarlo en la respuesta del bot ──
@@ -459,6 +459,8 @@ serve(async (req: Request) => {
         }
 
         // Bug #4 Fix: asignación rápida de restaurante CON TTL de 4h para evitar pedidos zombi
+        // AISLADO PARA ENFOCARSE EN LEALTAD:
+        /*
         const { data: pendingMem } = await supabase.from('bot_memory').select('history').eq('phone', `admin_rest_pending_${admin10}`).maybeSingle()
         const pendingData = pendingMem?.history?.[0]
         const MAX_PENDING_MS = 4 * 60 * 60 * 1000 // 4 horas máximo
@@ -473,6 +475,7 @@ serve(async (req: Request) => {
             console.log(`[BOT] Pedidos restaurante expirados (>4h) limpiados para admin ${admin10}`)
           }
         }
+        */
 
         // Ejecutar agente Claude Admin
         return await handleAdminMessage(supabase, fromPhone, messageId, texto)
@@ -519,8 +522,11 @@ serve(async (req: Request) => {
         return await exitSafely(new Response('OK', { status: 200 }))
       }
 
+      // AISLADO PARA ENFOCARSE EN LEALTAD:
+      /*
       const portalResponse = await handleRestaurantPortal(supabase, fromPhone, from10, admin10, `52${admin10}`, msgType, msg, sendWA, sendInteractiveButton)
       if (portalResponse) return portalResponse
+      */
     }
 
     // La búsqueda de repartidor ya fue cacheada al inicio en cachedRepData (Escalabilidad Fase 2)
@@ -532,6 +538,8 @@ serve(async (req: Request) => {
     }
 
     // 5. CLIENT INTERACTIVE BUTTONS (Aceptar / Rechazar orden)
+    // AISLADO PARA ENFOCARSE EN LEALTAD:
+    /*
     if (!cachedRepData && (!esAdmin || adminEnModoRepartidor)) {
       const buttonText = msgType === 'interactive'
         ? (msg.interactive?.button_reply?.title || msg.interactive?.button_reply?.id || '')
@@ -540,7 +548,7 @@ serve(async (req: Request) => {
       const normalizedText = buttonText.trim().toLowerCase()
 
       if (normalizedText === 'aceptar') {
-        await sendWA(fromPhone, `✅ **¡Confirmado!** Hemos validado tu pedido.\n\nPrepara la mesa 🍽️, te avisaremos por este medio en cuanto tu repartidor inicie la ruta hacia tu domicilio. 🛵💨`)
+        await sendWA(fromPhone, `✅ *¡Confirmado!* Hemos validado tu pedido.\n\nPrepara la mesa 🍽️, te avisaremos por este medio en cuanto tu repartidor inicie la ruta hacia tu domicilio. 🛵💨`)
         return await exitSafely(new Response('OK', { status: 200 }))
       } else if (normalizedText === 'rechazar') {
         await sendWA(fromPhone, `❌ Lamentamos el inconveniente. Un administrador ha sido notificado y se pondrá en contacto contigo a la brevedad.`)
@@ -550,6 +558,7 @@ serve(async (req: Request) => {
         return await exitSafely(new Response('OK', { status: 200 }))
       }
     }
+    */
 
     // 6. FLUJO INTELIGENTE DE CLIENTES ──
     // Helper: envía mensajes separados si la IA usa ||| como separador

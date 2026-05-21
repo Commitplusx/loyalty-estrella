@@ -43,7 +43,7 @@ export async function logError(
 
     if (supabaseUrl && supabaseKey) {
       // Intentar escribir en la tabla system_logs mediante REST
-      fetch(`${supabaseUrl}/rest/v1/system_logs`, {
+      await fetch(`${supabaseUrl}/rest/v1/system_logs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -65,7 +65,7 @@ export async function logError(
         const discordMsg = {
           content: rawContent.substring(0, 1900) // Discord hard limit is 2000 chars
         };
-        fetch(webhookUrl, {
+        await fetch(webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(discordMsg)

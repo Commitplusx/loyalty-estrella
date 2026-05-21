@@ -1,24 +1,24 @@
 import { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, useInView } from 'framer-motion';
-import { ArrowRight, Phone, Star, Gift, Zap, Shield, Heart, Truck, MapPin, Sparkles, CheckCircle, Clock, Store } from 'lucide-react';
+import { motion, useInView, Variants } from 'framer-motion';
+import { ArrowRight, Phone, Star, Gift, Zap, Shield, Heart, Truck, MapPin, Sparkles, CheckCircle, Clock, Store, ChevronRight } from 'lucide-react';
 import { useSchedule } from '@/hooks/useSchedule';
 import { supabase } from '@/lib/supabase';
 import AuthorityCounter from '@/components/client/AuthorityCounter';
 import { StepsLottie } from '@/components/StepsLottie';
 
 /* ── Shared variants — GPU-only properties (transform + opacity) ── */
-const fadeUp = {
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 28 },
-  show: (i = 0) => ({
+  show: (i: number = 0) => ({
     opacity: 1, y: 0,
     transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: i * 0.08 },
   }),
 };
 
-const scaleIn = {
+const scaleIn: Variants = {
   hidden: { opacity: 0, scale: 0.92 },
-  show: (i = 0) => ({
+  show: (i: number = 0) => ({
     opacity: 1, scale: 1,
     transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: i * 0.07 },
   }),
@@ -51,91 +51,6 @@ const FEATURES = [
   { icon: Heart,  title: 'Clientes VIP',        desc: 'Asciende de rango y desbloquea beneficios exclusivos.', bg: 'bg-blue-600', iconBg: 'bg-white/10 text-white', dark: true },
 ];
 
-const STEPS = [
-  { num: '01', icon: Phone, title: 'Pide tu envío', desc: 'Contacta al repartidor y realiza tu pedido como siempre.' },
-  { num: '02', icon: Star,  title: 'Muestra tu QR', desc: 'Abre la app y muestra tu código personal. El repartidor lo escanea.' },
-  { num: '03', icon: Gift,  title: 'Canjea tu gratis', desc: 'Cada 5 envíos acumulas uno gratis. Se aplica automáticamente.' },
-];
-
-/* ── StepCard: extracted so we can use hooks legally (not inside map) ── */
-function StepCard({ step, index }: { step: { num: string; icon: React.ElementType; title: string; desc: string }; index: number }) {
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: true, margin: '-50px' });
-
-  // Each step animates in from a different direction
-  const directions = [
-    { x: -50, y: 0 },    // 01 ← from left
-    { x: 0,   y: 50 },  // 02 ↑ from below
-    { x: 50,  y: 0 },   // 03 → from right
-  ];
-  const dir = directions[index] ?? { x: 0, y: 40 };
-
-  return (
-    <motion.div
-      ref={ref}
-      initial={{ opacity: 0, x: dir.x, y: dir.y }}
-      animate={inView ? { opacity: 1, x: 0, y: 0 } : {}}
-      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1], delay: index * 0.12 }}
-      className="relative group"
-    >
-      <div className="bg-white border border-gray-100 rounded-2xl p-6 sm:p-7 h-full
-        hover:border-blue-200 hover:shadow-xl hover:shadow-blue-50/80 transition-all duration-300">
-
-        <div className="flex items-start justify-between mb-5">
-          {/* Step number — floats up on hover */}
-          <motion.span
-            animate={inView ? { y: [0, -4, 0] } : {}}
-            transition={{ duration: 2.5, delay: index * 0.3 + 0.8, repeat: Infinity, ease: 'easeInOut' }}
-            className="text-5xl sm:text-6xl font-black leading-none select-none
-              bg-gradient-to-br from-blue-200 to-blue-400 bg-clip-text text-transparent
-              group-hover:from-blue-500 group-hover:to-blue-700 transition-all duration-400"
-          >
-            {step.num}
-          </motion.span>
-
-          <motion.div
-            whileHover={{ rotate: 15, scale: 1.15 }}
-            whileTap={{ scale: 0.92 }}
-            className="w-11 h-11 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-center
-              group-hover:bg-blue-600 group-hover:border-blue-600 transition-all duration-300 shadow-sm group-hover:shadow-blue-600/30 group-hover:shadow-lg"
-          >
-            <step.icon className="w-5 h-5 text-blue-500 group-hover:text-white transition-colors duration-300" />
-          </motion.div>
-        </div>
-
-        <h3 className="font-bold text-gray-900 text-base sm:text-lg mb-2">{step.title}</h3>
-        <p className="text-sm text-gray-500 leading-relaxed">{step.desc}</p>
-
-        {/* Animated progress bar */}
-        <motion.div
-          className="mt-5 h-[3px] bg-gradient-to-r from-blue-500 via-blue-400 to-blue-200 rounded-full origin-left"
-          initial={{ scaleX: 0 }}
-          animate={inView ? { scaleX: 1 } : {}}
-          transition={{ duration: 0.8, delay: index * 0.18 + 0.5, ease: [0.22, 1, 0.36, 1] }}
-        />
-
-        {/* Animated dot at end of bar */}
-        <motion.div
-          className="w-2 h-2 rounded-full bg-blue-500 mt-1 ml-auto"
-          initial={{ opacity: 0, scale: 0 }}
-          animate={inView ? { opacity: 1, scale: 1 } : {}}
-          transition={{ duration: 0.3, delay: index * 0.18 + 1.2 }}
-        />
-      </div>
-
-      {index < 2 && (
-        <div className="hidden md:flex absolute top-10 -right-3 z-10 w-6 h-6 items-center justify-center">
-          <motion.div
-            animate={inView ? { x: [0, 4, 0] } : {}}
-            transition={{ duration: 1.5, delay: index * 0.15 + 1, repeat: Infinity, ease: 'easeInOut' }}
-          >
-            <ChevronRight className="w-4 h-4 text-blue-300" />
-          </motion.div>
-        </div>
-      )}
-    </motion.div>
-  );
-}
 
 export function Home() {
   const navigate = useNavigate();
@@ -143,11 +58,23 @@ export function Home() {
   const whatsappNum = contacto.whatsapp.replace(/\D/g, '');
   const whatsappUrl = whatsappNum ? `https://wa.me/${whatsappNum}` : '';
 
-  const [restaurantes, setRestaurantes] = useState<any[]>([]);
+  // const [restaurantes, setRestaurantes] = useState<any[]>([]);
+  const [publicidadUrls, setPublicidadUrls] = useState<string[]>([]);
 
   useEffect(() => {
+    /*
     supabase.from('restaurantes').select('id, nombre, foto_fachada_url').eq('activo', true).limit(8).order('nombre')
       .then(({ data }) => setRestaurantes(data || []));
+    */
+    
+    // Fetch publicidad images from the new bucket
+    supabase.storage.from('publicidad').list().then(({ data }) => {
+      if (data) {
+        const files = data.filter(f => f.name && !f.name.startsWith('.'));
+        const urls = files.map(f => supabase.storage.from('publicidad').getPublicUrl(f.name).data.publicUrl);
+        setPublicidadUrls(urls);
+      }
+    });
   }, []);
 
   // Scroll-aware nav: add shadow + stronger bg when user scrolls
@@ -348,7 +275,40 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── RESTAURANTES SOCIOS ── */}
+      {/* ── GALERÍA DE PUBLICIDAD ── */}
+      {publicidadUrls.length > 0 && (
+        <section className="py-20 px-5 bg-gray-50/50 border-y border-gray-100 overflow-hidden">
+          <div className="max-w-6xl mx-auto">
+            <Reveal className="mb-12 text-center">
+              <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-3">Descubre</p>
+              <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-gray-900">Lo Más Nuevo</h2>
+              <p className="text-gray-500 mt-3 max-w-lg mx-auto">Promociones, entregas y novedades destacadas de Estrella Delivery.</p>
+            </Reveal>
+
+            <div className="flex overflow-x-auto pb-8 -mx-5 px-5 snap-x snap-mandatory hide-scrollbar gap-5" style={{ scrollbarWidth: 'none' }}>
+              {publicidadUrls.map((url, i) => (
+                <Reveal key={i} custom={i} variants={scaleIn}
+                  className="shrink-0 snap-center w-[280px] sm:w-[320px] aspect-[4/5] rounded-3xl overflow-hidden shadow-lg border border-gray-200 relative group cursor-pointer"
+                >
+                  <img 
+                    src={url} 
+                    alt={`Publicidad ${i + 1}`} 
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out" 
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                </Reveal>
+              ))}
+            </div>
+            
+            <style dangerouslySetInnerHTML={{ __html: `
+              .hide-scrollbar::-webkit-scrollbar { display: none; }
+            `}} />
+          </div>
+        </section>
+      )}
+
+      {/* ── RESTAURANTES SOCIOS (AISLADO) ── 
       {restaurantes.length > 0 && (
         <section className="py-20 px-5 bg-gray-50/50 border-y border-gray-100">
           <div className="max-w-5xl mx-auto">
@@ -381,6 +341,7 @@ export function Home() {
           </div>
         </section>
       )}
+      */}
 
       {/* ── CTA FINAL ── */}
       <section className="py-10 pb-24 px-5 max-w-5xl mx-auto">

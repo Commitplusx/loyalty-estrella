@@ -345,7 +345,7 @@ export function subscribeToCliente(
     });
 
   return () => {
-    channel.unsubscribe();
+    supabase.removeChannel(channel);
   };
 }
 

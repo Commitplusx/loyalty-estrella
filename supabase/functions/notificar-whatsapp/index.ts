@@ -325,7 +325,7 @@ serve(async (req: Request) => {
 
     // ── ZOMBIE WATCHDOG (INTERVENCIÓN DEL ADMIN) ──
     if (tipo === 'alerta_zombie') {
-      const adminPhone = Deno.env.get('ADMIN_PHONE')
+      const adminPhone = Deno.env.get('ADMIN_PHONE') || (Deno.env.get('ADMIN_PHONES') ?? '').split(',')[0]?.trim()
       if (!adminPhone) throw new Error('Missing ADMIN_PHONE en entorno')
       
       let repInfoTexto = '🛵 *Repartidor:* Ninguno asignado'
@@ -515,7 +515,7 @@ serve(async (req: Request) => {
 
     console.log("Final Actions:", results)
     return new Response(JSON.stringify({ ok: true, actions: results }), {
-      status: 200, headers: { 'Content-Type': 'application/json' },
+      status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     })
 
   } catch (e: any) {

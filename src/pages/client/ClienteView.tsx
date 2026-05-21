@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Phone, Search, Gift,
-  TrendingUp, Clock, MapPin, Sparkles, Download,
+  TrendingUp, Clock, MapPin, Download,
   ChevronLeft, QrCode, AlertCircle, Crown, Sun, Moon,
   Truck, X, Share2, Heart, Utensils
 } from 'lucide-react';
@@ -62,12 +62,12 @@ export function ClienteView() {
   const [pinError, setPinError] = useState(false);
   const [pinLoading, setPinLoading] = useState(false);
   const [pinAttempts, setPinAttempts] = useState(0);
-  const [pinConfirm, setPinConfirm] = useState(''); // para el setup de PIN
+  // pinConfirm removed — never used in render or logic
   const [pinSetupStep, setPinSetupStep] = useState<'enter' | 'confirm'>('enter');
   const [pinFirst, setPinFirst] = useState(''); // primer PIN ingresado en setup
 
 
-  const { storeState, horasFelices, formatTime, contacto } = useSchedule();
+  const { storeState, contacto } = useSchedule();
   const { isDark, toggle } = useDarkMode();
   const whatsappUrl = `https://wa.me/${(contacto?.whatsapp || '529631550244').replace(/\D/g, '')}`;
 
@@ -334,7 +334,7 @@ export function ClienteView() {
     setPinAttempts(0);
     setPinSetupStep('enter');
     setPinFirst('');
-    setPinConfirm('');
+
     // Limpiar sesión de PIN para que la próxima vez se pida de nuevo
     sessionStorage.removeItem('pin_verified');
     setTimeout(() => inputRef.current?.focus(), 100);

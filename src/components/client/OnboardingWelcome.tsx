@@ -33,7 +33,7 @@ const STEPS = [
     iconColor: 'text-purple-600',
     title: 'Tu QR, tu identidad',
     desc: 'Ingresa tu número y accede a tu perfil con puntos, historial y QR personal para canjearlo en segundos.',
-    badge: 'Sin contraseñas',
+    badge: 'Acceso con PIN',
   },
 ];
 

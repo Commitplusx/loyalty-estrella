@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Gift, X, Loader2, CheckCircle2, Ticket } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -15,6 +15,14 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successData, setSuccessData] = useState<{codigo: string, valor_pesos: number, expires_at: string} | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSuccessData(null);
+      setErrorMsg('');
+      setLoading(false);
+    }
+  }, [isOpen]);
 
   const isVip = cliente?.es_vip === true;
   // Meta de puntos dinámica según rango (centralizado en constants.ts)
@@ -47,16 +55,15 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
     }
   };
 
-  if (!isOpen) return null;
-
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-      >
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        >
         <motion.div
           initial={{ scale: 0.95, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -213,6 +220,7 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
           )}
         </motion.div>
       </motion.div>
+      )}
     </AnimatePresence>
   );
 }

@@ -5,9 +5,10 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const WHATSAPP_TOKEN = Deno.env.get('WHATSAPP_TOKEN')!
 const WHATSAPP_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_ID')!
+const APPROVAL_SECRET = Deno.env.get('ADMIN_APPROVAL_SECRET') ?? ''
 
 async function sendWA(to: string, text: string) {
-  await fetch(`https://graph.facebook.com/v17.0/${WHATSAPP_PHONE_ID}/messages`, {
+  await fetch(`https://graph.facebook.com/v19.0/${WHATSAPP_PHONE_ID}/messages`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'text', text: { body: text } })
@@ -47,6 +48,13 @@ serve(async (req: Request) => {
   const tel = url.searchParams.get('tel')
 
   if (!action || !tel) return htmlResponse('Error', 'Faltan parámetros (action o tel).', true)
+
+  // Verificación de seguridad (opcional): si ADMIN_APPROVAL_SECRET está configurado, lo valida.
+  // Si no está configurado, permite el acceso como antes (retrocompatible).
+  const secret = url.searchParams.get('secret')
+  if (APPROVAL_SECRET && secret !== APPROVAL_SECRET) {
+    return htmlResponse('No Autorizado', 'Token de seguridad inválido o faltante.', true)
+  }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
