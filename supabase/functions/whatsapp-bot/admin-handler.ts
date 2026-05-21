@@ -1,6 +1,6 @@
 // admin-handler.ts — Manejador de las acciones del Administrador (Comandante Alpha)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { sendWA, sendWAImage, sendWALocation, sendWATemplate } from './whatsapp.ts'
+import { sendWA, sendWAImage, sendWALocation, sendWATemplate, sendInteractiveButtons } from './whatsapp.ts'
 import { extract10Digits, guardarMemoria, limpiarMemoria, buscarRepartidor, crearPedidoDesdeBot, barChart } from './db.ts'
 import { pedidoLink } from '../_shared/utils.ts'
 import { conversacionDeepSeek } from './ai.ts'
@@ -8,9 +8,9 @@ import { updateChatwootProfile, addPrivateNoteByPhone, syncContactAttributes } f
 
 type Supa = ReturnType<typeof createClient>
 
-const ADMIN_PHONES_ENV  = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHONE') ?? ''
-const ADMIN_PHONE_MAIN  = (() => {
-  const n = ADMIN_PHONES_ENV.split(',')[0]?.replace(/\D/g,'').slice(-10)
+const ADMIN_PHONES_ENV = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHONE') ?? ''
+const ADMIN_PHONE_MAIN = (() => {
+  const n = ADMIN_PHONES_ENV.split(',')[0]?.replace(/\D/g, '').slice(-10)
   return n ? `52${n}` : ''
 })()
 
@@ -38,7 +38,7 @@ export async function handleAdminAssignRest(
   const pedidosPendientes: any[] = pendingState.pedidos
   // Solo hace match si hay "todos" o empieza con "1 jorge", etc., y nada más que eso.
   const esAsignacion = /^(todos\s+[a-zA-ZáéíóúÁÉÍÓÚñÑ]+([\s][a-zA-ZáéíóúÁÉÍÓÚñÑ]+)*|(\d+\s+[a-zA-ZáéíóúÁÉÍÓÚñÑ]+([\s][a-zA-ZáéíóúÁÉÍÓÚñÑ]+)*(,\s*\d+\s+[a-zA-ZáéíóúÁÉÍÓÚñÑ]+([\s][a-zA-ZáéíóúÁÉÍÓÚñÑ]+)*)*))$/i.test(textoAdmin.trim())
-  
+
   if (!esAsignacion) return null // Pasa al flujo de DeepSeek
 
   const asignaciones: Record<number, string> = {}
@@ -76,7 +76,7 @@ export async function handleAdminAssignRest(
     // CACHÉ GPS: Buscar coordenadas frecuentes del cliente
     const telLimpio = extract10Digits(pedido.clienteTel || '0000000000')
     const { data: clienteCache } = await supabase.from('clientes').select('lat_frecuente, lng_frecuente').eq('telefono', telLimpio).maybeSingle()
-    
+
     const finalLat = pedido.lat || clienteCache?.lat_frecuente || null
     const finalLng = pedido.lng || clienteCache?.lng_frecuente || null
 
@@ -110,7 +110,7 @@ export async function handleAdminAssignRest(
 export async function handleAdminMessage(
   supabase: Supa, fromPhone: string, messageId: string, texto: string
 ): Promise<Response> {
-  const chat = await conversacionDeepSeek(supabase, fromPhone, texto, false, { id: 'admin', nombre: 'Admin Jorge' })
+  const chat = await conversacionDeepSeek(supabase, fromPhone, texto, false, null)
   if (!chat) {
     await sendWA(fromPhone, '❌ Cerebro AI devolvió un valor nulo.')
     return new Response('OK', { status: 200 })
@@ -127,12 +127,16 @@ export async function handleAdminMessage(
   const { accion, mensajeUsuario } = chat.respuesta
   const d: any = chat.respuesta.datosAExtraer || {}
 
-  // Flujos simples que solo responden
+  // Flujos simples que solo responden — guardan historial para continuidad
   if (['RESPONDER', 'CONSULTA_GENERAL'].includes(accion)) {
     await guardarMemoria(supabase, fromPhone, chat.nuevoHistorial || [])
     await sendWA(fromPhone, mensajeUsuario || '¿Me lo repites?')
     return new Response('OK', { status: 200 })
   }
+
+  // Para TODAS las demás acciones: limpiar historial ANTES de ejecutar
+  // Evita que el admin quede en loop pidiendo datos ya dados
+  await limpiarMemoria(supabase, fromPhone)
 
   // Ejecución de acciones específicas
   switch (accion) {
@@ -142,12 +146,12 @@ export async function handleAdminMessage(
         .select('nombre, telefono, activo')
         .eq('activo', true)
         .order('nombre')
-      
+
       if (!locals?.length) {
         await sendWA(fromPhone, '📍 *RESTAURANTES*\n\n⚠️ No hay locales activos registrados actualmente.')
         break
       }
-      
+
       let msg = '📍 *RESTAURANTES ASOCIADOS*\n'
       msg += '───────────────────\n\n'
       locals.forEach((l: any, i: number) => {
@@ -163,7 +167,7 @@ export async function handleAdminMessage(
     case 'VER_VIPS': {
       const { data: vips } = await supabase.from('clientes').select('nombre, telefono, puntos, es_vip')
         .order('puntos', { ascending: false }).limit(10)
-      
+
       if (!vips?.length) {
         await sendWA(fromPhone, '🏆 *RANKING VIP*\n\n⚠️ No hay clientes registrados con puntos actualmente.')
         break
@@ -184,20 +188,20 @@ export async function handleAdminMessage(
     case 'SUMAR_PUNTOS': {
       const tel10 = extract10Digits(d.clienteTel)
       const { data: c } = await supabase.from('clientes').select('id, puntos, acepta_terminos, nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
-      
+
       if (c) {
         if (c.acepta_terminos === false) {
-           // No ha aceptado términos: Enviar plantilla de términos primero
-           await sendWATemplate(`52${tel10}`, 'estrella_terminos_condiciones', [c.nombre || 'Cliente'])
-           await sendWA(fromPhone, `⏳ El cliente *${tel10}* aún no acepta los términos y condiciones.\nLe he enviado la solicitud de aceptación. Los puntos se sumarán automáticamente cuando acepte.`)
-           
-           // Guardar en memoria que hay una suma pendiente
-           await supabase.from('bot_memory').upsert({
-             phone: `pending_pts_${tel10}`,
-             history: [{ puntos: d.puntosASumar, admin: fromPhone }],
-             updated_at: new Date().toISOString()
-           })
-           return new Response('OK', { status: 200 })
+          // No ha aceptado términos: Enviar plantilla de términos primero
+          await sendWATemplate(`52${tel10}`, 'estrella_terminos_condiciones', [c.nombre || 'Cliente'])
+          await sendWA(fromPhone, `⏳ El cliente *${tel10}* aún no acepta los términos y condiciones.\nLe he enviado la solicitud de aceptación. Los puntos se sumarán automáticamente cuando acepte.`)
+
+          // Guardar en memoria que hay una suma pendiente
+          await supabase.from('bot_memory').upsert({
+            phone: `pending_pts_${tel10}`,
+            history: [{ puntos: d.puntosASumar, admin: fromPhone }],
+            updated_at: new Date().toISOString()
+          })
+          return new Response('OK', { status: 200 })
         }
 
         const cant = Number(d.puntosASumar) || 1
@@ -257,11 +261,11 @@ export async function handleAdminMessage(
     case 'ENVIAR_QR': {
       const tel10 = extract10Digits(d.clienteTel)
       const { data: cli } = await supabase.from('clientes').select('nombre, puntos, acepta_terminos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
-      
+
       if (cli && cli.acepta_terminos === false) {
         await sendWATemplate(`52${tel10}`, 'estrella_terminos_condiciones', [cli.nombre || 'Cliente'])
         await sendWA(fromPhone, `⏳ El cliente *${tel10}* aún no acepta los términos.\nLe he enviado la solicitud. El QR se enviará automáticamente cuando acepte.`)
-        
+
         await supabase.from('bot_memory').upsert({
           phone: `pending_qr_${tel10}`,
           history: [{ admin: fromPhone }],
@@ -272,20 +276,20 @@ export async function handleAdminMessage(
 
       const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
       const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data=${encodeURIComponent(loyaltyUrl)}`
-      
+
       const result = await sendWATemplate(
-        `52${tel10}`, 
-        'estrella_loyalty_welcome', 
+        `52${tel10}`,
+        'estrella_loyalty_welcome',
         [cli?.nombre || 'Cliente', (cli?.puntos || 0).toString()],
         qrImageUrl,
         tel10
       )
-      
+
       if (result && result.ok === false) {
-          console.error(`[ENVIAR_QR] Error enviando QR a ${tel10}:`, result.error)
-          await sendWA(fromPhone, `❌ Error enviando QR al ${tel10}. Meta API lo rechazó.`)
+        console.error(`[ENVIAR_QR] Error enviando QR a ${tel10}:`, result.error)
+        await sendWA(fromPhone, `❌ Error enviando QR al ${tel10}. Meta API lo rechazó.`)
       } else {
-          await sendWA(fromPhone, `✅ QR enviado a *${tel10}* mediante plantilla segura.`)
+        await sendWA(fromPhone, `✅ QR enviado a *${tel10}* mediante plantilla segura.`)
       }
       break
     }
@@ -319,23 +323,52 @@ export async function handleAdminMessage(
       let msg = '📦 *PEDIDOS EN CURSO*\n'
       msg += '───────────────────\n\n'
       const emo: any = { asignado: '🕘', recibido: '🛍️', en_camino: '🚀' }
-      
+
       activos.forEach((p: any) => {
         const statusIcon = emo[p.estado] || '📦'
         const cliente = p.cliente_nombre || p.cliente_tel || '?'
         msg += `${statusIcon} *${p.descripcion?.toUpperCase().slice(0, 30)}...*\n`
         msg += `   ↳ _${cliente}_ | *${p.estado.toUpperCase()}*\n\n`
       })
-      
+
       msg += '───────────────────\n'
       msg += '_Actualiza estados desde la App Admin o vía WhatsApp._'
       await sendWA(fromPhone, msg)
       break
     }
     case 'BUSCAR_CLIENTE': {
-      const { data: c } = await supabase.from('clientes').select('*').ilike('telefono', `%${extract10Digits(d.clienteTel)}%`).limit(1).maybeSingle()
+      const tel10 = extract10Digits(d.clienteTel)
+      const { data: c } = await supabase.from('clientes').select('*').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
       if (c) {
-        await sendWA(fromPhone, `🔍 *ENCONTRADO*\n👤 ${c.nombre}\n📱 ${c.telefono}\n⭐ Puntos: ${c.puntos}\nVIP: ${c.es_vip?'Sí':'No'}\n📝 ${c.notas_crm||'-'}`)
+        const repIcon = c.reputacion === 'excelente' ? '🌟' : c.reputacion === 'bueno' ? '👍' : c.reputacion === 'malo' ? '⚠️' : '➖'
+        let msg = `🔍 *FICHA DE CLIENTE*\n───────────────────\n`
+        msg += `👤 *${c.nombre || 'Sin nombre'}*\n`
+        msg += `📱 ${c.telefono}\n`
+        msg += `⭐ Puntos: *${c.puntos}* | Rango: *${c.rango || 'bronce'}*\n`
+        msg += `${c.es_vip ? '👑 *VIP*\n' : ''}`
+        msg += `${repIcon} Reputación: *${c.reputacion || 'sin calificar'}*\n`
+        msg += `🛵 Entregas: ${c.envios_totales || 0} | Envíos gratis: ${c.envios_gratis_disponibles || 0}\n`
+        msg += `💰 Billetera: *$${c.saldo_billetera || 0}*\n`
+        if (c.direccion) msg += `🏠 Dirección: ${c.direccion}\n`
+        if (c.cupon_activo) msg += `🎟️ Cupón: ${c.cupon_activo}\n`
+        if (c.notas_crm) msg += `📝 ${c.notas_crm.slice(0, 200)}\n`
+        msg += `📋 T&C: ${c.acepta_terminos ? '✅ Aceptados' : '❌ Pendientes'}`
+
+        await sendWA(fromPhone, msg)
+
+        // Enviar foto si existe
+        if (c.foto_fachada_url) {
+          const { enviarFotoCliente } = await import('./media-handler.ts')
+          await enviarFotoCliente(fromPhone, c.foto_fachada_url, c.nombre || tel10)
+        }
+
+        // Guardar último cliente consultado (contexto para fotos)
+        const admin10 = extract10Digits(fromPhone)
+        await supabase.from('bot_memory').upsert({
+          phone: `admin_last_client_${admin10}`,
+          history: [{ clienteTel: tel10, nombre: c.nombre }],
+          updated_at: new Date().toISOString()
+        })
       } else { await sendWA(fromPhone, `🔍 No encontrado.`) }
       break
     }
@@ -373,75 +406,115 @@ export async function handleAdminMessage(
       // 1. Verificar si ya existe
       // URL canónica que identifica al cliente en la Web y se almacena en DB
       const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
-      const { data: existente } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
-      
+      const { data: existente } = await supabase.from('clientes').select('id, nombre, acepta_terminos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+
       let clientId = existente?.id
+      let yaAceptoTerminos = existente?.acepta_terminos === true
+
       if (existente) {
         await sendWA(fromPhone, `ℹ️ El cliente *${existente.nombre}* ya estaba registrado. Actualizando datos...`)
         await supabase.from('clientes').update({
           nombre: d.clienteNombre || existente.nombre,
-          colonia: d.colonia || undefined,
-          // Asegurar que el qr_code apunte a la URL canónica correcta
+          direccion: d.colonia || undefined,
           qr_code: loyaltyUrl
         }).eq('id', existente.id)
       } else {
-        // 2. Crear nuevo cliente — qr_code = URL canónica que la Web renderiza
+        // 2. Crear nuevo cliente con acepta_terminos = false
         const { data: nuevo, error } = await supabase.from('clientes').insert({
           nombre: d.clienteNombre || 'Cliente Nuevo',
           telefono: tel10,
-          colonia: d.colonia || null,
+          direccion: d.colonia || null,
           puntos: 0,
-          qr_code: loyaltyUrl // <<< MISMO valor que usa QRGenerator.tsx
+          acepta_terminos: false,
+          qr_code: loyaltyUrl
         }).select().single()
-        
+
         if (error) {
           await sendWA(fromPhone, `❌ Error al crear cliente: ${error.message}`)
           break
         }
         clientId = nuevo.id
+        yaAceptoTerminos = false
       }
 
-      // 3. La imagen QR que va en el header de la plantilla:
-      //    Codificamos la URL canónica de lealtad en un QR visual via QR Server
-      //    Mismo contenido que la Web muestra al cliente en la App
-      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data=${encodeURIComponent(loyaltyUrl)}`
-      
-      // 4. Enviar vía PLANTILLA META (estrella_loyalty_welcome)
-      // Header: imagen QR ({{image}})
-      // Body {{1}}: Nombre del cliente
-      // Body {{2}}: Puntos iniciales
-      const result = await sendWATemplate(
-        `52${tel10}`,
-        'estrella_loyalty_welcome',
-        [d.clienteNombre || 'Cliente', d.puntosASumar > 0 ? d.puntosASumar.toString() : '¡Empieza hoy!'],
-        qrImageUrl, tel10
-      )
-
-      if (result && result.ok === false) {
-        console.error(`[AGREGAR_CLIENTE] Error enviando QR a ${tel10}:`, result.error)
-        await sendWA(fromPhone, `✅ *Cliente Registrado: ${d.clienteNombre}*\n📱 ${tel10}\n🌟 Puntos: ${d.puntosASumar || 0}\n\n⚠️ *ERROR AL ENVIAR QR:* Meta rechazó el mensaje de la plantilla. Revisa los logs.`)
-        await supabase.from('bot_memory').upsert({
-          phone: `syslog_qr_err_${tel10}`,
-          history: [{ error: result.error, ts: Date.now() }],
-          updated_at: new Date().toISOString()
-        })
+      // 3. Si ya aceptó T&C → enviar QR directo y sumar puntos
+      if (yaAceptoTerminos) {
+        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data=${encodeURIComponent(loyaltyUrl)}`
+        const result = await sendWATemplate(
+          `52${tel10}`, 'estrella_loyalty_welcome',
+          [d.clienteNombre || 'Cliente', d.puntosASumar > 0 ? d.puntosASumar.toString() : '¡Empieza hoy!'],
+          qrImageUrl, tel10
+        )
+        if (result?.ok === false) {
+          await sendWA(fromPhone, `✅ *Cliente Registrado: ${d.clienteNombre}*\n📱 ${tel10}\n\n⚠️ Error enviando QR: ${result.error}`)
+        } else {
+          await sendWA(fromPhone, `✅ *Cliente Registrado: ${d.clienteNombre}*\n📱 ${tel10}\n\nQR de bienvenida enviado. ✅`)
+        }
+        if (d.puntosASumar > 0 && clientId) {
+          const cant = Number(d.puntosASumar) || 1
+          for (let i = 0; i < cant; i++) {
+            await supabase.rpc('fn_registrar_entrega', { p_cliente_tel: tel10 })
+          }
+        }
       } else {
-        console.log(`[AGREGAR_CLIENTE] QR enviado exitosamente a ${tel10}.`)
-        await sendWA(fromPhone, `✅ *Cliente Registrado: ${d.clienteNombre}*\n📱 ${tel10}\n🌟 Puntos: ${d.puntosASumar || 0}\n\nSe ha enviado el QR de bienvenida vía plantilla automática.`)
+        // 4. No ha aceptado T&C → Enviar T&C
+        // Detectar si el cliente vino del flujo del bot (ventana de 24h activa)
+        const { data: pendingReg } = await supabase.from('bot_memory')
+          .select('phone').eq('phone', `pending_reg_${tel10}`).maybeSingle()
+        const clienteVinoBotFlow = !!pendingReg
+
+        if (clienteVinoBotFlow) {
+          // ── Texto libre + botones interactivos (gratis, 24h window activa) ──
+          const tycUrl = `https://www.app-estrella.shop/terminos`
+          const tycTexto = `🌟 *¡Bienvenido a Estrella Delivery, ${d.clienteNombre || 'Cliente'}!* 🌟
+
+Al registrarte:
+✅ Acumulas puntos con cada entrega y al ser *cliente VIP* accedes a beneficios exclusivos.
+📋 Puedes revisar los detalles aquí:
+👉 ${tycUrl}`
+
+          await sendWA(`52${tel10}`, tycTexto)
+          await new Promise(r => setTimeout(r, 800))
+          await sendInteractiveButtons(
+            `52${tel10}`,
+            `¿Aceptas los términos y condiciones?`,
+            [
+              { id: 'ACEPTAR_TERMINOS', title: '✅ Aceptar' },
+              { id: 'RECHAZAR_TERMINOS', title: '❌ Rechazar' }
+            ]
+          )
+          // Limpiar pending_reg ya que el cliente fue procesado
+          await supabase.from('bot_memory').delete().eq('phone', `pending_reg_${tel10}`)
+          await sendWA(fromPhone, `✅ *Cliente Registrado: ${d.clienteNombre}*\n📱 ${tel10}\n\n📋 T&C enviados por chat (sin costo). ⏳ Cuando acepte, recibirá su QR automáticamente.`)
+        } else {
+          // ── Plantilla Meta (necesaria cuando no hay ventana de conversación) ──
+          const tycResult = await sendWATemplate(`52${tel10}`, 'estrella_terminos_condiciones', [d.clienteNombre || 'Cliente'])
+          if (tycResult?.ok === false) {
+            console.error(`[AGREGAR_CLIENTE] Error enviando T&C a ${tel10}:`, tycResult.error)
+            await sendWA(fromPhone, `✅ *Cliente Registrado: ${d.clienteNombre}*\n📱 ${tel10}\n\n⚠️ No pude enviar los T&C. Envíalos manualmente: "envía términos a ${tel10}"`)
+          } else {
+            await sendWA(fromPhone, `✅ *Cliente Registrado: ${d.clienteNombre}*\n📱 ${tel10}\n\n📋 Se enviaron los *Términos y Condiciones* (plantilla Meta).\n⏳ Cuando acepte, se le enviará su QR y puntos automáticamente.`)
+          }
+        }
+
+        // 5. Guardar QR como pendiente → handleTerminos lo envía al aceptar
         await supabase.from('bot_memory').upsert({
-          phone: `syslog_qr_ok_${tel10}`,
-          history: [{ status: 'success', ts: Date.now() }],
+          phone: `pending_qr_${tel10}`,
+          history: [{ admin: fromPhone }],
           updated_at: new Date().toISOString()
         })
-      }
-      
-      if (d.puntosASumar > 0 && clientId) {
-        const cant = Number(d.puntosASumar) || 1
-        for (let i = 0; i < cant; i++) {
-          await supabase.rpc('fn_registrar_entrega', { p_cliente_tel: tel10 })
+
+        // 6. Si hay puntos, guardarlos como pendientes
+        if (d.puntosASumar > 0 && clientId) {
+          const cant = Number(d.puntosASumar) || 1
+          await supabase.from('bot_memory').upsert({
+            phone: `pending_pts_${tel10}`,
+            history: [{ puntos: cant, admin: fromPhone }],
+            updated_at: new Date().toISOString()
+          })
         }
       }
-      
+
       await limpiarMemoria(supabase, fromPhone)
       return new Response('OK', { status: 200 })
     }
@@ -453,7 +526,7 @@ export async function handleAdminMessage(
       if (peds && peds.length > 0) {
         const ids = peds.map((p: any) => p.id)
         await supabase.from('pedidos').update({ estado: 'cancelado' }).in('id', ids)
-        await sendWA(fromPhone, `❌ *Cancelado*\nSe cancelaron ${peds.length} pedido(s) de: ${d.clienteTel}\n📦 _${peds[0].descripcion?.slice(0,60)}_`)
+        await sendWA(fromPhone, `❌ *Cancelado*\nSe cancelaron ${peds.length} pedido(s) de: ${d.clienteTel}\n📦 _${peds[0].descripcion?.slice(0, 60)}_`)
       } else { await sendWA(fromPhone, `🔍 No encontré pedidos activos para ese cliente.`) }
       break
     }
@@ -497,6 +570,16 @@ export async function handleAdminMessage(
       } else { await sendWA(fromPhone, `🔍 No encontrado.`) }
       break
     }
+    case 'CALIFICAR_CLIENTE': {
+      const { handleCalificarCliente } = await import('./client-profile-handler.ts')
+      await handleCalificarCliente(supabase, fromPhone, d.clienteTel, d.descripcion || '')
+      break
+    }
+    case 'ACTUALIZAR_DIRECCION': {
+      const { handleActualizarDireccion } = await import('./client-profile-handler.ts')
+      await handleActualizarDireccion(supabase, fromPhone, d.clienteTel, d.descripcion || (d as any).direccion || '')
+      break
+    }
     case 'VER_HISTORIAL_CLIENTE': {
       const { data: hist } = await supabase.from('pedidos').select('descripcion, estado, created_at')
         .ilike('cliente_tel', `%${extract10Digits(d.clienteTel)}%`).order('created_at', { ascending: false }).limit(7)
@@ -517,17 +600,17 @@ export async function handleAdminMessage(
       const dias = d.diasAtras || 0
       const dIni = new Date(); dIni.setDate(dIni.getDate() - dias); dIni.setHours(0, 0, 0, 0)
       const dFin = new Date(dIni); dFin.setHours(23, 59, 59, 999)
-      
+
       const { data: e } = await supabase.from('pedidos')
         .select('descripcion, cliente_nombre, updated_at')
         .eq('estado', 'entregado')
         .gte('updated_at', dIni.toISOString())
         .lte('updated_at', dFin.toISOString())
         .order('updated_at', { ascending: false })
-      
+
       const label = dias === 0 ? 'HOY' : dias === 1 ? 'AYER' : `HACE ${dias} DÍA(S)`
-      let msg = `✅ *${label} (${e?.length||0})*\n\n`
-      e?.forEach((p: any) => msg += `💚 [${new Date(p.updated_at).toTimeString().slice(0,5)}] ${p.cliente_nombre||''} - ${p.descripcion?.slice(0,35)}\n`)
+      let msg = `✅ *${label} (${e?.length || 0})*\n\n`
+      e?.forEach((p: any) => msg += `💚 [${new Date(p.updated_at).toTimeString().slice(0, 5)}] ${p.cliente_nombre || ''} - ${p.descripcion?.slice(0, 35)}\n`)
       await sendWA(fromPhone, msg)
       break
     }
@@ -548,11 +631,11 @@ export async function handleAdminMessage(
       break
     }
     case 'ESTADISTICAS': {
-      const hoy = new Date(); hoy.setHours(0,0,0,0)
+      const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
       const { data: today } = await supabase.from('pedidos').select('estado').gte('created_at', hoy.toISOString())
-      const t = today?.length||0, e = today?.filter(x=>x.estado==='entregado').length||0, c = today?.filter(x=>x.estado==='en_camino').length||0
+      const t = today?.length || 0, e = today?.filter(x => x.estado === 'entregado').length || 0, c = today?.filter(x => x.estado === 'en_camino').length || 0
       const { count: tc } = await supabase.from('clientes').select('*', { count: 'exact', head: true })
-      await sendWA(fromPhone, `📊 *HOY*\n\`\`\`\n${barChart('Entregados',e,t)}\n${barChart('En Camino',c,t)}\n${barChart('Pendiente',t-e-c,t)}\n\`\`\`\nClientes: ${tc||'?'}`)
+      await sendWA(fromPhone, `📊 *HOY*\n\`\`\`\n${barChart('Entregados', e, t)}\n${barChart('En Camino', c, t)}\n${barChart('Pendiente', t - e - c, t)}\n\`\`\`\nClientes: ${tc || '?'}`)
       break
     }
     case 'REPORTE_SEMANAL': {
@@ -571,7 +654,7 @@ export async function handleAdminMessage(
       const es = semana.filter((p: any) => p.estado === 'entregado').length
       const lines = ['📈 *REPORTE SEMANAL*', '', '```']
       Object.entries(diasMap).forEach(([day, v]) => lines.push(barChart(day, v.total, mx, 8)))
-      lines.push('```', '', `📦 Pedidos: *${ts}*`, `✅ Entregados: *${es}*`, `📉 Tasa: *${ts>0?Math.round((es/ts)*100):0}%*`)
+      lines.push('```', '', `📦 Pedidos: *${ts}*`, `✅ Entregados: *${es}*`, `📉 Tasa: *${ts > 0 ? Math.round((es / ts) * 100) : 0}%*`)
       await sendWA(fromPhone, lines.join('\n'))
       break
     }
@@ -581,7 +664,7 @@ export async function handleAdminMessage(
         await sendWA(fromPhone, `🛵 Para agregar personal necesito el *nombre completo*.\n\nEjemplo: _"Agregar a Juan González, tel 5541234567"_`)
         break
       }
-      const tel   = d.clienteTel ? extract10Digits(String(d.clienteTel)) : null
+      const tel = d.clienteTel ? extract10Digits(String(d.clienteTel)) : null
       const alias = d.repartidorAlias ? String(d.repartidorAlias).trim() : null
       const { error: insErr } = await supabase.from('repartidores').insert({
         nombre,
@@ -612,6 +695,8 @@ export async function handleAdminMessage(
       const tel10 = extract10Digits(d.clienteTel)
       const { data: cli } = await supabase.from('clientes').select('id, nombre, saldo_billetera').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
       if (cli) {
+        // TODO: Race condition — si dos admins cargan saldo simultáneamente, uno se pierde.
+        // Migrar a un RPC atómico: UPDATE clientes SET saldo_billetera = saldo_billetera + p_monto
         const ns = (parseFloat(String(cli.saldo_billetera)) || 0) + (parseFloat(String(d.montoSaldo)) || 0)
         await supabase.from('clientes').update({ saldo_billetera: ns }).eq('id', cli.id)
         await supabase.from('registros_puntos').insert({ cliente_id: cli.id, tipo: 'acumulacion', puntos: 0, monto_saldo: d.montoSaldo, descripcion: `Ajuste admin: $${d.montoSaldo}` })
@@ -621,17 +706,17 @@ export async function handleAdminMessage(
     }
     case 'VER_ATRASOS': {
       const c = new Date(Date.now() - 45 * 60000).toISOString()
-      const { data: at } = await supabase.from('pedidos').select('descripcion, estado, created_at').not('estado','in','(entregado,cancelado)').lt('created_at', c)
+      const { data: at } = await supabase.from('pedidos').select('descripcion, estado, created_at').not('estado', 'in', '(entregado,cancelado)').lt('created_at', c)
       if (at?.length) {
         let msg = `🚨 *ATRASOS (+45 mins)*\n\n`
-        at.forEach((p:any) => msg += `⏱️ ${Math.floor((Date.now()-new Date(p.created_at).getTime())/60000)}m : _${p.descripcion?.substring(0,25)}_\nEstado: ${p.estado}\n\n`)
+        at.forEach((p: any) => msg += `⏱️ ${Math.floor((Date.now() - new Date(p.created_at).getTime()) / 60000)}m : _${p.descripcion?.substring(0, 25)}_\nEstado: ${p.estado}\n\n`)
         await sendWA(fromPhone, msg)
       } else { await sendWA(fromPhone, `✅ Operación sana. Sin atrasos.`) }
       break
     }
     case 'ESTADO_REPARTIDOR': {
       const repAlias = d?.repartidorAlias
-      const repTel   = d?.clienteTel
+      const repTel = d?.clienteTel
       if (!repAlias && !repTel) {
         await sendWA(fromPhone, `⚠️ Dime el nombre o alias del repartidor para consultar.\n\nEj: _"Estado de Jorge"_`)
         break
@@ -659,15 +744,15 @@ export async function handleAdminMessage(
         .gte('created_at', hoy.toISOString())
       const entregados = pt?.filter((p: any) => p.estado === 'entregado').length || 0
       const pendientes = pt?.filter((p: any) => !['entregado', 'cancelado'].includes(p.estado)).length || 0
-      const total      = pt?.length || 0
-      const telInfo    = rep.telefono ? `📱 ${rep.telefono}` : '_Sin teléfono_'
+      const total = pt?.length || 0
+      const telInfo = rep.telefono ? `📱 ${rep.telefono}` : '_Sin teléfono_'
       await sendWA(fromPhone, `📋 *ESTADO: ${rep.nombre.toUpperCase()}*\n${telInfo}\n\n✅ Entregados hoy: *${entregados}*\n⏳ En curso: *${pendientes}*\n📦 Total asignados: *${total}*`)
       break
     }
     case 'UBICACION_RESTAURANTE': {
       const { data: res } = await supabase.from('restaurantes').select('nombre, lat, lng, direccion').or(`nombre.ilike.%${d.restaurante}%,direccion.ilike.%${d.restaurante}%`).order('lat', { ascending: false, nullsFirst: false }).limit(1).maybeSingle()
       if (res?.lat && res?.lng) await sendWALocation(fromPhone, Number(res.lat), Number(res.lng), res.nombre, res.direccion || 'Ubicación')
-      else if (res) await sendWA(fromPhone, `Ubicación de *${res.nombre}* no registrada (Dirección txt: ${res.direccion || 'N/A'})`) 
+      else if (res) await sendWA(fromPhone, `Ubicación de *${res.nombre}* no registrada (Dirección txt: ${res.direccion || 'N/A'})`)
       else await sendWA(fromPhone, `🔍 No encontré el restaurante.`)
       break
     }
@@ -676,8 +761,8 @@ export async function handleAdminMessage(
       if (ra?.length) {
         let sent = 0
         for (const r of ra) {
-           await sendWA(`52${extract10Digits(r.telefono)}`, `📢 *ANUNCIO DE BASE*\n\n${d.descripcion}`)
-           sent++
+          await sendWA(`52${extract10Digits(r.telefono)}`, `📢 *ANUNCIO DE BASE*\n\n${d.descripcion}`)
+          sent++
         }
         await sendWA(fromPhone, `✅ Radiado a *${sent}* miembros activos.`)
       } else { await sendWA(fromPhone, `⚠️ Ningún repartidor con tel válido.`) }
@@ -694,7 +779,7 @@ export async function handleAdminMessage(
     case 'USAR_CUPON': {
       const code = String(d.codigoCupon).trim().toUpperCase()
       const { data, error } = await supabase.rpc('usar_cupon', { p_codigo: code })
-      
+
       if (error) {
         await sendWA(fromPhone, `❌ *Error al usar cupón:*\n${error.message}`)
       } else if (data?.ok) {
@@ -706,11 +791,11 @@ export async function handleAdminMessage(
     }
     case 'CANCELAR_CUPON': {
       const code = String(d.codigoCupon).trim().toUpperCase()
-      const { data: admin } = await supabase.from('admins').select('id').eq('telefono', admin10).maybeSingle()
-      
-      const { data, error } = await supabase.rpc('cancelar_cupon', { 
+      const { data: admin } = await supabase.from('admins').select('id').eq('telefono', extract10Digits(fromPhone)).maybeSingle()
+
+      const { data, error } = await supabase.rpc('cancelar_cupon', {
         p_codigo: code,
-        p_admin_id: admin?.id || null 
+        p_admin_id: admin?.id || null
       })
 
       if (error) {
@@ -799,11 +884,11 @@ export async function handleCalificacion(supabase: Supa, fromPhone: string, butt
 
   // ── TAG: Etiquetas específicas ──
   const TAG_MAP: Record<string, { etiqueta: string; reputacion: string; emoji: string }> = {
-    'TAG_DEMORA':    { etiqueta: 'demora',          reputacion: 'regular', emoji: '⏱️' },
-    'TAG_GROSERO':   { etiqueta: 'grosero',         reputacion: 'malo',    emoji: '😤' },
-    'TAG_NOATIENDE': { etiqueta: 'no_atiende',      reputacion: 'regular', emoji: '📵' },
-    'TAG_DIRMAL':    { etiqueta: 'direccion_mal',   reputacion: 'regular', emoji: '🏠' },
-    'TAG_PEDFALSO':  { etiqueta: 'pedido_falso',    reputacion: 'malo',    emoji: '🚫' },
+    'TAG_DEMORA': { etiqueta: 'demora', reputacion: 'regular', emoji: '⏱️' },
+    'TAG_GROSERO': { etiqueta: 'grosero', reputacion: 'malo', emoji: '😤' },
+    'TAG_NOATIENDE': { etiqueta: 'no_atiende', reputacion: 'regular', emoji: '📵' },
+    'TAG_DIRMAL': { etiqueta: 'direccion_mal', reputacion: 'regular', emoji: '🏠' },
+    'TAG_PEDFALSO': { etiqueta: 'pedido_falso', reputacion: 'malo', emoji: '🚫' },
   }
 
   const tagPrefix = Object.keys(TAG_MAP).find(k => buttonId.startsWith(k + '_'))
@@ -818,7 +903,7 @@ export async function handleCalificacion(supabase: Supa, fromPhone: string, butt
     await updateChatwootProfile(supabase, tel10).catch(console.error)
     await addPrivateNoteByPhone(tel10, `⚠️ Alerta: El repartidor acaba de calificar a este cliente con mala actitud: *${etiqueta.toUpperCase()}*`).catch(console.error)
     await syncContactAttributes(tel10, { problemático: true }).catch(console.error)
-    
+
     await supabase.from('calificaciones_pendientes').delete().eq('cliente_tel', tel10)
     await sendWA(fromPhone, `${emoji} *${clienteNombre}* → Reputación: *${reputacion}*\nEtiqueta añadida: *${etiqueta}*\n🏷️ Historial: ${nuevasEtiquetas.join(', ')}`)
     return new Response('OK', { status: 200 })
@@ -848,30 +933,44 @@ export async function handleCalificacion(supabase: Supa, fromPhone: string, butt
 export async function handleTerminos(supabase: Supa, fromPhone: string, buttonId: string): Promise<Response> {
   const tel10 = extract10Digits(fromPhone)
   const upId = buttonId.toUpperCase()
-  
+
   if (upId === 'ACEPTAR_TERMINOS' || upId === 'ACEPTAR') {
     // 1. Marcar en DB
     console.log(`✅ [T&C] Cliente ${tel10} HA ACEPTADO los términos.`)
     await supabase.from('clientes').update({ acepta_terminos: true }).ilike('telefono', `%${tel10}%`)
-    
+
     // 2. Avisar al cliente
     await sendWA(fromPhone, "✅ ¡Gracias por aceptar! Ahora ya puedes disfrutar de todos los beneficios de Estrella Delivery. 🌟")
-    
+
     // 3. Revisar acciones pendientes
     // 3.A QR Pendiente
     const { data: pendingQR } = await supabase.from('bot_memory').select('history').eq('phone', `pending_qr_${tel10}`).maybeSingle()
     if (pendingQR?.history?.[0]) {
       console.log(`🔄 [T&C] Ejecutando ENVÍO DE QR PENDIENTE para ${tel10}...`)
       const { data: cli } = await supabase.from('clientes').select('nombre, puntos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      
+      const nombreCli = cli?.nombre || 'Cliente'
       const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
       const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data=${encodeURIComponent(loyaltyUrl)}`
-      await sendWATemplate(`52${tel10}`, 'estrella_loyalty_welcome', [cli?.nombre || 'Cliente', (cli?.puntos || 0).toString()], qrImageUrl, tel10)
       
+      const mensajeBienvenida = `🎉 *¡Felicidades ${nombreCli}, ya eres VIP!* 🎉
+
+Tu registro se completó con éxito. Aquí te entregamos tu *Tarjeta de Lealtad Digital* (QR). 🎟️
+
+Guarda esta imagen. Con ella y con tu número acumularás puntos en cada pedido que hagas.
+
+🌐 *Tu portal de beneficios:*
+👉 ${loyaltyUrl}
+
+¡Gracias por preferir Estrella Delivery! 🛵💨`
+
+      await sendWAImage(`52${tel10}`, qrImageUrl, mensajeBienvenida)
+
       const adminPhone = pendingQR.history[0].admin
-      if (adminPhone) await sendWA(adminPhone, `✅ El cliente *${tel10}* aceptó términos. Le envié su QR automáticamente.`)
+      if (adminPhone) await sendWA(adminPhone, `✅ El cliente *${tel10}* aceptó términos. Le envié su QR y mensaje de bienvenida.`)
       await supabase.from('bot_memory').delete().eq('phone', `pending_qr_${tel10}`)
     }
-    
+
     // 3.B Puntos Pendientes
     const { data: pendingPts } = await supabase.from('bot_memory').select('history').eq('phone', `pending_pts_${tel10}`).maybeSingle()
     if (pendingPts?.history?.[0]) {
@@ -901,7 +1000,7 @@ export async function handleTerminos(supabase: Supa, fromPhone: string, buttonId
       }
       await supabase.from('bot_memory').delete().eq('phone', `pending_pts_${tel10}`)
     }
-    
+
     // 4. Notificar al admin principal (siempre, aunque no haya pendientes)
     const { data: cliAcep } = await supabase.from('clientes').select('nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
     if (ADMIN_PHONE_MAIN) {
@@ -924,7 +1023,7 @@ export async function handleTerminos(supabase: Supa, fromPhone: string, buttonId
 export async function handleAdminCommands(supabase: Supa, fromPhone: string, buttonId: string): Promise<Response> {
   const isCancel = buttonId.startsWith('CMD_CANCELAR_')
   const isReasignar = buttonId.startsWith('CMD_REASIGNAR_')
-  
+
   const prefixLength = isCancel ? 'CMD_CANCELAR_'.length : 'CMD_REASIGNAR_'.length
   const ordenOrId = buttonId.substring(prefixLength)
 

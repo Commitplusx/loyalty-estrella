@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useInView } from 'framer-motion';
-import { ArrowRight, Phone, Star, Gift, Zap, Shield, Clock, Flame, Heart, Truck, MapPin, Sparkles, ChevronRight, Store } from 'lucide-react';
+import { ArrowRight, Phone, Star, Gift, Zap, Shield, Heart, Truck, MapPin, Sparkles, CheckCircle, Clock, Store } from 'lucide-react';
 import { useSchedule } from '@/hooks/useSchedule';
 import { supabase } from '@/lib/supabase';
 import AuthorityCounter from '@/components/client/AuthorityCounter';
@@ -139,7 +139,7 @@ function StepCard({ step, index }: { step: { num: string; icon: React.ElementTyp
 
 export function Home() {
   const navigate = useNavigate();
-  const { storeState, horasFelices, formatTime, contacto } = useSchedule();
+  const { storeState, contacto } = useSchedule();
   const whatsappNum = contacto.whatsapp.replace(/\D/g, '');
   const whatsappUrl = whatsappNum ? `https://wa.me/${whatsappNum}` : '';
 
@@ -184,7 +184,7 @@ export function Home() {
             initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.45, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}>
             <span className={`w-1.5 h-1.5 rounded-full ${storeState.isOpen ? 'bg-green-400 animate-pulse' : 'bg-red-300'}`} />
-            {storeState.isOpen ? (storeState.isHappyHour ? '🔥 Hora Feliz activa' : 'Abierto') : 'Cerrado'}
+            {storeState.isOpen ? 'Abierto' : 'Cerrado'}
           </motion.div>
 
           <motion.button onClick={() => navigate('/cliente')}
@@ -269,79 +269,37 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── HORA FELIZ ── */}
+      {/* ── NUESTRO COMPROMISO ── */}
       <section className="py-4 px-5 max-w-5xl mx-auto">
         <Reveal>
           <div className="bg-gray-950 rounded-2xl sm:rounded-3xl overflow-hidden relative">
-            {/* Ambient glow */}
-            <div className="absolute top-0 left-1/4 w-96 h-48 bg-red-600/20 blur-3xl pointer-events-none" />
-            <div className="absolute bottom-0 right-1/4 w-64 h-32 bg-blue-600/15 blur-3xl pointer-events-none" />
+            <div className="absolute top-0 left-1/4 w-96 h-48 bg-blue-600/20 blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 right-1/4 w-64 h-32 bg-blue-400/10 blur-3xl pointer-events-none" />
 
-            <div className="relative grid lg:grid-cols-2 gap-0">
-              {/* Left — compact on mobile */}
-              <div className="p-6 sm:p-9 lg:p-14">
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-red-400 mb-4">
-                  <Flame className="w-3.5 h-3.5" /> Promoción Especial
-                </span>
-                <h2 className="text-2xl sm:text-4xl font-black text-white mb-3 tracking-tight">¡Hora Feliz!</h2>
-                <p className="text-gray-400 mb-5 leading-relaxed text-sm sm:text-base">
-                  {horasFelices.filter(h => h.activo).length > 0 ? (
-                    <>
-                      {horasFelices.filter(h => h.activo).map(h => h.nombre).join(', ')} de{' '}
-                      <span className="text-white font-semibold">
-                        {formatTime(horasFelices.filter(h => h.activo)[0]?.hora_inicio)} a {formatTime(horasFelices.filter(h => h.activo)[0]?.hora_fin)}
-                      </span>.
-                      {' '}Todos los envíos a solo{' '}
-                      <span className="text-red-400 font-black text-xl">${horasFelices.filter(h => h.activo)[0]?.precio_promocional ?? 35}</span>.
-                    </>
-                  ) : (
-                    <>Horarios especiales con descuento en todos los envíos.</>
-                  )}
-                </p>
+            <div className="relative p-8 sm:p-12 lg:p-14">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-blue-400 mb-4">
+                <Sparkles className="w-3.5 h-3.5" /> Nuestro Compromiso
+              </span>
+              <h2 className="text-2xl sm:text-4xl font-black text-white mb-3 tracking-tight">Entrega con confianza</h2>
+              <p className="text-gray-400 mb-10 leading-relaxed text-sm sm:text-base max-w-lg">
+                Cada pedido es monitoreado en tiempo real. Nuestros repartidores están verificados para que tú solo te preocupes de disfrutar tu comida.
+              </p>
 
-                <div className="space-y-0 mb-6">
-                  {horasFelices.filter(h => h.activo).length === 0 ? (
-                    <div className="flex gap-2">
-                      {[1,2,3].map(i => <div key={i} className="h-9 flex-1 bg-white/5 rounded-xl animate-pulse" />)}
-                    </div>
-                  ) : horasFelices.filter(h => h.activo).map((hora, i) => (
-                    <motion.div key={hora.dia}
-                      initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.1 * i, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                      className="flex items-center justify-between py-2.5 border-b border-white/5">
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-3.5 h-3.5 text-gray-500" />
-                        <span className="text-sm font-medium text-gray-300">{hora.nombre}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500">{formatTime(hora.hora_inicio)} – {formatTime(hora.hora_fin)}</span>
-                        <span className="text-xs font-black text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full">${hora.precio_promocional}</span>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-
-                <motion.button onClick={() => navigate('/cliente')}
-                  whileHover={{ scale: 1.02, y: -1 }} whileTap={{ scale: 0.98 }}
-                  className="inline-flex items-center gap-2 bg-white text-gray-950 font-semibold px-5 py-2.5 rounded-xl text-sm hover:bg-gray-100 transition-colors shadow-lg">
-                  Ver mis puntos <ChevronRight className="w-4 h-4" />
-                </motion.button>
-              </div>
-
-              {/* Right price — hidden on mobile to avoid excessive height */}
-              <div className="hidden lg:flex items-center justify-center p-10 border-l border-white/5">
-                <div className="text-center">
-                  <motion.div className="inline-flex w-24 h-24 bg-red-500/10 rounded-full items-center justify-center mb-5 border border-red-500/20"
-                    animate={{ scale: [1, 1.04, 1] }}
-                    transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}>
-                    <Sparkles className="w-10 h-10 text-red-400" />
+              <div className="grid sm:grid-cols-3 gap-4">
+                {[
+                  { icon: Shield, title: 'Repartidores verificados', desc: 'Todo nuestro equipo está identificado y es de confianza.', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20' },
+                  { icon: Clock, title: 'Seguimiento en tiempo real', desc: 'Sabe exactamente dónde está tu pedido en todo momento.', color: 'text-green-400', bg: 'bg-green-500/10 border-green-500/20' },
+                  { icon: CheckCircle, title: 'Puntos garantizados', desc: 'Cada entrega suma automáticamente. Sin trámites, sin esperas.', color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20' },
+                ].map((item, i) => (
+                  <motion.div key={item.title}
+                    initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 * i, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                    className={`rounded-2xl p-5 border ${item.bg}`}>
+                    <item.icon className={`w-6 h-6 ${item.color} mb-3`} />
+                    <h3 className="text-white font-bold text-sm mb-1.5">{item.title}</h3>
+                    <p className="text-gray-400 text-xs leading-relaxed">{item.desc}</p>
                   </motion.div>
-                  <p className="text-8xl font-black text-white tracking-tighter leading-none">$35</p>
-                  <p className="text-gray-500 mt-3 text-sm">precio en hora feliz</p>
-                  <span className="inline-block mt-4 text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1 rounded-full">
-                    -30% de descuento
-                  </span>
-                </div>
+                ))}
               </div>
             </div>
           </div>
@@ -469,15 +427,11 @@ export function Home() {
               <span className="font-bold text-gray-700">Estrella Delivery</span>
             </div>
             <div className="flex items-center gap-5 text-xs">
-              <div className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5" /> Lun – Dom: 9 AM – 10 PM
-              </div>
               {contacto.telefono && (
                 <a href={`tel:${contacto.telefono}`} className="hover:text-gray-600 transition-colors font-medium">
                   {contacto.telefono}
                 </a>
               )}
-              <a href="/login" className="hover:text-gray-600 transition-colors">Acceso Creador</a>
             </div>
           </div>
           <div className="mt-6 pt-5 border-t border-gray-50 text-center text-xs text-gray-300">
