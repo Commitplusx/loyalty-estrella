@@ -61,33 +61,12 @@ export async function handleRepButtons(supabase: Supa, fromPhone: string, button
       }
       // Actualizar estado a 'aceptado' para reflejar que el repartidor confirmó
       await supabase.from('pedidos').update({ estado: 'aceptado' }).eq('id', pedidoId).eq('estado', 'asignado')
-      
-      // RAG Histórico: Extraer notas_crm y foto_fachada para darle contexto proactivo al repartidor
-      let memoriaBot = ''
-      let fotoFachadaUrl = null
-      if (p.cliente_tel) {
-        const tel10 = extract10Digits(p.cliente_tel)
-        const { data: cliMem } = await supabase.from('clientes').select('notas_crm, foto_fachada_url').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
-        if (cliMem) {
-          fotoFachadaUrl = cliMem.foto_fachada_url
-          if (cliMem.notas_crm) {
-            // Extraer las últimas 2 notas para no saturar la pantalla
-            const lineas = cliMem.notas_crm.split('\n').filter(Boolean)
-            const ultimas = lineas.slice(-2).join('\n')
-            memoriaBot = `\n🧠 *Memoria Bot:*\n${ultimas}\n`
-          }
-        }
-      }
-
-      if (fotoFachadaUrl) {
-        await sendWAImage(fromPhone, fotoFachadaUrl, `📸 Fachada de ${p.cliente_nombre || p.cliente_tel}`)
-      }
 
       const text = `📋 *Detalle del Pedido*\n\n📦 ${p.descripcion}\n` +
         (p.cliente_nombre ? `👤 ${p.cliente_nombre}\n` : '') +
-        (p.cliente_tel    ? `📞 ${p.cliente_tel}\n` : '') +
-        (p.restaurante    ? `🍽️ Origen: ${p.restaurante}\n` : '') +
-        (p.direccion      ? `🏠 Ref: ${p.direccion}\n` : '') + memoriaBot + mapLink
+        (p.cliente_tel ? `📞 ${p.cliente_tel}\n` : '') +
+        (p.restaurante ? `🍽️ Origen: ${p.restaurante}\n` : '') +
+        (p.direccion ? `🏠 Ref: ${p.direccion}\n` : '') + mapLink
       await sendInteractiveButton(fromPhone, text.trim(), `BTN_RECOGER_${pedidoId}`, 'Recoger Pedido')
       invokeAsync(supabase, 'notificar-whatsapp', { pedido_id: pedidoId, tipo: 'aceptado' })
       if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN,
@@ -130,12 +109,12 @@ export async function handleRepButtons(supabase: Supa, fromPhone: string, button
         .update({ estado: 'entregado' }).eq('id', pedidoId).eq('estado', 'en_camino').select()
       if (error || !updated?.length) { await sendWA(fromPhone, `⚠️ Error o ya entregado.`); return true }
       invokeAsync(supabase, 'notificar-whatsapp', { pedido_id: pedidoId, tipo: 'entregado' })
-      
-      if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN, 
+
+      if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN,
         `✅ *[OPERACIÓN] Orden Entregada*\n🛵 *Repartidor:* ${nombreRep} ha finalizado el servicio.\n🔢 *Orden:* ${numOrden}\n👤 *Cliente:* ${p.cliente_nombre || 'Desconocido'}`)
-      
+
       await sendWA(fromPhone, `✅ ¡Excelente trabajo! El pedido ha sido entregado. Quedas libre. 🌟`)
-      
+
       // Pedimos al repartidor que califique su experiencia con el cliente (UX post-entrega).
       if (p.cliente_tel) {
         const tel10 = extract10Digits(p.cliente_tel)
@@ -203,8 +182,8 @@ export async function handleRepMessage(
           msg += `${i + 1}️⃣ ${icons[p.estado] || '📦'} *${p.estado.toUpperCase()}*\n`
           msg += `   📦 ${(p.descripcion || 'Sin descripción').slice(0, 40)}\n`
           if (p.cliente_nombre) msg += `   👤 ${p.cliente_nombre}\n`
-          if (p.cliente_tel)   msg += `   📞 ${p.cliente_tel}\n`
-          if (p.direccion)     msg += `   📍 ${p.direccion.slice(0, 50)}\n`
+          if (p.cliente_tel) msg += `   📞 ${p.cliente_tel}\n`
+          if (p.direccion) msg += `   📍 ${p.direccion.slice(0, 50)}\n`
           msg += '\n'
         })
         await sendWA(fromPhone, msg.trimEnd())
@@ -266,7 +245,7 @@ export async function handleRepMessage(
   const ai = await conversacionDeepSeek(supabase, fromPhone, msgText, true, isRep)
   const accion = ai?.respuesta?.accion || 'RESPONDER'
   const usrMsg = ai?.respuesta?.mensajeUsuario || 'No entendí el mensaje.'
-  const d: any  = ai?.respuesta?.datosAExtraer || {}
+  const d: any = ai?.respuesta?.datosAExtraer || {}
 
   if (accion === 'ESTADO_REPARTIDOR') {
     const { data: rep } = await supabase.from('repartidores')
@@ -276,7 +255,7 @@ export async function handleRepMessage(
       const { data: peds } = await supabase.from('pedidos').select('estado')
         .eq('repartidor_id', rep.user_id).gte('created_at', hoy.toISOString())
       const e = peds?.filter((p: any) => p.estado === 'entregado').length || 0
-      const pend = peds?.filter((p: any) => !['entregado','cancelado'].includes(p.estado)).length || 0
+      const pend = peds?.filter((p: any) => !['entregado', 'cancelado'].includes(p.estado)).length || 0
       await sendWA(fromPhone, `${usrMsg}\n\n🏍️ *${rep.nombre}*\n✅ Entregados hoy: *${e}*\n⏳ Pendientes: *${pend}*`)
     } else {
       await sendWA(fromPhone, `${usrMsg}\n\n❌ No encontré tus datos de staff.`)
