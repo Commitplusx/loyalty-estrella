@@ -272,22 +272,15 @@ export async function handleRestaurantCommand(
       return new Response('OK', { status: 200 })
     }
 
-    let lastRes: any = null, rpcErr: any = null
-    let vipAscendido = false
-    for (let i = 0; i < cant; i++) {
-      const { data, error } = await supabase.rpc('fn_registrar_entrega', { p_cliente_tel: cTel })
-      if (error) { rpcErr = error; break }
-      if (data?.ok) {
-        lastRes = data
-        if (data.recien_ascendido) vipAscendido = true
-      } else break
-    }
+    const { data, error } = await supabase.rpc('fn_registrar_entrega_bulk', { p_cliente_tel: cTel, p_cantidad: cant })
 
-    if (!lastRes) {
-      console.error(`[B2B /puntos] RPC falló para ${cTel}:`, rpcErr?.message)
-      await sendWA(fromPhone, `❌ Error al sumar puntos: ${rpcErr?.message || 'Respuesta inesperada del servidor'}`)
+    if (error || !data?.ok) {
+      console.error(`[B2B /puntos] RPC falló para ${cTel}:`, error?.message || data?.error)
+      await sendWA(fromPhone, `❌ Error al sumar puntos: ${error?.message || data?.error || 'Respuesta inesperada del servidor'}`)
       return new Response('OK', { status: 200 })
     }
+
+    const lastRes = data
 
     _log(supabase, restauranteId, cTel, 'sumar_puntos', cant, `${cant} puntos otorgados por ${nombreRest}`)
     await sendWA(fromPhone, `✅ *${cant} punto(s)* sumados a ${c.nombre || cTel}.\n📊 Total acumulado: *${lastRes.puntos} pts*`)

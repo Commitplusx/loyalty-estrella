@@ -271,20 +271,16 @@ export async function handleRepMessage(
       .ilike('telefono', `%${d.clienteTel}%`).limit(1).maybeSingle()
     if (c) {
       const cant = Number(d.puntosASumar) || 1
-      let lastRes: any = null
-      let rpcErr: any = null
-      for (let i = 0; i < cant; i++) {
-        const { data, error } = await supabase.rpc('fn_registrar_entrega', {
-          p_cliente_tel: d.clienteTel
-        })
-        if (error) { rpcErr = error; break }
-        if (data?.ok) lastRes = data
-      }
-      if (!lastRes) {
-        await sendWA(fromPhone, `❌ No pude sumar los puntos. Error: ${rpcErr?.message || 'RPC falló'}`)
+      const { data, error } = await supabase.rpc('fn_registrar_entrega_bulk', {
+        p_cliente_tel: d.clienteTel,
+        p_cantidad: cant
+      })
+      if (error || !data?.ok) {
+        await sendWA(fromPhone, `❌ No pude sumar los puntos. Error: ${error?.message || data?.error || 'RPC falló'}`)
         await guardarMemoria(supabase, from10, ai?.nuevoHistorial || [])
         return new Response('OK', { status: 200 })
       }
+      const lastRes = data
       // El procedimiento fn_registrar_entrega actualiza los puntos de forma atómica en la DB.
       // Sincronizar hacia Chatwoot inmediatamente
       try {

@@ -241,19 +241,10 @@ export async function handleSlashCommands(
       await sendWA(fromPhone, `⚠️ Formato: */puntos 9631234567* o */puntos 9631234567 3*`)
       return new Response('OK', { status: 200 })
     }
-    let lastRes: any = null, rpcErr: any = null
-    let vipAscendidoEnAlgunaIter = false
-    for (let i = 0; i < cant; i++) {
-      const { data, error } = await supabase.rpc('fn_registrar_entrega', { p_cliente_tel: cTel })
-      if (error) { rpcErr = error; break }
-      if (data?.ok) {
-        lastRes = data
-        if (data.recien_ascendido) vipAscendidoEnAlgunaIter = true
-      }
-    }
-    if (lastRes) {
-      await sendWA(fromPhone, `✅ *${cant} punto(s)* sumados a ${cTel}. Total: *${lastRes.puntos} pts*`)
-      if (vipAscendidoEnAlgunaIter) {
+    const { data, error } = await supabase.rpc('fn_registrar_entrega_bulk', { p_cliente_tel: cTel, p_cantidad: cant })
+    if (data?.ok) {
+      await sendWA(fromPhone, `✅ *${cant} punto(s)* sumados a ${cTel}. Total: *${data.puntos} pts*`)
+      if (data.recien_ascendido) {
         try {
           await sendWA(`52${cTel}`, `👑 *¡Felicidades!* 👑\n\nHas sido promovido a *Cliente VIP* ⭐ de Estrella Delivery.\n\nA partir de ahora acumularás *saldo real* en tu billetera. 💰`)
         } catch (e) {
@@ -261,7 +252,7 @@ export async function handleSlashCommands(
         }
       }
     } else {
-      await sendWA(fromPhone, `❌ Error: ${rpcErr?.message || 'Cliente no encontrado'}`)
+      await sendWA(fromPhone, `❌ Error: ${error?.message || data?.error || 'Cliente no encontrado'}`)
     }
     return new Response('OK', { status: 200 })
   }
