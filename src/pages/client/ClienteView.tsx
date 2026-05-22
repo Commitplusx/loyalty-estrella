@@ -1135,7 +1135,7 @@ export function ClienteView() {
                 <ClientStats cliente={cliente} historial={historial} />
 
                 {/* Historial Estrella con Tabs */}
-                <HistorialTimeline historial={historial} />
+                <HistorialTimeline historial={historial} cuponActivo={cliente?.cupon_activo} />
 
                 {/* Free delivery alert */}
                 {cliente.envios_gratis_disponibles > 0 && (

@@ -272,7 +272,6 @@ serve(async (req: Request) => {
       const { cliente_tel, cliente_nombre, codigo_canje, monto, saldo_restante } = payload
       const telFormateado = formatTel(cliente_tel)
       const adminPhoneMain = Deno.env.get('ADMIN_PHONE_BILLETERA') || Deno.env.get('ADMIN_PHONE') || Deno.env.get('ADMIN_PHONES')?.split(',')[0]
-      if (!adminPhoneMain) throw new Error('Missing ADMIN_PHONE_BILLETERA o ADMIN_PHONE en entorno')
 
       // Avisar al cliente (USANDO PLANTILLA estrella_cupon_generado en INGLES)
       const fExp = 'Válido hoy'
@@ -299,16 +298,20 @@ serve(async (req: Request) => {
       })
       if (!resCli.ok) console.error(`WA error cliente canje template:`, await resCli.text())
 
-      const resAdm = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp', recipient_type: 'individual', to: adminPhoneMain, type: 'text',
-          text: { body: `🚨 *NUEVO CANJE DE BILLETERA*\n\n👤 Cliente: ${cliente_nombre || 'Desconocido'} (${cliente_tel})\n💰 Monto canjeado: *$${monto}*\n🎟️ Código: *${codigo_canje}*` }
+      if (adminPhoneMain) {
+        const resAdm = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+          method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp', recipient_type: 'individual', to: adminPhoneMain, type: 'text',
+            text: { body: `🚨 *NUEVO CANJE DE BILLETERA*\n\n👤 Cliente: ${cliente_nombre || 'Desconocido'} (${cliente_tel})\n💰 Monto canjeado: *$${monto}*\n🎟️ Código: *${codigo_canje}*` }
+          })
         })
-      })
-      const txtAdm = await resAdm.text()
-      if (!resAdm.ok) console.error(`WA error admin canje:`, txtAdm)
-      else console.log(`WA success admin canje:`, txtAdm)
+        const txtAdm = await resAdm.text()
+        if (!resAdm.ok) console.error(`WA error admin canje:`, txtAdm)
+        else console.log(`WA success admin canje:`, txtAdm)
+      } else {
+        console.warn('Skipping admin notification for canje_billetera: No ADMIN_PHONE set');
+      }
 
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
     }

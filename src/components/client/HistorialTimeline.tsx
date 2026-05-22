@@ -11,11 +11,12 @@ import type { RegistroMovimiento } from '@/types';
 
 interface HistorialTimelineProps {
   historial: RegistroMovimiento[];
+  cuponActivo?: string | null;
 }
 
 type TabFilter = 'todo' | 'puntos' | 'canjes';
 
-export function HistorialTimeline({ historial }: HistorialTimelineProps) {
+export function HistorialTimeline({ historial, cuponActivo }: HistorialTimelineProps) {
   const [historialTab, setHistorialTab] = useState<TabFilter>('todo');
   const [historialLimit, setHistorialLimit] = useState(10);
 
@@ -63,7 +64,7 @@ export function HistorialTimeline({ historial }: HistorialTimelineProps) {
 
               return (
                 <div key={mov.id ?? `${mov.cliente_id}-${mov.created_at}`}>
-                  <Card className={`border-0 shadow-sm overflow-hidden transition-all hover:shadow-md ${isCanje && couponCode ? 'ring-2 ring-amber-400/60' : 'bg-white dark:bg-card'}`}>
+                  <Card className={`border-0 shadow-sm overflow-hidden transition-all hover:shadow-md ${isCanje && couponCode === cuponActivo ? 'ring-2 ring-amber-400/60' : 'bg-white dark:bg-card'}`}>
                     <CardContent className="p-5 flex items-center gap-4">
                       <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
                         isCashback ? 'bg-amber-100 dark:bg-amber-900/30' 
@@ -92,7 +93,7 @@ export function HistorialTimeline({ historial }: HistorialTimelineProps) {
                       </div>
                     </CardContent>
                     {/* Coupon Ticket */}
-                    {couponCode && (
+                    {couponCode && couponCode === cuponActivo && (
                       <div className="px-5 pb-5 -mt-1">
                         <div className="relative bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-dashed border-amber-300 dark:border-amber-600 rounded-2xl p-4 flex items-center justify-between gap-4">
                           <div className="flex items-center gap-3 min-w-0">
