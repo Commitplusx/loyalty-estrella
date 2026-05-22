@@ -34,7 +34,11 @@ export async function handleSlashCommands(
     if (sesion?.history?.[0]) {
       const { clienteNombre, clienteTel } = sesion.history[0]
       await supabase.from('bot_memory').delete().eq('phone', `capture_mode_${from10}`)
-      await sendWA(fromPhone, `✅ Sesión de captura cerrada.\n📋 Cliente: *${clienteNombre || clienteTel}*\n\nTodo lo que enviaste quedó guardado. 👍`)
+      await sendWA(fromPhone, 
+        `✅ *SESIÓN CERRADA*\n───────────────────\n\n` +
+        `📋 *Cliente:* ${clienteNombre || clienteTel}\n\n` +
+        `_Todo el contenido enviado ha sido guardado exitosamente._ 👍`
+      )
     } else {
       await sendWA(fromPhone, `ℹ️ No hay ninguna sesión de captura activa.`)
     }
@@ -59,7 +63,11 @@ export async function handleSlashCommands(
       .select('id, nombre').ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
 
     if (c) {
-      await sendWA(fromPhone, `ℹ️ El cliente *${c.nombre || cTel}* ya estaba en la base de datos. Listo para recibir fotos.`)
+      await sendWA(fromPhone, 
+        `ℹ️ *CLIENTE EXISTENTE*\n───────────────────\n\n` +
+        `👤 *Nombre:* ${c.nombre || cTel}\n\n` +
+        `_El cliente ya existe en la base de datos. Listo para recibir fotos._`
+      )
     } else {
       const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${cTel}`
       await supabase.from('clientes').insert({
@@ -69,10 +77,18 @@ export async function handleSlashCommands(
         acepta_terminos: false,
         qr_code: loyaltyUrl
       })
-      await sendWA(fromPhone, `✅ *Cliente Silencioso guardado* (${cTel}).\nNo se le mandará ningún mensaje.`)
+      await sendWA(fromPhone, 
+        `✅ *REGISTRO SILENCIOSO*\n───────────────────\n\n` +
+        `👤 *Número:* \`${cTel}\`\n\n` +
+        `_El cliente ha sido registrado en la base de datos sin enviarle notificaciones._`
+      )
     }
 
-    await sendWA(fromPhone, `📸 Ya puedes enviar su foto de fachada adjuntando el número *${cTel}*.\n\n⚠️ *RECORDATORIO:* Las fotos deben ser 100% exteriores (fachada/portón). Está estrictamente prohibido tomar rostros, placas o interiores.`)
+    await sendWA(fromPhone, 
+      `📸 *ESPERANDO FOTO*\n───────────────────\n\n` +
+      `Ya puedes adjuntar la foto de fachada y poner el número *\`${cTel}\`* como comentario.\n\n` +
+      `⚠️ *RECORDATORIO:*\nLas fotos deben ser 100% exteriores (fachada/portón). Está estrictamente prohibido tomar rostros, placas o interiores.`
+    )
     return new Response('OK', { status: 200 })
   }
   if (slashText.startsWith('/fachada ')) {
@@ -106,12 +122,13 @@ export async function handleSlashCommands(
     const tieneFoto = cliente.foto_fachada_url ? `✅ Ya tiene foto guardada.` : `📷 Sin foto aún.`
     const tieneNota = cliente.notas_crm ? `📝 Nota actual: _${cliente.notas_crm.slice(0, 80)}_` : `📝 Sin notas.`
     await sendWA(fromPhone,
-      `📸 *Sesión activa para ${cliente.nombre}* (${cTel})\n\n` +
+      `📸 *SESIÓN DE CAPTURA ACTIVA*\n───────────────────\n\n` +
+      `👤 *Cliente:* ${cliente.nombre} (\`${cTel}\`)\n` +
       `${tieneFoto}\n${tieneNota}\n\n` +
-      `Ahora puedes:\n` +
-      `📷 *Mandar foto* → se guarda como fachada del domicilio\n` +
-      `💬 *Escribir texto* → se guarda como nota del cliente\n` +
-      `✅ *Escribe /fin* cuando termines`
+      `*📌 OPCIONES:*\n` +
+      `📷 *Envía una foto:* Se guardará como fachada.\n` +
+      `💬 *Envía texto:* Se guardará como nota CRM.\n` +
+      `❌ *Escribe /fin:* Para cerrar la sesión.`
     )
     return new Response('OK', { status: 200 })
   }
@@ -137,7 +154,11 @@ export async function handleSlashCommands(
       ? `${c.notas_crm}\n[${new Date().toLocaleDateString('es-MX')}] ${nota}`
       : `[${new Date().toLocaleDateString('es-MX')}] ${nota}`
     await supabase.from('clientes').update({ notas_crm: notaFinal }).eq('id', c.id)
-    await sendWA(fromPhone, `✅ Nota guardada para *${c.nombre}*:\n_${nota}_`)
+    await sendWA(fromPhone, 
+      `✅ *NOTA GUARDADA*\n───────────────────\n\n` +
+      `👤 *Cliente:* ${c.nombre} (\`${cTel}\`)\n\n` +
+      `📝 *Contenido:*\n_${nota}_`
+    )
     return new Response('OK', { status: 200 })
   }
 
@@ -167,14 +188,24 @@ export async function handleSlashCommands(
     const memKey = `modo_activo_${cTel}`
     if (nuevoModo === 'auto') {
       await supabase.from('bot_memory').delete().eq('phone', memKey)
-      await sendWA(fromPhone, `🔄 Modo de *${cTel}* restablecido a *automático*.\nEl bot usará el rol registrado en la base de datos.`)
+      await sendWA(fromPhone, 
+        `🔄 *MODO AUTOMÁTICO RESTABLECIDO*\n───────────────────\n\n` +
+        `👤 *Número:* \`${cTel}\`\n\n` +
+        `_El bot ahora usará el rol original registrado en la base de datos._`
+      )
     } else {
       await supabase.from('bot_memory').upsert({
         phone: memKey,
         history: [{ modo: nuevoModo, forzado_por: from10, at: new Date().toISOString() }],
         updated_at: new Date().toISOString()
       })
-      await sendWA(fromPhone, `✅ Modo de *${cTel}* forzado a *${nuevoModo}* 🔧\n\nAhora cuando ese número escriba al bot, lo atenderá como *${nuevoModo}* aunque tenga otro rol en la BD.\n\nPara revertir: */modo ${cTel} auto*`)
+      await sendWA(fromPhone, 
+        `✅ *MODO FORZADO APLICADO*\n───────────────────\n\n` +
+        `👤 *Número:* \`${cTel}\`\n` +
+        `🔧 *Rol Forzado:* ${nuevoModo.toUpperCase()}\n\n` +
+        `_El bot atenderá este número como ${nuevoModo} temporalmente._\n\n` +
+        `Para revertir: */modo ${cTel} auto*`
+      )
     }
     return new Response('OK', { status: 200 })
   }
@@ -184,7 +215,12 @@ export async function handleSlashCommands(
     const { data, error } = await supabase.rpc('usar_cupon', { p_codigo: codigo })
     if (error) await sendWA(fromPhone, `❌ Error interno: ${error.message}`)
     else if (!data?.ok) await sendWA(fromPhone, `❌ Error: ${data?.error || 'Cupón no encontrado'}`)
-    else await sendWA(fromPhone, `✅ *Cupón Usado*\n\nSe ha marcado como usado el cupón *${codigo}* del cliente *${data.cliente_nombre}* (${data.cliente_tel}).\nYa puede generar uno nuevo.`)
+    else await sendWA(fromPhone, 
+      `✅ *CUPÓN APLICADO*\n───────────────────\n\n` +
+      `🎟️ *Código:* \`${codigo}\`\n` +
+      `👤 *Cliente:* ${data.cliente_nombre} (\`${data.cliente_tel}\`)\n\n` +
+      `_El cupón se ha marcado como USADO exitosamente._`
+    )
     return new Response('OK', { status: 200 })
   }
   
@@ -197,7 +233,13 @@ export async function handleSlashCommands(
     })
     if (error) await sendWA(fromPhone, `❌ Error interno: ${error.message}`)
     else if (!data?.ok) await sendWA(fromPhone, `❌ Error: ${data?.error || 'Cupón no encontrado'}`)
-    else await sendWA(fromPhone, `✅ *Cupón Cancelado*\n\nSe ha cancelado el cupón *${codigo}* del cliente *${data.cliente_nombre}*.\nSe han devuelto *$${data.monto_reembolsado}* a su billetera.`)
+    else await sendWA(fromPhone, 
+      `✅ *CUPÓN CANCELADO*\n───────────────────\n\n` +
+      `🎟️ *Código:* \`${codigo}\`\n` +
+      `👤 *Cliente:* ${data.cliente_nombre}\n` +
+      `💵 *Reembolso:* $${data.monto_reembolsado} a billetera\n\n` +
+      `_El cupón fue invalidado y el saldo regresó al cliente._`
+    )
     return new Response('OK', { status: 200 })
   }
 
@@ -225,7 +267,12 @@ export async function handleSlashCommands(
     const pData = { clienteTel: cTel, clienteNombre: null, restaurante: null, descripcion: desc, direccion: null, repartidorAlias: null }
     const r = await crearPedidoDesdeBot(supabase, pData, undefined, undefined, messageId)
     if (r.ok && r.pedidoId) {
-      await sendWA(fromPhone, `✅ *Pedido creado (modo manual)*\n📞 Cliente: ${cTel}\n📦 ${desc}\n🔗 ${pedidoLink(r.pedidoId)}`)
+      await sendWA(fromPhone, 
+        `✅ *PEDIDO CREADO (MANUAL)*\n───────────────────\n\n` +
+        `📞 *Cliente:* \`${cTel}\`\n` +
+        `📦 *Descripción:*\n_${desc}_\n\n` +
+        `🔗 *Enlace:* ${pedidoLink(r.pedidoId)}`
+      )
     } else {
       await sendWA(fromPhone, `❌ Error: ${r.error || 'No se pudo crear el pedido'}`)
     }
@@ -243,7 +290,7 @@ export async function handleSlashCommands(
     }
     const { data, error } = await supabase.rpc('fn_registrar_entrega_bulk', { p_cliente_tel: cTel, p_cantidad: cant })
     if (data?.ok) {
-      await sendWA(fromPhone, `✅ *${cant} punto(s)* sumados a ${cTel}. Total: *${data.puntos} pts*`)
+      await sendWA(fromPhone, `✅ *PUNTOS AÑADIDOS*\n───────────────────\n\n👤 *Cliente:* \`${cTel}\`\n➕ *Agregados:* ${cant} punto(s)\n⭐ *Total Actual:* ${data.puntos} pts\n\n_Los puntos ya están reflejados en su cuenta._`)
       if (data.recien_ascendido) {
         try {
           await sendWA(`52${cTel}`, `👑 *¡Felicidades!* 👑\n\nHas sido promovido a *Cliente VIP* ⭐ de Estrella Delivery.\n\nA partir de ahora acumularás *saldo real* en tu billetera. 💰`)
@@ -267,8 +314,22 @@ export async function handleSlashCommands(
       .select('nombre, telefono, puntos, es_vip, rango, saldo_billetera, envios_totales, envios_gratis_disponibles, cupon_activo, notas_crm')
       .ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
     if (c) {
+      const cuponTxt = c.cupon_activo ? `\n🎟️ *Cupón Activo:* \`${c.cupon_activo}\`` : ''
+      const notasTxt = c.notas_crm ? `\n\n📝 *Notas CRM:*\n_${c.notas_crm.slice(0, 200)}_` : ''
+      const vipTxt = c.es_vip ? `👑 *NIVEL VIP* 👑\n` : ''
+      
       await sendWA(fromPhone,
-        `🔍 *${c.nombre || 'Sin nombre'}*\n📞 ${c.telefono}\n⭐ Puntos: ${c.puntos} | Rango: ${c.rango || 'bronce'}\n🎁 Envíos gratis: ${c.envios_gratis_disponibles}\n💰 Billetera: $${c.saldo_billetera || 0}\n🛵 Total entregas: ${c.envios_totales}\n${c.es_vip ? '👑 VIP' : ''}${c.cupon_activo ? `\n🎟️ Cupón: ${c.cupon_activo}` : ''}${c.notas_crm ? `\n📝 ${c.notas_crm.slice(0, 200)}` : ''}`)
+        `🔍 *INFORMACIÓN DEL CLIENTE*\n───────────────────\n\n` +
+        `👤 *Nombre:* ${c.nombre || 'Sin registrar'}\n` +
+        `📞 *Teléfono:* \`${c.telefono}\`\n\n` +
+        vipTxt +
+        `⭐ *Puntos:* ${c.puntos}\n` +
+        `📊 *Rango:* ${String(c.rango || 'bronce').toUpperCase()}\n` +
+        `💰 *Billetera:* $${c.saldo_billetera || 0}\n` +
+        `🎁 *Envíos Gratis:* ${c.envios_gratis_disponibles}\n` +
+        `🛵 *Total Entregas:* ${c.envios_totales}` +
+        cuponTxt + notasTxt
+      )
     } else {
       await sendWA(fromPhone, `❌ Cliente no encontrado con ese número.`)
     }
@@ -301,7 +362,13 @@ export async function handleSlashCommands(
         descripcion: `Carga manual de saldo por admin (${from10})`,
         created_by: null
       })
-      await sendWA(fromPhone, `✅ *$${monto}* cargados a ${c.nombre || cTel}.\n💰 Saldo anterior: $${c.saldo_billetera || 0}\n💰 Saldo nuevo: *$${nuevoSaldo}*`)
+      await sendWA(fromPhone, 
+        `✅ *SALDO RECARGADO*\n───────────────────\n\n` +
+        `👤 *Cliente:* ${c.nombre || cTel}\n` +
+        `➕ *Monto Recargado:* $${monto}\n\n` +
+        `💰 *Saldo Anterior:* $${c.saldo_billetera || 0}\n` +
+        `💳 *Nuevo Saldo:* *$${nuevoSaldo}*`
+      )
       // Notificar al cliente
       try {
         await sendWA(`52${cTel}`, `💰 ¡Hola ${c.nombre || 'Cliente'}! Se han cargado *$${monto}* a tu Billetera VIP.\n💳 Saldo actual: *$${nuevoSaldo}*\n\n¡Gracias por ser parte de Estrella Delivery! ⭐️`)
@@ -351,7 +418,11 @@ export async function handleSlashCommands(
 
     if (nuevoRol === 'restaurante') {
       if (rest) {
-        await sendWA(fromPhone, `ℹ️ El número *${cTel}* ya es un restaurante (*${rest.nombre}*).`)
+        await sendWA(fromPhone, 
+          `ℹ️ *ROL EXISTENTE*\n───────────────────\n\n` +
+          `👤 *Número:* \`${cTel}\`\n` +
+          `_Ya es un restaurante (${rest.nombre})._`
+        )
       } else {
         const nombreRest = extra || nombreDetectado
         const { error } = await supabase.from('restaurantes').insert({
@@ -365,11 +436,12 @@ export async function handleSlashCommands(
           await sendWA(fromPhone, `❌ Error al crear restaurante: ${error.message}`)
         } else {
           await sendWA(fromPhone,
-            `✅ *${cTel}* ahora es *Restaurante* 🏪\n` +
-            `📝 Nombre: *${nombreRest}*\n` +
-            `🔒 Programa de lealtad: *pendiente de activar*\n\n` +
-            `Rol anterior: ${rolesActuales}\n` +
-            `Para activar el programa usa: */activar-lealtad ${cTel}*`
+            `✅ *ROL ASIGNADO*\n───────────────────\n\n` +
+            `👤 *Número:* \`${cTel}\`\n` +
+            `🏪 *Rol:* Restaurante\n` +
+            `📝 *Nombre:* ${nombreRest}\n\n` +
+            `🔒 *Lealtad:* Pendiente de activar\n` +
+            `_Para activar el programa usa:_ */activar-lealtad ${cTel}*`
           )
           // Notificar al número que cambió de rol
           await sendWA(`52${cTel}`, `🏪 *Estrella Delivery* te ha registrado como restaurante asociado.\n\nEscríbenos para activar tu portal de lealtad y empezar a fidelizar a tus clientes. 🌟`)
@@ -377,7 +449,11 @@ export async function handleSlashCommands(
       }
     } else if (nuevoRol === 'cliente') {
       if (cli) {
-        await sendWA(fromPhone, `ℹ️ El número *${cTel}* ya es cliente (*${cli.nombre}*).`)
+        await sendWA(fromPhone, 
+          `ℹ️ *ROL EXISTENTE*\n───────────────────\n\n` +
+          `👤 *Número:* \`${cTel}\`\n` +
+          `_Ya es un cliente (${cli.nombre})._`
+        )
       } else {
         const nombreCli = extra || nombreDetectado
         const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${cTel}`
@@ -393,15 +469,20 @@ export async function handleSlashCommands(
           await sendWA(fromPhone, `❌ Error al crear cliente: ${error.message}`)
         } else {
           await sendWA(fromPhone,
-            `✅ *${cTel}* ahora es *Cliente* 👤\n` +
-            `📝 Nombre: *${nombreCli}*\n` +
-            `Rol anterior: ${rolesActuales}`
+            `✅ *ROL ASIGNADO*\n───────────────────\n\n` +
+            `👤 *Número:* \`${cTel}\`\n` +
+            `👤 *Rol:* Cliente\n` +
+            `📝 *Nombre:* ${nombreCli}`
           )
         }
       }
     } else if (nuevoRol === 'repartidor') {
       if (rep) {
-        await sendWA(fromPhone, `ℹ️ El número *${cTel}* ya es repartidor (*${rep.nombre}*).`)
+        await sendWA(fromPhone, 
+          `ℹ️ *ROL EXISTENTE*\n───────────────────\n\n` +
+          `👤 *Número:* \`${cTel}\`\n` +
+          `_Ya es un repartidor (${rep.nombre})._`
+        )
       } else {
         const nombreRep = extra || nombreDetectado
         const aliasRep = nombreRep.split(' ')[0].toLowerCase()
@@ -415,10 +496,11 @@ export async function handleSlashCommands(
           await sendWA(fromPhone, `❌ Error al crear repartidor: ${error.message}`)
         } else {
           await sendWA(fromPhone,
-            `✅ *${cTel}* ahora es *Repartidor* 🛵\n` +
-            `📝 Nombre: *${nombreRep}*\n` +
-            `🏷️ Alias: *${aliasRep}*\n` +
-            `Rol anterior: ${rolesActuales}`
+            `✅ *ROL ASIGNADO*\n───────────────────\n\n` +
+            `👤 *Número:* \`${cTel}\`\n` +
+            `🛵 *Rol:* Repartidor\n` +
+            `📝 *Nombre:* ${nombreRep}\n` +
+            `🏷️ *Alias:* ${aliasRep}`
           )
           await sendWA(`52${cTel}`, `🛵 *Estrella Delivery* te ha registrado como repartidor.\n\nEscríbenos para activar tu cuenta y comenzar a recibir pedidos.`)
         }
@@ -443,19 +525,30 @@ export async function handleSlashCommands(
     const { data: existe } = await supabase.from(tabla).select('id, nombre').ilike('telefono', `%${cTel}%`).maybeSingle()
 
     if (!existe) {
-      await sendWA(fromPhone, `⚠️ El número *${cTel}* no tiene el rol de *${rolAQuitar}*.`)
+      await sendWA(fromPhone, 
+        `⚠️ *ERROR*\n───────────────────\n\n` +
+        `El número *\`${cTel}\`* no tiene el rol de *${rolAQuitar}*.`
+      )
     } else {
-      // Desactivar en lugar de borrar para mantener historial
       if (rolAQuitar === 'restaurante') {
         await supabase.from('restaurantes').update({ activo: false, programa_lealtad_activo: false }).eq('id', existe.id)
       } else if (rolAQuitar === 'repartidor') {
         await supabase.from('repartidores').update({ activo: false }).eq('id', existe.id)
       } else {
         // Para clientes solo desactivamos términos y puntos (nunca se borra historial)
-        await sendWA(fromPhone, `⚠️ Los clientes no se pueden eliminar para preservar el historial. Si quieres bloquearlo, usa */vetar ${cTel}*.`)
+        await sendWA(fromPhone, 
+          `⚠️ *ACCIÓN DENEGADA*\n───────────────────\n\n` +
+          `Los clientes no se pueden eliminar para preservar el historial.\n` +
+          `_Si quieres bloquearlo, usa:_ */vetar ${cTel}*`
+        )
         return new Response('OK', { status: 200 })
       }
-      await sendWA(fromPhone, `✅ Rol *${rolAQuitar}* quitado a *${cTel}* (*${existe.nombre}*).\n\nEl registro histórico se conserva.`)
+      await sendWA(fromPhone, 
+        `✅ *ROL DESACTIVADO*\n───────────────────\n\n` +
+        `👤 *Número:* \`${cTel}\` (${existe.nombre})\n` +
+        `❌ *Rol quitado:* ${rolAQuitar.toUpperCase()}\n\n` +
+        `_El registro histórico se ha conservado._`
+      )
     }
     return new Response('OK', { status: 200 })
   }
