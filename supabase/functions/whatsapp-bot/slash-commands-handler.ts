@@ -284,11 +284,28 @@ export async function handleSlashCommands(
       await sendWA(fromPhone, `⚠️ Formato: */saldo 9631234567 150.50*`)
       return new Response('OK', { status: 200 })
     }
+    if (monto > 10000) {
+      await sendWA(fromPhone, `⚠️ El máximo permitido por carga es *$10,000*. Contacta al desarrollador si necesitas más.`)
+      return new Response('OK', { status: 200 })
+    }
     const { data: c } = await supabase.from('clientes').select('id, nombre, saldo_billetera').ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
     if (c) {
       const nuevoSaldo = (c.saldo_billetera || 0) + monto
       await supabase.from('clientes').update({ saldo_billetera: nuevoSaldo }).eq('id', c.id)
+      // Auditoría: registrar el movimiento en historial
+      await supabase.from('registros_puntos').insert({
+        cliente_id: c.id,
+        tipo: 'acumulacion',
+        puntos: 0,
+        monto_saldo: monto,
+        descripcion: `Carga manual de saldo por admin (${from10})`,
+        created_by: null
+      })
       await sendWA(fromPhone, `✅ *$${monto}* cargados a ${c.nombre || cTel}.\n💰 Saldo anterior: $${c.saldo_billetera || 0}\n💰 Saldo nuevo: *$${nuevoSaldo}*`)
+      // Notificar al cliente
+      try {
+        await sendWA(`52${cTel}`, `💰 ¡Hola ${c.nombre || 'Cliente'}! Se han cargado *$${monto}* a tu Billetera VIP.\n💳 Saldo actual: *$${nuevoSaldo}*\n\n¡Gracias por ser parte de Estrella Delivery! ⭐️`)
+      } catch (_) { /* no bloquear si falla la notificación */ }
     } else {
       await sendWA(fromPhone, `❌ Cliente no encontrado.`)
     }
@@ -443,22 +460,8 @@ export async function handleSlashCommands(
     return new Response('OK', { status: 200 })
   }
 
-  if (slashText === '/ayuda' || slashText === '/help') {
-    await sendWA(fromPhone,
-      `📋 *COMANDOS DE EMERGENCIA*\n_(Funcionan sin IA)_\n\n` +
-      `📦 */pedido 963XXXXXXX descripción* — Crear pedido\n` +
-      `⭐ */puntos 963XXXXXXX [cantidad]* — Sumar puntos\n` +
-      `🔍 */buscar 963XXXXXXX* — Ver datos del cliente\n` +
-      `💰 */saldo 963XXXXXXX monto* — Cargar billetera\n` +
-      `🎟️ */usar CODIGO* — Marcar cupón como usado\n` +
-      `🚫 */cancelar CODIGO* — Cancelar cupón\n` +
-      `🔄 */rol 963XXXXXXX [cliente|restaurante|repartidor] [nombre]* — Cambiar rol\n` +
-      `❌ */quitar-rol 963XXXXXXX [rol]* — Quitar rol\n` +
-      `🛵 */repartidor* — Modo repartidor\n` +
-      `👔 */admin* — Modo administrador\n\n` +
-      `_Estos comandos no requieren IA y siempre funcionan._`)
-    return new Response('OK', { status: 200 })
-  }
+  // /ayuda y /help ya se manejan al inicio del archivo (líneas 14 y 24)
+  // No duplicar aquí.
 
   return null
 }

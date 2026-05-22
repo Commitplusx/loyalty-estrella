@@ -191,6 +191,7 @@ export function ClienteView() {
 
   // ── Auto-cleanup: si cupon_activo ya fue marcado como 'usado' en
   //    la tabla cupones, lo limpiamos del estado local para que no se muestre.
+  //    También maneja cupones legacy que no tienen entrada en la tabla cupones.
   useEffect(() => {
     if (!cliente?.cupon_activo) return;
     supabase
@@ -210,6 +211,8 @@ export function ClienteView() {
             } catch { /* ignore */ }
           }
         }
+        // Si data es null (cupón legacy sin entrada en tabla cupones), lo dejamos visible
+        // ya que solo el comando /usar o el botón BTN_CUPON lo pueden limpiar.
       });
   }, [cliente?.cupon_activo]);
 

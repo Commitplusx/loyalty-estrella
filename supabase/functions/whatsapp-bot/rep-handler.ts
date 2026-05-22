@@ -34,6 +34,12 @@ export async function handleRepButtons(supabase: Supa, fromPhone: string, button
         .update({ estado: 'usado', used_at: new Date().toISOString() })
         .eq('codigo', codigo).eq('estado', 'activo').select().maybeSingle()
       if (cupon) {
+        // Limpiar cupon_activo del cliente para que desaparezca de la Web App
+        if (cupon.cliente_tel) {
+          await supabase.from('clientes')
+            .update({ cupon_activo: null })
+            .eq('telefono', cupon.cliente_tel)
+        }
         await sendWA(fromPhone, `✅ Cupón *${codigo}* marcado como usado. ¡Buen trabajo!`)
         if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN, `🎟️ [OP] Repartidor marcó cupón ${codigo} como usado.`)
       } else {

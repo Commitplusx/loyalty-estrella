@@ -281,6 +281,7 @@ export async function handleRestaurantCommand(
     }
 
     const lastRes = data
+    const vipAscendido = data.recien_ascendido === true
 
     _log(supabase, restauranteId, cTel, 'sumar_puntos', cant, `${cant} puntos otorgados por ${nombreRest}`)
     await sendWA(fromPhone, `✅ *${cant} punto(s)* sumados a ${c.nombre || cTel}.\n📊 Total acumulado: *${lastRes.puntos} pts*`)

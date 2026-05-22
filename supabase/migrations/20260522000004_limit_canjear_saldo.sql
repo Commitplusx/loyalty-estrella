@@ -58,5 +58,8 @@ BEGIN
         'nuevo_saldo', v_nuevo_saldo, 
         'codigo', v_codigo
     );
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('ok', false, 'error', SQLERRM);
 END;
 $$;

@@ -158,7 +158,7 @@ async function notificarCliente(
       })
       if (!res.ok) console.error(`WA error (entregado texto):`, await res.text())
 
-      return `✅ Plantilla 'pedido_entregado_v2' enviada`
+      return `✅ Mensaje de texto plano 'entregado' enviado al cliente`
     }
     case 'punto_acumulado': {
       // Solo se llama cuando el cliente acaba de completar un ciclo y tiene envío gratis disponible
@@ -209,6 +209,8 @@ serve(async (req: Request) => {
     if (!tipo) {
       return new Response(JSON.stringify({ error: 'tipo es requerido' }), { status: 400 })
     }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
     if (tipo === 'cupon_generado') {
       const { cliente_tel, cliente_nombre, codigo_cupon, descuento, expires_at, tipo_canje } = payload
@@ -335,7 +337,7 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: 'pedido_id requerido para este tipo' }), { status: 400 })
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+    // supabase client ya fue creado arriba
     const { data: pedido, error } = await supabase
       .from('pedidos')
       .select('*')
