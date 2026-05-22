@@ -51,6 +51,10 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
   const handleCanjeComida = async () => {
     const monto = parseFloat(foodAmount);
     if (isNaN(monto) || monto <= 0 || monto > (cliente.saldo_billetera || 0)) return;
+    if (monto > 350) {
+      setWalletMsg(`❌ El límite máximo de canje por transacción es de $350 pesos.`);
+      return;
+    }
     if (cliente.cupon_activo) {
       setWalletMsg(`❌ Ya tienes un cupón activo: ${cliente.cupon_activo}. Úsalo antes de generar otro.`);
       return;
@@ -226,10 +230,14 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
                 <input
                   type="number"
                   min="1"
-                  max={cliente.saldo_billetera || 0}
+                  max={Math.min(350, cliente.saldo_billetera || 0)}
                   step="0.01"
                   value={foodAmount}
-                  onChange={e => setFoodAmount(e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (parseFloat(val) > 350) setFoodAmount('350');
+                    else setFoodAmount(val);
+                  }}
                   placeholder="0.00"
                   className="w-full pl-8 pr-4 py-3 border-2 border-orange-200 rounded-xl text-lg font-bold text-gray-900 dark:text-white dark:bg-gray-800 focus:outline-none focus:border-orange-400"
                 />
@@ -237,7 +245,7 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
               {walletMsg && <p className="mt-2 text-xs text-red-500">{walletMsg}</p>}
             </div>
             <button
-              disabled={walletLoading || !foodAmount || parseFloat(foodAmount) <= 0 || parseFloat(foodAmount) > (cliente.saldo_billetera || 0)}
+              disabled={walletLoading || !foodAmount || parseFloat(foodAmount) <= 0 || parseFloat(foodAmount) > Math.min(350, cliente.saldo_billetera || 0)}
               onClick={handleCanjeComida}
               className="w-full py-5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black text-xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed hover:from-orange-600 hover:to-amber-600 transition-all shadow-lg active:scale-[0.98]"
             >
