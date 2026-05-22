@@ -273,30 +273,42 @@ serve(async (req: Request) => {
       const telFormateado = formatTel(cliente_tel)
       const adminPhoneMain = Deno.env.get('ADMIN_PHONE_BILLETERA') || Deno.env.get('ADMIN_PHONE') || Deno.env.get('ADMIN_PHONES')?.split(',')[0]
 
-      // Avisar al cliente (USANDO PLANTILLA estrella_cupon_generado en INGLES)
-      const fExp = 'Válido hoy'
-      const strDesc = `Hasta $${monto} en pedidos/comida`
-      const resCli = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+      // Intentar primero con mensaje de texto libre (más amigable, funciona si hay ventana 24h)
+      let resCli = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template',
-          template: {
-            name: 'estrella_cupon_generado',
-            language: { code: 'en' },
-            components: [
-              {
-                type: 'body', parameters: [
-                  { type: 'text', text: cliente_nombre || 'Cliente' }, // {{1}}
-                  { type: 'text', text: codigo_canje || 'CUPON' }, // {{2}}
-                  { type: 'text', text: strDesc }, // {{3}}
-                  { type: 'text', text: fExp } // {{4}}
-                ]
-              }
-            ]
-          }
+          messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text',
+          text: { body: `✅ *¡Cupón Generado!*\n\nHola ${cliente_nombre || 'Cliente'}, has canjeado saldo de tu Billetera VIP.\n\n🎟️ Código: *${codigo_canje || 'CUPON'}*\n💰 Monto: *$${monto} pesos*\n\nMuéstrale o díctale este código a tu repartidor para que aplique el descuento. ⭐️` }
         })
       })
-      if (!resCli.ok) console.error(`WA error cliente canje template:`, await resCli.text())
+
+      if (!resCli.ok) {
+        console.warn(`WA error cliente canje text, intentando fallback con plantilla...`)
+        // Fallback a la plantilla oficial si falla (ej. fuera de ventana 24h)
+        const fExp = 'Válido hoy'
+        const strDesc = `Hasta $${monto} en pedidos/comida`
+        resCli = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+          method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template',
+            template: {
+              name: 'estrella_cupon_generado',
+              language: { code: 'en' },
+              components: [
+                {
+                  type: 'body', parameters: [
+                    { type: 'text', text: cliente_nombre || 'Cliente' }, // {{1}}
+                    { type: 'text', text: codigo_canje || 'CUPON' }, // {{2}}
+                    { type: 'text', text: strDesc }, // {{3}}
+                    { type: 'text', text: fExp } // {{4}}
+                  ]
+                }
+              ]
+            }
+          })
+        })
+        if (!resCli.ok) console.error(`WA error cliente canje template fallback:`, await resCli.text())
+      }
 
       if (adminPhoneMain) {
         const resAdm = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
@@ -344,7 +356,7 @@ serve(async (req: Request) => {
     if (tipo === 'alerta_zombie') {
       const adminPhone = Deno.env.get('ADMIN_PHONE') || (Deno.env.get('ADMIN_PHONES') ?? '').split(',')[0]?.trim()
       if (!adminPhone) throw new Error('Missing ADMIN_PHONE en entorno')
-      
+
       let repInfoTexto = '🛵 *Repartidor:* Ninguno asignado'
       if (pedido.repartidor_id) {
         const { data: rep } = await supabase.from('repartidores').select('nombre, telefono').or(`user_id.eq.${pedido.repartidor_id},id.eq.${pedido.repartidor_id}`).limit(1).maybeSingle()
@@ -475,20 +487,20 @@ serve(async (req: Request) => {
 
     // B. Notificar al Cliente
     if (tipo !== 'asignacion' && pedido.cliente_tel) {
-        const tel10 = pedido.cliente_tel.replace(/\D/g, '').slice(-10)
-        
-        // REGLA ESTRICTA DE PRIVACIDAD: Solo notificar a clientes VIP (acepta_terminos = true)
-        const { data: clInfo } = await supabase
-          .from('clientes')
-          .select('acepta_terminos, puntos, rango, es_vip, nombre')
-          .eq('telefono', tel10)
-          .maybeSingle()
+      const tel10 = pedido.cliente_tel.replace(/\D/g, '').slice(-10)
 
-        if (!clInfo || clInfo.acepta_terminos !== true) {
-          results.push(`🚫 Cliente ${tel10} silencioso o no registrado. Notificaciones bloqueadas por privacidad.`)
-        } else {
-          let repNom = 'tu repartidor'
-          if (pedido.repartidor_id) {
+      // REGLA ESTRICTA DE PRIVACIDAD: Solo notificar a clientes VIP (acepta_terminos = true)
+      const { data: clInfo } = await supabase
+        .from('clientes')
+        .select('acepta_terminos, puntos, rango, es_vip, nombre')
+        .eq('telefono', tel10)
+        .maybeSingle()
+
+      if (!clInfo || clInfo.acepta_terminos !== true) {
+        results.push(`🚫 Cliente ${tel10} silencioso o no registrado. Notificaciones bloqueadas por privacidad.`)
+      } else {
+        let repNom = 'tu repartidor'
+        if (pedido.repartidor_id) {
           // Buscar por user_id O por id para cubrir repartidores sin cuenta Auth
           const { data: r } = await supabase.from('repartidores').select('nombre')
             .or(`user_id.eq.${pedido.repartidor_id},id.eq.${pedido.repartidor_id}`)
