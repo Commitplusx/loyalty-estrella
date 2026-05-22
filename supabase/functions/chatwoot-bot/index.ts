@@ -469,12 +469,11 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
       if (c) {
         const cant = Number(d.puntosASumar) || 1
         let lastRes: any = null
-        for (let i = 0; i < cant; i++) {
-          const { data, error } = await supabase.rpc('fn_registrar_entrega', {
-            p_cliente_tel: tel10
-          })
-          if (!error && data?.ok) lastRes = data
-        }
+        const { data, error } = await supabase.rpc('fn_registrar_entrega_bulk', {
+          p_cliente_tel: tel10,
+          p_cantidad: cant
+        })
+        if (!error && data?.ok) lastRes = data
         const total = lastRes ? lastRes.puntos : ((c.puntos || 0) + cant)
         try {
           const resolvedContactId = await findContactIdByPhone(accountId, tel10)

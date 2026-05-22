@@ -66,7 +66,7 @@ BEGIN
   INSERT INTO registros_puntos (cliente_id, tipo, puntos, monto_saldo, descripcion)
   VALUES (v_cliente.id, 'acumulacion', p_cantidad, v_saldo_ganado_total, format('Bono masivo de %s puntos', p_cantidad));
 
-  UPDATE clientes SET puntos = v_cliente.puntos, saldo_billetera = v_cliente.saldo_billetera, puntos_expiran_at = v_cliente.puntos_expiran_at, entregas_ciclo = v_cliente.entregas_ciclo, ciclo_inicio_at = v_cliente.ciclo_inicio_at, envios_totales = v_cliente.envios_totales, es_vip = v_cliente.es_vip WHERE id = v_cliente.id;
+  UPDATE clientes SET puntos = v_cliente.puntos, saldo_billetera = v_cliente.saldo_billetera, puntos_expiran_at = v_cliente.puntos_expiran_at, entregas_ciclo = v_cliente.entregas_ciclo, ciclo_inicio_at = v_cliente.ciclo_inicio_at, envios_totales = v_cliente.envios_totales, es_vip = v_cliente.es_vip, updated_at = NOW() WHERE id = v_cliente.id;
 
   IF v_recien_ascendido THEN
     BEGIN

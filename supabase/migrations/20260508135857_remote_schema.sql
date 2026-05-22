@@ -407,6 +407,9 @@ CREATE OR REPLACE FUNCTION "public"."fn_notificar_cambio_estado_pedido"() RETURN
 BEGIN
   IF OLD.estado IS NOT DISTINCT FROM NEW.estado THEN RETURN NEW; END IF;
   IF NEW.estado NOT IN ('recibido', 'en_camino', 'entregado') THEN RETURN NEW; END IF;
+  
+  -- DESHABILITADO: Ya no notificamos estados de envíos para enfocarnos 100% en Loyalty.
+  /*
   BEGIN
     PERFORM net.http_post(
       url     := 'https://jdrrkpvodnqoljycixbg.supabase.co/functions/v1/notificar-whatsapp',
@@ -416,6 +419,8 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN
     RAISE WARNING 'notificar-whatsapp trigger error: %', SQLERRM;
   END;
+  */
+  
   RETURN NEW;
 END;
 $$;

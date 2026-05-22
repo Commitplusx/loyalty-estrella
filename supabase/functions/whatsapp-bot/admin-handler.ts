@@ -207,20 +207,20 @@ export async function handleAdminMessage(
         const cant = Number(d.puntosASumar) || 1
         let lastRes: any = null
         let rpcError: any = null
-        // BUGFIX: Rastrear si en CUALQUIER iteración se activó el ascenso VIP,
-        // ya que lastRes solo guarda la última iteración y el flag se pierde.
+        // BUGFIX: Rastrear si se activó el ascenso VIP.
         let vipAscendidoEnAlgunaIter = false
-        for (let i = 0; i < cant; i++) {
-          const { data, error } = await supabase.rpc('fn_registrar_entrega', {
-            p_cliente_tel: tel10
-          })
-          if (error) { rpcError = error; console.error(`[SUMAR_PUNTOS] RPC error iter ${i}:`, error); break }
-          else if (data?.ok) {
-            lastRes = data
-            if (data.recien_ascendido) vipAscendidoEnAlgunaIter = true
-          }
-          else { console.warn(`[SUMAR_PUNTOS] RPC retornó ok=false iter ${i}:`, data); break }
+        
+        const { data, error } = await supabase.rpc('fn_registrar_entrega_bulk', {
+          p_cliente_tel: tel10,
+          p_cantidad: cant
+        })
+        
+        if (error) { rpcError = error; console.error(`[SUMAR_PUNTOS] RPC error bulk:`, error) }
+        else if (data?.ok) {
+          lastRes = data
+          if (data.recien_ascendido) vipAscendidoEnAlgunaIter = true
         }
+        else { console.warn(`[SUMAR_PUNTOS] RPC bulk retornó ok=false:`, data) }
 
         if (!lastRes) {
           const errMsg = rpcError?.message || 'La función retornó ok=false'
@@ -464,9 +464,7 @@ export async function handleAdminMessage(
         }
         if (d.puntosASumar > 0 && clientId) {
           const cant = Number(d.puntosASumar) || 1
-          for (let i = 0; i < cant; i++) {
-            await supabase.rpc('fn_registrar_entrega', { p_cliente_tel: tel10 })
-          }
+          await supabase.rpc('fn_registrar_entrega_bulk', { p_cliente_tel: tel10, p_cantidad: cant })
         }
       } else {
         // 4. No ha aceptado T&C → Enviar T&C
@@ -1006,16 +1004,16 @@ Guárdala muy bien en tus favoritos. Con ella irás acumulando recompensas en ca
         let lastRes: any = null
         let rpcErrTerminos: any = null
         let vipAscendidoEnAlgunaIter = false
-        for (let i = 0; i < cant; i++) {
-          const { data, error } = await supabase.rpc('fn_registrar_entrega', {
-            p_cliente_tel: tel10
-          })
-          if (error) { rpcErrTerminos = error; break }
-          if (data?.ok) {
-            lastRes = data
-            if (data.recien_ascendido) vipAscendidoEnAlgunaIter = true
-          }
-          else break
+        
+        const { data, error } = await supabase.rpc('fn_registrar_entrega_bulk', {
+          p_cliente_tel: tel10,
+          p_cantidad: cant
+        })
+        
+        if (error) { rpcErrTerminos = error }
+        if (data?.ok) {
+          lastRes = data
+          if (data.recien_ascendido) vipAscendidoEnAlgunaIter = true
         }
         if (!lastRes) {
           console.error(`[T&C PUNTOS] RPC falló para ${tel10}:`, rpcErrTerminos?.message)
