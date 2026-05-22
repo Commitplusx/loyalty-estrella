@@ -1,6 +1,6 @@
 // rep-handler.ts — Lógica del repartidor: botones y mensajes de texto
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { sendWA, sendInteractiveButton, sendInteractiveButtons, sendWATemplate } from './whatsapp.ts'
+import { sendWA, sendInteractiveButton, sendInteractiveButtons, sendWATemplate, sendWAImage } from './whatsapp.ts'
 import { extract10Digits, guardarMemoria } from './db.ts'
 import { generarNumeroOrden } from '../_shared/utils.ts'
 import { conversacionDeepSeek } from './ai.ts'
@@ -61,12 +61,34 @@ export async function handleRepButtons(supabase: Supa, fromPhone: string, button
       }
       // Actualizar estado a 'aceptado' para reflejar que el repartidor confirmó
       await supabase.from('pedidos').update({ estado: 'aceptado' }).eq('id', pedidoId).eq('estado', 'asignado')
+      
+      // RAG Histórico: Extraer notas_crm y foto_fachada para darle contexto proactivo al repartidor
+      let memoriaBot = ''
+      let fotoFachadaUrl = null
+      if (p.cliente_tel) {
+        const tel10 = extract10Digits(p.cliente_tel)
+        const { data: cliMem } = await supabase.from('clientes').select('notas_crm, foto_fachada_url').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+        if (cliMem) {
+          fotoFachadaUrl = cliMem.foto_fachada_url
+          if (cliMem.notas_crm) {
+            // Extraer las últimas 2 notas para no saturar la pantalla
+            const lineas = cliMem.notas_crm.split('\n').filter(Boolean)
+            const ultimas = lineas.slice(-2).join('\n')
+            memoriaBot = `\n🧠 *Memoria Bot:*\n${ultimas}\n`
+          }
+        }
+      }
+
+      if (fotoFachadaUrl) {
+        await sendWAImage(fromPhone, fotoFachadaUrl, `📸 Fachada de ${p.cliente_nombre || p.cliente_tel}`)
+      }
+
       const text = `📋 *Detalle del Pedido*\n\n📦 ${p.descripcion}\n` +
         (p.cliente_nombre ? `👤 ${p.cliente_nombre}\n` : '') +
         (p.cliente_tel    ? `📞 ${p.cliente_tel}\n` : '') +
         (p.restaurante    ? `🍽️ Origen: ${p.restaurante}\n` : '') +
-        (p.direccion      ? `🏠 Ref: ${p.direccion}` : '') + mapLink
-      await sendInteractiveButton(fromPhone, text, `BTN_RECOGER_${pedidoId}`, 'Recoger Pedido')
+        (p.direccion      ? `🏠 Ref: ${p.direccion}\n` : '') + memoriaBot + mapLink
+      await sendInteractiveButton(fromPhone, text.trim(), `BTN_RECOGER_${pedidoId}`, 'Recoger Pedido')
       invokeAsync(supabase, 'notificar-whatsapp', { pedido_id: pedidoId, tipo: 'aceptado' })
       if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN,
         `🟢 *[OPERACIÓN] Pedido Aceptado*\n🛵 *Repartidor:* ${nombreRep}\n🔢 *Orden:* ${numOrden}\n👤 *Cliente:* ${p.cliente_nombre || 'Desconocido'}\n📦 *Detalle:* ${p.descripcion}`)
