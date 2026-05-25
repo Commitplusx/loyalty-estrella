@@ -27,7 +27,7 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
   const isVip = cliente?.es_vip === true;
   // Meta de puntos dinámica según rango (centralizado en constants.ts)
   const puntosNecesarios = getMetaPuntos(cliente?.rango, isVip);
-  const puedeCanjearNormal = (cliente?.puntos || 0) >= puntosNecesarios;
+  const puedeCanjearNormal = (cliente?.puntos || 0) >= puntosNecesarios || (cliente?.envios_gratis_disponibles || 0) > 0;
   const saldoBilletera = cliente?.saldo_billetera || 0;
 
   const handleCanjear = async (tipo: 'envio_normal' | 'envio_vip', montoPedido: number = 0) => {
@@ -178,7 +178,7 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
                       <h3 className="font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
                         <Ticket className="w-5 h-5 text-orange-500" /> Envío Gratis ($50)
                       </h3>
-                      <p className="text-sm text-gray-500 mb-3">Canjea 5 puntos por un cupón de $50 pesos de descuento en tu envío.</p>
+                      <p className="text-sm text-gray-500 mb-3">Canjea tus beneficios por un cupón de $50 pesos de descuento en tu envío.</p>
                       <button
                         onClick={() => handleCanjear('envio_normal')}
                         disabled={loading || !puedeCanjearNormal}
@@ -187,7 +187,7 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
                         Canjear 5 puntos
                       </button>
                       {!puedeCanjearNormal && (
-                        <p className="text-xs text-center text-red-500 mt-2">Necesitas 5 puntos para canjear.</p>
+                        <p className="text-xs text-center text-red-500 mt-2">No tienes envíos gratis ni puntos suficientes.</p>
                       )}
                     </div>
                   </div>
