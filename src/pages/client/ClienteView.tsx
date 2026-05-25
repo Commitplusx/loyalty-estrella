@@ -1044,27 +1044,6 @@ export function ClienteView() {
 
                 {!showQR ? (
                   <>
-                    {/* Free delivery alert at the TOP */}
-                    {(() => {
-                      // Solo calculamos envíos por puntos si NO es VIP (VIP gana saldo, no envíos gratis)
-                      const enviosPorPuntos = isVip ? 0 : Math.floor((cliente.puntos || 0) / metaVip);
-                      const totalGratis = (cliente.envios_gratis_disponibles || 0) + enviosPorPuntos;
-                      if (totalGratis > 0) {
-                        return (
-                          <Card className="border-0 shadow-lg bg-gradient-to-br from-green-500 to-emerald-500 text-white mb-6 animate-in slide-in-from-bottom-4 duration-500">
-                            <CardContent className="p-6 text-center">
-                              <Gift className="w-12 h-12 mx-auto mb-3 animate-bounce" />
-                              <h3 className="text-xl font-bold mb-1">
-                                ¡Tienes {totalGratis} envío{totalGratis > 1 ? 's' : ''} gratis!
-                              </h3>
-                              <p className="text-green-100">Presiona "Canjear Beneficio" o muestra tu código QR al repartidor</p>
-                            </CardContent>
-                          </Card>
-                        );
-                      }
-                      return null;
-                    })()}
-
                     {/* Progress card */}
                     {isVip ? (
                       <WalletSection
