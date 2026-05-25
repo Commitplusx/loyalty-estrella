@@ -9,9 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Phone, Search, Gift,
-  TrendingUp, Clock, MapPin, Download,
-  ChevronLeft, QrCode, AlertCircle, Crown, Sun, Moon,
-  Truck, X, Share2, Heart, Utensils
+  TrendingUp, Clock, Download,
+  ChevronLeft, QrCode, AlertCircle, Sun, Moon,
+  Truck, X, Share2, Utensils, Heart
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast-native';
 import QRCode from 'qrcode';
@@ -931,103 +931,83 @@ export function ClienteView() {
             {/* --- LEFT SIDEBAR (Profile + Progress + QR) --- */}
             <div className="w-full lg:w-80 xl:w-96 shrink-0 min-w-0 lg:sticky lg:top-24 space-y-3 overflow-hidden">
 
-              {/* Profile Header */}
-              <Card className="border-0 shadow-lg dark:bg-card overflow-hidden">
-                <CardContent className="p-6 space-y-5 min-w-0">
-                  {/* Avatar + nombre */}
-                  <div className="flex items-center gap-4">
-                    {(() => {
-                      const initial = (cliente.nombre || '?')[0].toUpperCase();
-                      const avatarColors = [
-                        'bg-blue-500', 'bg-violet-500', 'bg-emerald-500',
-                        'bg-rose-500', 'bg-amber-500', 'bg-cyan-500',
-                      ];
-                      const colorIdx = (cliente.telefono?.charCodeAt(cliente.telefono.length - 1) || 0) % avatarColors.length;
-                      return isVip ? (
-                        <div className="w-28 h-28 rounded-full flex items-center justify-center shrink-0 bg-amber-100 shadow-xl">
-                          <Crown className="w-14 h-14 text-amber-500" />
-                        </div>
-                      ) : (
-                        <div className={`w-28 h-28 rounded-full flex items-center justify-center shrink-0 ${avatarColors[colorIdx]} shadow-xl`}>
-                          <span className="text-5xl font-black text-white">{initial}</span>
-                        </div>
-                      );
-                    })()}
-                    <div className="min-w-0 flex-1">
-                      <h1 className="text-3xl font-black text-gray-900 dark:text-white truncate">{cliente.nombre}</h1>
-                      <p className="text-base text-gray-400 mt-1 font-medium">{cliente.telefono}{isVip && <span className="ml-2 text-amber-500 font-bold">&middot; VIP</span>}</p>
+              {/* Header Actions (Share & Exit) */}
+              <div className="flex items-center justify-between px-2 pb-2">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Mi Tarjeta VIP</h2>
+                <div className="flex items-center gap-2">
+                  <button onClick={handleShare} title="Compartir" className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 text-blue-500 transition-colors shadow-sm">
+                    <Share2 className="w-4 h-4" />
+                  </button>
+                  <button onClick={handleReset} className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Digital Loyalty Card */}
+              <div className="relative w-full aspect-[1.6/1] max-w-[420px] mx-auto rounded-[20px] p-5 sm:p-6 flex justify-between overflow-hidden shadow-2xl transition-transform hover:-translate-y-1 bg-gradient-to-br from-[#181b21] to-[#0d0f12] ring-1 ring-amber-500/15 group">
+                {/* Logo gigante de fondo */}
+                <img 
+                  src="https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png" 
+                  alt="Fondo" 
+                  className="absolute -top-[10%] -right-[10%] h-[120%] opacity-5 grayscale pointer-events-none z-0" 
+                />
+                
+                {/* Lado Izquierdo */}
+                <div className="relative z-10 flex flex-col justify-between w-[58%]">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 sm:w-9 sm:h-9 bg-black rounded-lg p-1 border border-amber-500/30">
+                        <img src="https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png" alt="Logo" className="w-full h-full object-contain" />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={handleShare} title="Compartir" className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-500 transition-colors">
-                        <Share2 className="w-5 h-5" />
-                      </button>
-                      <button onClick={handleReset} className="w-10 h-10 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-                        <X className="w-5 h-5" />
-                      </button>
-                    </div>
+                    <span className="font-extrabold text-[12px] sm:text-[14px] tracking-[0.15em] sm:tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-[#FFDF00] via-[#D4AF37] to-[#FFDF00] uppercase drop-shadow-md" style={{ textShadow: '0 2px 10px rgba(255, 215, 0, 0.2)' }}>ESTRELLA</span>
+                    {isVip && <span className="bg-gradient-to-br from-amber-400 to-orange-500 text-black px-1.5 py-0.5 rounded text-[9px] font-black uppercase">VIP</span>}
                   </div>
 
-                  {/* Rango badge */}
-                  {(() => {
-                    const rango = isVip ? 'vip' : (cliente.rango || 'bronce');
-                    const rangoConfig: Record<string, { label: string; emoji: string; color: string; nextLabel: string; nextMeta: number; currentMeta: number }> = {
-                      bronce: { label: 'Bronce', emoji: '🥉', color: 'bg-amber-700/10 text-amber-700 border-amber-700/20', nextLabel: 'Plata', nextMeta: 20, currentMeta: 0 },
-                      plata:  { label: 'Plata',  emoji: '🥈', color: 'bg-slate-400/10 text-slate-600 border-slate-400/20', nextLabel: 'Oro', nextMeta: 50, currentMeta: 20 },
-                      oro:    { label: 'Oro',    emoji: '🥇', color: 'bg-amber-400/10 text-amber-600 border-amber-400/20', nextLabel: 'Leyenda', nextMeta: 100, currentMeta: 50 },
-                      vip:    { label: 'Socio VIP', emoji: '👑', color: 'bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-amber-600 border-amber-500/30 shadow-sm', nextLabel: 'Infinito', nextMeta: 9999, currentMeta: 15 },
-                    };
-                    const cfg = rangoConfig[rango] || rangoConfig.bronce;
-                    const envTot = cliente.envios_totales || 0;
-                    const pct = Math.min(100, Math.round(((envTot - cfg.currentMeta) / (cfg.nextMeta - cfg.currentMeta)) * 100));
-                    return (
-                      <div className={`flex items-center gap-4 px-5 py-5 rounded-2xl border-2 ${cfg.color}`}>
-                        <span className="text-5xl">{cfg.emoji}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-2.5">
-                            <span className="text-xl font-black uppercase tracking-wide">{cfg.label}</span>
-                            <span className="text-base font-bold opacity-70">{envTot} &middot; {cfg.nextLabel}</span>
-                          </div>
-                          <div className="h-4 bg-black/10 rounded-full overflow-hidden">
-                            <motion.div className="h-full bg-current rounded-full opacity-80"
-                              initial={{ width: 0 }} animate={{ width: `${pct}%` }}
-                              transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                  <div className="mt-4 sm:mt-6">
+                    <div className="text-lg sm:text-2xl font-semibold tracking-wide uppercase text-white truncate">{cliente.nombre}</div>
+                    <div className="text-xs sm:text-sm text-slate-400 font-mono tracking-widest mt-0.5">{cliente.telefono}</div>
+                  </div>
 
-                  {/* Cupón activo — solo para clientes NO VIP
-                     Para VIP el cupón se muestra dentro de WalletSection */}
-                  {cliente.cupon_activo && !isVip && (
-                    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-                      className="relative overflow-hidden rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 p-4 text-white shadow-md shadow-orange-500/30">
-                      <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/20 rounded-full blur-2xl pointer-events-none" />
-                      <div className="relative z-10">
-                        <div className="flex items-center gap-2.5 mb-2">
-                          <motion.span animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>🎟️</motion.span>
-                          <span className="text-xs font-black uppercase tracking-widest text-white/80">Cupón activo</span>
-                        </div>
-                        <p className="font-mono font-black text-xl tracking-wide break-all mb-3">{cliente.cupon_activo}</p>
-                        <button onClick={() => { navigator.clipboard.writeText(cliente.cupon_activo!); toast.success('¡Copiado!', 'Listo para usar'); }}
-                          className="text-sm font-black bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl transition-colors">📋 Copiar</button>
-                      </div>
-                    </motion.div>
-                  )}
-
-
-                  {/* Foto de fachada */}
-                  {(cliente as any).foto_fachada_url && (
-                    <div className="rounded-xl overflow-hidden shadow-sm">
-                      <img src={(cliente as any).foto_fachada_url} alt="Fachada" className="w-full h-28 object-cover" />
-                      <div className="bg-gray-50 dark:bg-gray-800 px-3 py-1.5">
-                        <p className="text-[10px] text-gray-400 flex items-center gap-1"><MapPin className="w-3 h-3" /> Dirección registrada</p>
-                      </div>
+                  <div className="flex gap-4 sm:gap-6 mt-auto bg-black/30 p-2 sm:p-3 rounded-xl border border-white/5 backdrop-blur-sm">
+                    <div className="flex flex-col">
+                      <span className="text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Puntos</span>
+                      <span className="text-base sm:text-xl font-black text-amber-400">{cliente.puntos}</span>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Billetera</span>
+                      <span className="text-base sm:text-xl font-black text-emerald-400">${cliente.saldo_billetera?.toFixed(2) || '0.00'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lado Derecho (QR) */}
+                <div className="relative z-10 flex flex-col items-end justify-center w-[38%]">
+                  <div className="bg-white p-1.5 sm:p-2.5 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] border-2 border-amber-500/40 group-hover:scale-105 transition-transform">
+                    <img src={`https://quickchart.io/qr?text=https://www.app-estrella.shop/loyalty/${cliente.telefono}&size=300&dark=0a0a0a&margin=1`} alt="QR Code" className="w-[100px] h-[100px] sm:w-[130px] sm:h-[130px] rounded-lg object-contain" />
+                  </div>
+                  <div className="mt-4 text-[10px] sm:text-[11px] font-black text-amber-400 uppercase tracking-[0.15em] sm:tracking-[0.2em] text-right">
+                    {isVip ? 'CLIENTE VIP' : `NIVEL ${cliente.rango || 'BRONCE'}`}
+                  </div>
+                </div>
+              </div>
+
+              {/* Cupón activo — solo para clientes NO VIP
+                  Para VIP el cupón se muestra dentro de WalletSection */}
+              {cliente.cupon_activo && !isVip && (
+                <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+                  className="relative overflow-hidden rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 p-4 text-white shadow-md shadow-orange-500/30">
+                  <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/20 rounded-full blur-2xl pointer-events-none" />
+                  <div className="relative z-10">
+                    <div className="flex items-center gap-2.5 mb-2">
+                      <motion.span animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>🎟️</motion.span>
+                      <span className="text-xs font-black uppercase tracking-widest text-white/80">Cupón activo</span>
+                    </div>
+                    <p className="font-mono font-black text-xl tracking-wide break-all mb-3">{cliente.cupon_activo}</p>
+                    <button onClick={() => { navigator.clipboard.writeText(cliente.cupon_activo!); toast.success('¡Copiado!', 'Listo para usar'); }}
+                      className="text-sm font-black bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl transition-colors">📋 Copiar</button>
+                  </div>
+                </motion.div>
+              )}
             </div>{/* end left sidebar */}
 
             {/* --- RIGHT CONTENT AREA --- */}
@@ -1141,17 +1121,24 @@ export function ClienteView() {
                 <HistorialTimeline historial={historial} cuponActivo={cliente?.cupon_activo} />
 
                 {/* Free delivery alert */}
-                {cliente.envios_gratis_disponibles > 0 && (
-                  <Card className="border-0 shadow-lg bg-gradient-to-br from-green-500 to-emerald-500 text-white">
-                    <CardContent className="p-6 text-center">
-                      <Gift className="w-12 h-12 mx-auto mb-3" />
-                      <h3 className="text-xl font-bold mb-1">
-                        ¡Tienes {cliente.envios_gratis_disponibles} envío{cliente.envios_gratis_disponibles > 1 ? 's' : ''} gratis!
-                      </h3>
-                      <p className="text-green-100">Muestra tu código QR al repartidor para canjearlo</p>
-                    </CardContent>
-                  </Card>
-                )}
+                {(() => {
+                  const metaVip = 5;
+                  const totalGratis = (cliente.envios_gratis_disponibles || 0) + Math.floor((cliente.puntos || 0) / metaVip);
+                  if (totalGratis > 0) {
+                    return (
+                      <Card className="border-0 shadow-lg bg-gradient-to-br from-green-500 to-emerald-500 text-white">
+                        <CardContent className="p-6 text-center">
+                          <Gift className="w-12 h-12 mx-auto mb-3" />
+                          <h3 className="text-xl font-bold mb-1">
+                            ¡Tienes {totalGratis} envío{totalGratis > 1 ? 's' : ''} gratis!
+                          </h3>
+                          <p className="text-green-100">Muestra tu código QR al repartidor para canjearlo</p>
+                        </CardContent>
+                      </Card>
+                    );
+                  }
+                  return null;
+                })()}
               </div>{/* end stats+historial */}
 
             </div>{/* end right content area */}

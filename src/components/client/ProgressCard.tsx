@@ -110,7 +110,7 @@ export function ProgressCard({
               <p className="text-[10px] text-gray-400 uppercase tracking-wider">Puntos</p>
             </div>
             <div className="text-center">
-              <p className="text-xl font-black text-emerald-500">{cliente.envios_gratis_disponibles}</p>
+              <p className="text-xl font-black text-emerald-500">{(cliente.envios_gratis_disponibles || 0) + Math.floor((cliente.puntos || 0) / metaVip)}</p>
               <p className="text-[10px] text-gray-400 uppercase tracking-wider">Gratis</p>
             </div>
           </div>

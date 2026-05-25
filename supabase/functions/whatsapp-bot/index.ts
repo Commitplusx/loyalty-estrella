@@ -3,7 +3,7 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-import { sendWA, sendInteractiveButton, markMessageAsRead } from './whatsapp.ts'
+import { sendWA, sendInteractiveButton, markMessageAsRead, sendWAImage } from './whatsapp.ts'
 import { extract10Digits, guardarMemoria, crearPedidoDesdeBot } from './db.ts'
 import { pedidoLink, logError } from '../_shared/utils.ts'
 import { handleRepButtons, handleRepMessage } from './rep-handler.ts'
@@ -23,6 +23,50 @@ serve(async (req: Request) => {
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
 
   let errorNotifyPhone = ''
+
+  // ── INTERNAL CRON JOBS ──
+  const cronAuth = req.headers.get('x-cron-auth')
+  if (cronAuth === 'ESTRELLA_CRON_SECRET_123') {
+    try {
+      const bodyText = await req.text()
+      const body = JSON.parse(bodyText)
+      if (body.event === 'CRON_PROMO') {
+        const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+        // Buscamos clientes creados entre 1 minuto y 1 hora atrás (para evitar leer toda la base de datos)
+        // En producción cambiaremos esto a 5 horas y 6 horas.
+        const limiteSuperior = new Date(Date.now() - 1 * 60 * 1000).toISOString()
+        const limiteInferior = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+        
+        const { data: clientes } = await supabase.from('clientes')
+          .select('id, telefono, nombre, notas_crm')
+          .gte('created_at', limiteInferior)
+          .lte('created_at', limiteSuperior)
+          
+        if (clientes) {
+          for (const c of clientes) {
+            if (c.notas_crm && c.notas_crm.includes('[PROMO_5H]')) continue;
+            
+            const promoImg = body.promoUrl || 'https://res.cloudinary.com/dlgcf3cht/image/upload/v1731610444/promo_doble_puntos.png'
+            // Bug Fix 1: Evitar crasheo si el cliente no tiene nombre registrado (es null)
+            const nombre = c.nombre ? c.nombre.split(' ')[0] : 'Cliente'
+            const caption = `🎁 *¡Hola ${nombre}!* Queremos darte una bienvenida especial.\n\nSolo por HOY, si haces tu primer pedido a través de *Estrella Delivery*, ganarás el **DOBLE DE PUNTOS** ⭐⭐ en tu Tarjeta VIP.\n\n¿Qué se te antoja pedir? 🛵💨`
+            
+            // Usamos sendWAImage directo
+            const res = await sendWAImage(`52${c.telefono}`, promoImg, caption)
+            
+            // Bug Fix 2 & 3: Marcar siempre para evitar loops infinitos si falla
+            const status = res.ok ? 'Enviada' : 'Fallida'
+            const newNota = c.notas_crm ? `${c.notas_crm}\n[PROMO_5H] ${status}` : `[PROMO_5H] ${status}`
+            await supabase.from('clientes').update({ notas_crm: newNota }).eq('id', c.id)
+          }
+        }
+        return new Response('Cron Processed', { status: 200 })
+      }
+    } catch (e) {
+      console.error('CRON Error:', e)
+      return new Response('Cron Error', { status: 500 })
+    }
+  }
 
   // ── PHASE 4: Meta Webhook Validation (X-Hub-Signature-256) ──
   const appSecret = Deno.env.get('WHATSAPP_APP_SECRET')
@@ -216,11 +260,33 @@ serve(async (req: Request) => {
 
     // ── INTERCEPTOR DE UBICACIÓN (location pin de WhatsApp) ──────────────────
     // Acepta location en pasos 2 (colonia) o 3 (dirección) del flujo de registro.
-    // No depende de clienteDB — usa directamente el reg_state guardado.
+    // También acepta location para administradores en sesión de captura (/fachada).
     if (msgType === 'location') {
       const locData = msg.location as { latitude?: number; longitude?: number; address?: string; name?: string } | undefined
 
-      // Leer siempre el reg_state actual para saber si estamos en registro
+      // 1. Revisar si el ADMIN tiene una sesión de captura abierta
+      if (esAdmin && locData?.latitude && locData?.longitude) {
+        const { data: capRaw } = await supabase.from('bot_memory')
+          .select('history').eq('phone', `capture_mode_${from10}`).maybeSingle()
+        const captureSession = capRaw?.history?.[0]
+        
+        if (captureSession && captureSession.clienteId) {
+          let locString = locData.address || locData.name
+          if (!locString) {
+            locString = `https://maps.google.com/?q=${locData.latitude},${locData.longitude}`
+          }
+          await supabase.from('clientes').update({
+            direccion: locString,
+            lat_frecuente: locData.latitude,
+            lng_frecuente: locData.longitude
+          }).eq('id', captureSession.clienteId)
+          
+          await sendWA(fromPhone, `📍 *Ubicación guardada*\nSe ha asociado la ubicación al cliente *${captureSession.clienteNombre}*.\n\n_Puedes seguir mandando fotos o escribir /fin para terminar la sesión._`)
+          return await exitSafely(new Response('OK', { status: 200 }))
+        }
+      }
+
+      // 2. Leer siempre el reg_state actual para saber si estamos en registro de cliente
       const { data: regRaw } = await supabase.from('bot_memory')
         .select('history').eq('phone', `reg_state_${from10}`).maybeSingle()
       const regState = regRaw?.history?.[0]
@@ -275,8 +341,13 @@ serve(async (req: Request) => {
 
     // 1. BOTONES INTERACTIVOS Y PLANTILLAS ──
     if (msgType === 'interactive' || msgType === 'button') {
-      const buttonId = (msg.interactive?.button_reply?.id || msg.button?.payload || msg.button?.text) as string | undefined
+      const buttonId = (msg.interactive?.button_reply?.id || msg.interactive?.list_reply?.id || msg.button?.payload || msg.button?.text) as string | undefined
       if (buttonId) {
+        if (esAdmin && buttonId.startsWith('ACT_')) {
+          const { handleAdminInteractive } = await import('./slash-commands-handler.ts')
+          const res = await handleAdminInteractive(supabase, fromPhone, from10, buttonId)
+          if (res) return await exitSafely(res)
+        }
         // Botones de confirmación de registro del propio cliente (SI/NO)
         if (buttonId.toUpperCase().startsWith('REG_CONFIRM_')) {
           const esSi = buttonId.toUpperCase().startsWith('REG_CONFIRM_SI_')
@@ -402,6 +473,27 @@ serve(async (req: Request) => {
         const { handleSlashCommands } = await import('./slash-commands-handler.ts')
         const slashRes = await handleSlashCommands(supabase, fromPhone, from10, slashText, messageId)
         if (slashRes) return await exitSafely(slashRes)
+      } else {
+        // Interceptar si hay un estado de acción pendiente desde el menú de opciones
+        const { data: actState } = await supabase.from('bot_memory').select('history').eq('phone', `admin_action_state_${from10}`).maybeSingle()
+        if (actState?.history?.[0]?.action) {
+          const action = actState.history[0].action
+          const targetText = slashText.trim()
+          await supabase.from('bot_memory').delete().eq('phone', `admin_action_state_${from10}`)
+          
+          let simulatedCommand = ''
+          if (action === 'ACT_MENU_NOREGO') simulatedCommand = `/noregistrado ${targetText}`
+          else if (action === 'ACT_MENU_LOYALTY') simulatedCommand = `/loyalty ${targetText}`
+          else if (action === 'ACT_MENU_QR') simulatedCommand = `/qr ${targetText}`
+          else if (action === 'ACT_MENU_INFO') simulatedCommand = `/info ${targetText}`
+          else if (action === 'ACT_MENU_SCORE') simulatedCommand = `/score ${targetText}`
+          
+          if (simulatedCommand) {
+            const { handleSlashCommands } = await import('./slash-commands-handler.ts')
+            const slashRes = await handleSlashCommands(supabase, fromPhone, from10, simulatedCommand, messageId)
+            if (slashRes) return await exitSafely(slashRes)
+          }
+        }
       }
     }
 
@@ -447,7 +539,10 @@ serve(async (req: Request) => {
         }
 
         // ── Captura de nota en sesión /fachada activa ─────────────────────
-        if (!texto.startsWith('/')) {
+        const lowerTexto = texto.toLowerCase();
+        const isAiCommand = lowerTexto.startsWith('actualiza') || lowerTexto.startsWith('califica') || lowerTexto.startsWith('agrega') || lowerTexto.startsWith('ponle');
+        
+        if (!texto.startsWith('/') && !isAiCommand) {
           const { data: capSesion } = await supabase.from('bot_memory')
             .select('history').eq('phone', `capture_mode_${from10}`).maybeSingle()
           const sesionData = capSesion?.history?.[0]
@@ -458,6 +553,17 @@ serve(async (req: Request) => {
             await sendWA(fromPhone, `⏰ La sesión de captura de *${sesionData.clienteNombre}* expiró (2h). Iníciala de nuevo con /fachada si la necesitas.`)
             // Deja caer al agente Admin normalmente
           } else if (sesionData?.clienteId) {
+            // BUGFIX: Detectar si el texto es un enlace a Google Maps
+            const isMapsLink = texto.includes('maps.app.goo.gl') || texto.includes('maps.google.com') || texto.includes('goo.gl/maps');
+            
+            if (isMapsLink) {
+              await supabase.from('clientes').update({ direccion: texto.trim() }).eq('id', sesionData.clienteId)
+              const { sendInteractiveButton } = await import('./whatsapp.ts')
+              await sendInteractiveButton(fromPhone, `📍 *Enlace de Maps guardado* para *${sesionData.clienteNombre}*:\n_${texto}_`, 'ACT_CERRAR_SESION', 'Cerrar Sesión')
+              return await exitSafely(new Response('OK', { status: 200 }))
+            }
+
+            // Si no es link de maps, se guarda como nota normal
             const { data: cli } = await supabase.from('clientes').select('notas_crm').eq('id', sesionData.clienteId).maybeSingle()
             const notaActual = cli?.notas_crm || ''
             const fecha = new Date().toLocaleDateString('es-MX')
@@ -465,7 +571,8 @@ serve(async (req: Request) => {
               ? `${notaActual}\n[${fecha}] 💬 ${texto}`
               : `[${fecha}] 💬 ${texto}`
             await supabase.from('clientes').update({ notas_crm: notaNueva }).eq('id', sesionData.clienteId)
-            await sendWA(fromPhone, `📝 Nota guardada para *${sesionData.clienteNombre}*:\n_${texto}_`)
+            const { sendInteractiveButton } = await import('./whatsapp.ts')
+            await sendInteractiveButton(fromPhone, `📝 Nota guardada para *${sesionData.clienteNombre}*:\n_${texto}_`, 'ACT_CERRAR_SESION', 'Cerrar Sesión')
             return await exitSafely(new Response('OK', { status: 200 }))
           }
         }
@@ -510,11 +617,23 @@ serve(async (req: Request) => {
         if (msgType === 'text') {
           const textoRep = msg.text?.body as string
           // BUG-03 fix: si el repartidor tiene sesión /fachada activa, guardar texto como nota
-          if (textoRep && !textoRep.startsWith('/')) {
+          const lowerTextoRep = textoRep.toLowerCase();
+          const isAiCommandRep = lowerTextoRep.startsWith('actualiza') || lowerTextoRep.startsWith('califica') || lowerTextoRep.startsWith('agrega') || lowerTextoRep.startsWith('ponle');
+
+          if (textoRep && !textoRep.startsWith('/') && !isAiCommandRep) {
             const { data: capSesionRep } = await supabase.from('bot_memory')
               .select('history').eq('phone', `capture_mode_${from10}`).maybeSingle()
             const sesionRep = capSesionRep?.history?.[0]
             if (sesionRep?.clienteId && sesionRep.expira && Date.now() < sesionRep.expira) {
+              // BUGFIX: Detectar si el texto es un enlace a Google Maps
+              const isMapsLink = textoRep.includes('maps.app.goo.gl') || textoRep.includes('maps.google.com') || textoRep.includes('goo.gl/maps');
+              
+              if (isMapsLink) {
+                await supabase.from('clientes').update({ direccion: textoRep.trim() }).eq('id', sesionRep.clienteId)
+                await sendWA(fromPhone, `📍 *Enlace de Maps guardado* para *${sesionRep.clienteNombre}*:\n_${textoRep}_`)
+                return await exitSafely(new Response('OK', { status: 200 }))
+              }
+
               const { data: cliRep } = await supabase.from('clientes').select('notas_crm').eq('id', sesionRep.clienteId).maybeSingle()
               const notaAnterior = cliRep?.notas_crm || ''
               const fecha = new Date().toLocaleDateString('es-MX')

@@ -2,7 +2,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendWA, sendWAImage, sendWALocation, sendWATemplate, sendInteractiveButtons } from './whatsapp.ts'
 import { extract10Digits, guardarMemoria, limpiarMemoria, buscarRepartidor, crearPedidoDesdeBot, barChart } from './db.ts'
-import { pedidoLink } from '../_shared/utils.ts'
+import { pedidoLink, generateCloudinaryVIPCard } from '../_shared/utils.ts'
 import { conversacionDeepSeek } from './ai.ts'
 import { updateChatwootProfile, addPrivateNoteByPhone, syncContactAttributes } from './chatwoot-sync.ts'
 
@@ -209,12 +209,12 @@ export async function handleAdminMessage(
         let rpcError: any = null
         // BUGFIX: Rastrear si se activó el ascenso VIP.
         let vipAscendidoEnAlgunaIter = false
-        
+
         const { data, error } = await supabase.rpc('fn_registrar_entrega_bulk', {
           p_cliente_tel: tel10,
           p_cantidad: cant
         })
-        
+
         if (error) { rpcError = error; console.error(`[SUMAR_PUNTOS] RPC error bulk:`, error) }
         else if (data?.ok) {
           lastRes = data
@@ -243,8 +243,9 @@ export async function handleAdminMessage(
 
         const saldoInfo = lastRes.saldo_billetera > 0 ? `\n💳 Saldo en billetera: *$${lastRes.saldo_billetera}*` : ''
         let promoAviso = ''
-        if (lastRes.puede_canjear && lastRes.puntos === 5) {
-          promoAviso += `\n\n🎉 *¡TIENE ENVÍO GRATIS DISPONIBLE!* 🎉\nEste cliente acaba de ganar un envío gratis.`
+        const enviosGratisPorPuntos = Math.floor(lastRes.puntos / 5)
+        if (enviosGratisPorPuntos > 0) {
+          promoAviso += `\n\n🎉 *¡TIENE ${enviosGratisPorPuntos} ENVÍO(S) GRATIS DISPONIBLE(S)!* 🎉\n(Gracias a sus puntos acumulados).`
         }
         if (vipAscendidoEnAlgunaIter) {
           promoAviso += `\n\n👑 *¡NUEVO VIP!* 👑\nEl cliente completó 3 ciclos (15 envíos) y ahora es VIP.`
@@ -286,16 +287,10 @@ export async function handleAdminMessage(
         break
       }
 
-      const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
-      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data=${encodeURIComponent(loyaltyUrl)}`
-
-      const result = await sendWATemplate(
-        `52${tel10}`,
-        'estrella_loyalty_welcome',
-        [cli?.nombre || 'Cliente', (cli?.puntos || 0).toString()],
-        qrImageUrl,
-        tel10
-      )
+      const nombreCli = cli?.nombre ? cli.nombre.split(' ')[0] : 'Cliente'
+      const qrImageUrl = generateCloudinaryVIPCard(tel10, nombreCli, cli?.puntos || 0, 0, false)
+      const { sendVIPCardSmart } = await import('./whatsapp.ts')
+      const result = await sendVIPCardSmart(`52${tel10}`, qrImageUrl, cli?.nombre || 'Cliente', cli?.puntos || 0, tel10)
 
       if (result && result.ok === false) {
         console.error(`[ENVIAR_QR] Error enviando QR a ${tel10}:`, result.error)
@@ -451,7 +446,7 @@ export async function handleAdminMessage(
 
       // 3. Si ya aceptó T&C → enviar QR directo y sumar puntos
       if (yaAceptoTerminos) {
-        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data=${encodeURIComponent(loyaltyUrl)}`
+        const qrImageUrl = generateCloudinaryVIPCard(tel10, d.clienteNombre || 'Cliente', d.puntosASumar || 0, d.saldoBilletera || 0, d.esVip || false)
         const result = await sendWATemplate(
           `52${tel10}`, 'estrella_loyalty_welcome',
           [d.clienteNombre || 'Cliente', d.puntosASumar > 0 ? d.puntosASumar.toString() : '¡Empieza hoy!'],
@@ -796,12 +791,18 @@ Al registrarte:
       break
     }
     case 'CREAR_PEDIDO': {
+      // DESHABILITADO: El proyecto actualmente solo maneja el programa de lealtad (Loyalty).
+      // Los pedidos se toman manualmente a través del número 963 153 9156.
+      await sendWA(fromPhone, `❌ La recepción de pedidos por bot está deshabilitada. Atiende los pedidos manualmente.`)
+      return new Response('OK', { status: 200 })
+      /*
       const result = await crearPedidoDesdeBot(supabase, d, undefined, undefined, messageId)
       if (result.ok && result.pedidoId) {
         await limpiarMemoria(supabase, fromPhone)
         await sendWA(fromPhone, `✅ *Pedido Asignado*\n${mensajeUsuario}\n\n📦 *Detalle:* ${d.descripcion}\n🔗 ${pedidoLink(result.pedidoId)}`)
       } else { await sendWA(fromPhone, `❌ Error: ${result.error}`) }
       return new Response('OK', { status: 200 })
+      */
     }
     case 'USAR_CUPON': {
       const code = String(d.codigoCupon).trim().toUpperCase()
@@ -967,10 +968,10 @@ export async function handleTerminos(supabase: Supa, fromPhone: string, buttonId
     await supabase.from('clientes').update({ acepta_terminos: true }).ilike('telefono', `%${tel10}%`)
 
     // 2. Enviar QR y mensaje de Bienvenida incondicional
-    const { data: cli } = await supabase.from('clientes').select('nombre, puntos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+    const { data: cli } = await supabase.from('clientes').select('nombre, puntos, saldo_billetera, es_vip').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
     const nombreCli = cli?.nombre ? cli.nombre.split(' ')[0] : 'Cliente'
     const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
-    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data=${encodeURIComponent(loyaltyUrl)}`
+    const qrImageUrl = generateCloudinaryVIPCard(tel10, nombreCli, cli?.puntos || 0, cli?.saldo_billetera || 0, cli?.es_vip || false)
 
     const mensajeBienvenida = `🎉 *¡Excelente, ${nombreCli}! Bienvenido a la familia Estrella* 🎉
 
@@ -1004,12 +1005,12 @@ Guárdala muy bien en tus favoritos. Con ella irás acumulando recompensas en ca
         let lastRes: any = null
         let rpcErrTerminos: any = null
         let vipAscendidoEnAlgunaIter = false
-        
+
         const { data, error } = await supabase.rpc('fn_registrar_entrega_bulk', {
           p_cliente_tel: tel10,
           p_cantidad: cant
         })
-        
+
         if (error) { rpcErrTerminos = error }
         if (data?.ok) {
           lastRes = data

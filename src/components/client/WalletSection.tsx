@@ -149,7 +149,7 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
                 className="w-full py-4 rounded-2xl bg-amber-500 text-white font-bold text-lg flex items-center justify-center gap-3 hover:bg-amber-600 transition-colors shadow-md shadow-amber-500/30"
               >
                 <Wallet className="w-6 h-6" />
-                Canjear saldo
+                Canjear Beneficios
               </button>
             ) : (
               <p className="text-center text-gray-400 text-xs py-1">Acumula saldo realizando envíos</p>
@@ -167,8 +167,11 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
       {/* Header */}
       <div className="p-5 border-b border-gray-100 flex items-center justify-between">
         <div>
-          <p className="font-bold text-gray-900">Canjear saldo</p>
-          <p className="text-sm text-gray-400">Disponible: <strong className="text-gray-700">${(cliente.saldo_billetera || 0).toFixed(2)}</strong></p>
+          <p className="font-bold text-gray-900">Canjear saldo o puntos</p>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-gray-400">Saldo: <strong className="text-gray-700">${(cliente.saldo_billetera || 0).toFixed(2)}</strong></p>
+            <p className="text-sm text-gray-400">Puntos: <strong className="text-amber-600">{cliente.puntos || 0}</strong></p>
+          </div>
         </div>
         <button onClick={resetModal} className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors">
           <X className="w-5 h-5" />

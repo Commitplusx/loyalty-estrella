@@ -6,6 +6,7 @@
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { extract10Digits, generateCloudinaryVIPCard } from '../_shared/utils.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -555,6 +556,20 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
       if (cli) {
         await supabase.from('clientes').update({ es_vip: !cli.es_vip }).eq('id', cli.id)
         await replyChat(accountId, convId, `⭐ *${cli.nombre || d.clienteTel}* → ${!cli.es_vip ? 'Ahora es VIP ✅' : 'Ya no es VIP ❌'}`)
+        
+        // Si lo acaba de hacer VIP, le mandamos su nueva tarjeta por WhatsApp
+        if (!cli.es_vip) {
+          try {
+            const { data: cInfo } = await supabase.from('clientes').select('nombre, puntos, saldo_billetera, telefono').eq('id', cli.id).single()
+            if (cInfo) {
+              const { sendWA } = await import('../whatsapp-bot/whatsapp.ts')
+              const qrCode = generateCloudinaryVIPCard(cInfo.telefono, cInfo.nombre || 'Cliente VIP', cInfo.puntos, cInfo.saldo_billetera || 0, true)
+              await sendWA(`52${cInfo.telefono}`, `👑 *¡Felicidades!* 👑\n\nHas sido promovido a *Cliente VIP* ⭐ de Estrella Delivery.\n\nA partir de ahora acumularás *saldo real* en tu billetera. 💰\n\n🌟 *¡Aquí tienes tu nueva Tarjeta Digital VIP!* 🌟`, qrCode)
+            }
+          } catch (e) {
+            console.error('[CHATWOOT] Error enviando tarjeta VIP al cliente:', e)
+          }
+        }
       } else {
         await replyChat(accountId, convId, `🔍 No encontré al cliente con tel: \`${d.clienteTel}\``)
       }
@@ -753,7 +768,7 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
     case 'ENVIAR_QR': {
       const tel10 = d10(d.clienteTel)
       const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
-      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data=${encodeURIComponent(loyaltyUrl)}`
+      const qrUrl = generateCloudinaryVIPCard(tel10, d.clienteNombre || existente.nombre, existente.puntos, existente.saldo_billetera || 0, existente.es_vip || false)
       const { data: cli } = await supabase.from('clientes').select('nombre, puntos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
       await replyChat(accountId, convId, `📱 *QR de Lealtad*\n\n👤 ${cli?.nombre || tel10}\n🌟 ${cli?.puntos || 0} pts\n🔗 ${loyaltyUrl}\n🖼️ QR: ${qrUrl}\n\n_Para enviar al cliente directamente, usa el bot de WhatsApp._`)
       break

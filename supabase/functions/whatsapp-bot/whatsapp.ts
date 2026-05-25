@@ -65,7 +65,7 @@ export async function sendWA(to: string, body: string): Promise<void> {
 }
 
 // ── Imagen con caption ────────────────────────────────────────────────────────
-export async function sendWAImage(to: string, url: string, caption?: string): Promise<void> {
+export async function sendWAImage(to: string, url: string, caption?: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await fetchConReintento(WA_BASE, {
       method: 'POST',
@@ -78,10 +78,18 @@ export async function sendWAImage(to: string, url: string, caption?: string): Pr
         image: { link: url, caption: caption?.substring(0, 1000) },
       }),
     })
-    if (!res.ok) console.error('WA Image Error:', await res.text())
-    else syncOutgoingToChatwoot(to, `📷 [Imagen enviada] ${caption || ''}`).catch(e => console.error(e))
+    if (!res.ok) {
+      const errText = await res.text()
+      console.error('WA Image Error:', errText)
+      return { ok: false, error: errText }
+    }
+    else {
+      syncOutgoingToChatwoot(to, `📷 [Imagen enviada] ${caption || ''}`).catch(e => console.error(e))
+      return { ok: true }
+    }
   } catch (e) {
     console.error('WA Fatal Net Error (Image):', e)
+    return { ok: false, error: String(e) }
   }
 }
 
@@ -180,6 +188,46 @@ export async function sendInteractiveButtons(
   }
 }
 
+// ── Lista interactiva (hasta 10 opciones) ─────────────────────────────────────
+export async function sendInteractiveList(
+  to: string,
+  text: string,
+  buttonText: string,
+  sections: { title: string; rows: { id: string; title: string; description?: string }[] }[]
+): Promise<void> {
+  try {
+    const res = await fetchConReintento(WA_BASE, {
+      method: 'POST',
+      headers: WA_HEADERS(),
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to,
+        type: 'interactive',
+        interactive: {
+          type: 'list',
+          body: { text: text.substring(0, 1024) },
+          action: {
+            button: buttonText.substring(0, 20),
+            sections: sections.map(s => ({
+              title: s.title.substring(0, 24),
+              rows: s.rows.slice(0, 10).map(r => ({
+                id: r.id.substring(0, 200),
+                title: r.title.substring(0, 24),
+                description: r.description ? r.description.substring(0, 72) : undefined
+              }))
+            }))
+          }
+        }
+      })
+    })
+    if (!res.ok) console.error('WA InteractiveList Error:', await res.text())
+    else syncOutgoingToChatwoot(to, `${text}\n[Lista] ${buttonText}`).catch(e => console.error(e))
+  } catch (e) {
+    console.error('WA Fatal Net Error (InteractiveList):', e)
+  }
+}
+
 // ── Plantilla Meta (WhatsApp Template) ────────────────────────────────────────
 export async function sendWATemplate(
   to: string,
@@ -246,6 +294,38 @@ export async function sendWATemplate(
     await logError('whatsapp-bot', `WhatsApp Template Fatal Error: ${templateName}`, { phone: to, error: String(e) }, 'critical');
     return { ok: false, error: e.message }
   }
+}
+
+// ── Smart VIP Card Sender (Try Free-Form, Fallback to Template) ───────────────
+export async function sendVIPCardSmart(
+  to: string, // format 529631444160
+  qrImageUrl: string,
+  nombre: string,
+  puntos: number,
+  cTel: string
+): Promise<{ ok: boolean; error?: string }> {
+  // 1. Try sending as Free-Form Image message first (Requires 24h window open)
+  const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${cTel}`
+  const caption = `🌟 *¡Hola, ${nombre}!* Aquí tienes tu *Tarjeta VIP Digital* actualizada.\n\n⭐ Puntos actuales: *${puntos}*\n\n🔗 *Abre tu Tarjeta VIP interactiva aquí:* ${loyaltyUrl}`
+  
+  const freeFormResult = await sendWAImage(to, qrImageUrl, caption)
+  
+  if (freeFormResult.ok) {
+    console.log(`[VIP_SMART] ✅ Imagen VIP enviada como texto libre a ${to}. (Ventana 24h abierta)`)
+    return { ok: true }
+  }
+
+  // 2. If it fails (probably due to 24h window, error 131047), fallback to Template
+  console.warn(`[VIP_SMART] ⚠️ Envío libre falló. Intentando con plantilla estrella_loyalty_welcome...`)
+  const templateResult = await sendWATemplate(
+    to,
+    'estrella_loyalty_welcome',
+    [nombre, puntos.toString()],
+    qrImageUrl,
+    cTel
+  )
+
+  return templateResult
 }
 
 // ── Marcar mensaje como leído (Double Blue Ticks) ────────────────────────────

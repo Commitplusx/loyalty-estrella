@@ -19,9 +19,9 @@ export interface AIRespuesta {
   | 'AGREGAR_REPARTIDOR' | 'ELIMINAR_REPARTIDOR' | 'ESTADO_REPARTIDOR'
   | 'VER_ATRASOS' | 'CARGAR_SALDO' | 'ANUNCIO_REPARTIDORES' | 'UBICACION_RESTAURANTE'
   | 'ENTREGAR_TODOS' | 'CANCELAR_TODOS' | 'ENVIAR_QR' | 'VER_RESTAURANTES' | 'AGREGAR_CLIENTE' | 'ENVIAR_TERMINOS' | 'REGISTRAR_RESTAURANTE'
-  | 'USAR_CUPON' | 'CANCELAR_CUPON' | 'SOLICITAR_REGISTRO'
+  | 'USAR_CUPON' | 'CANCELAR_CUPON' | 'SOLICITAR_REGISTRO' | 'ACTUALIZAR_DIRECCION' | 'CALIFICAR_CLIENTE'
   mensajeUsuario: string
-  datosAExtraer?: PedidoData & { montoSaldo?: number, diasAtras?: number, clienteNombre?: string, colonia?: string, nombre_restaurante?: string, correo?: string, codigoCupon?: string }
+  datosAExtraer?: PedidoData & { montoSaldo?: number, diasAtras?: number, clienteNombre?: string, colonia?: string, nombre_restaurante?: string, correo?: string, codigoCupon?: string, direccion?: string }
 }
 
 const VALID_ACTIONS: AIRespuesta['accion'][] = [
@@ -35,7 +35,7 @@ const VALID_ACTIONS: AIRespuesta['accion'][] = [
   'VER_ATRASOS', 'CARGAR_SALDO', 'ANUNCIO_REPARTIDORES', 'UBICACION_RESTAURANTE',
   'ENTREGAR_TODOS', 'CANCELAR_TODOS', 'ENVIAR_QR', 'VER_RESTAURANTES',
   'AGREGAR_CLIENTE', 'ENVIAR_TERMINOS', 'REGISTRAR_RESTAURANTE',
-  'USAR_CUPON', 'CANCELAR_CUPON', 'SOLICITAR_REGISTRO'
+  'USAR_CUPON', 'CANCELAR_CUPON', 'SOLICITAR_REGISTRO', 'ACTUALIZAR_DIRECCION', 'CALIFICAR_CLIENTE'
 ]
 
 // ── System prompts ────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ REGLAS DEL ASISTENTE:
 6. REGISTRO SILENCIOSO: Si el admin pide "agregar silenciosamente", "no le mandes mensaje", o "cómo agrego una fachada de alguien que no está", usa RESPONDER para decirle: "Para registrar un cliente silenciosamente sin enviarle mensajes, usa el comando: */noregistrado [10_digitos]*"
 
 HERRAMIENTAS DISPONIBLES:
-- CREAR_PEDIDO: Requiere restaurante, clienteTel, descripcion.
+// - CREAR_PEDIDO: Requiere restaurante, clienteTel, descripcion. (DESHABILITADO)
 - SUMAR_PUNTOS: Requiere clienteTel, puntosASumar.
 - BUSCAR_CLIENTE: Requiere clienteTel.
 - CANCELAR_PEDIDO: Requiere clienteTel.
@@ -76,6 +76,8 @@ HERRAMIENTAS DISPONIBLES:
 - REGISTRAR_RESTAURANTE: Cuando alguien escribe para registrar o asociar su restaurante. Requiere nombre_restaurante y correo. Si falta alguno, usa RESPONDER para pedírselos paso a paso (primero el nombre, luego el correo).
 - REASIGNAR_PEDIDO: Requiere clienteTel, repartidorAlias.
 - AGREGAR_NOTA_CLIENTE: Requiere clienteTel, descripcion.
+- ACTUALIZAR_DIRECCION: Requiere clienteTel, direccion. Úsalo cuando el admin pida "guarda la ubicación", "la dirección es".
+- CALIFICAR_CLIENTE: Requiere clienteTel, descripcion. Úsalo cuando el admin pida "ponle reputación", "califica", "agrega calificacion media/buena/mala". (Usa excelente, bueno, regular, malo o vetado).
 - MARCAR_VIP: Requiere clienteTel.
 - VER_HISTORIAL_CLIENTE: Requiere clienteTel.
 - USAR_CUPON: Requiere codigoCupon. Úsalo cuando el admin pida "usa el cupon CODE", "aplica el codigo CODE".
@@ -165,7 +167,7 @@ REGLAS:
    "¿Confirmo tus datos?|||👤 Nombre: [nombre]|||📱 Tel: [tel auto-detectado]|||🏠 Colonia: [colonia]|||¿Todo correcto? 😊"
    PASO 2: SOLAMENTE cuando el cliente responda "sí", "correcto", o afirmativamente a tu resumen, puedes usar la acción SOLICITAR_REGISTRO. 
    ¡NUNCA uses SOLICITAR_REGISTRO en el mismo mensaje donde le muestras el resumen! Debes esperar su respuesta afirmativa.`}
-3. NUNCA aceptes pedidos. Dile: "Para pedir un servicio, escríbele a nuestro admin 📲"
+3. NUNCA aceptes pedidos de envío ni de comida. Si el cliente quiere un servicio, hacer un pedido o mandar un paquete, dile EXACTAMENTE: "Para pedir un servicio, mándale mensaje directamente al número de Estrella: 963 153 9156 📲 y ahí te atienden con gusto."
 4. Invita a visitar: https://www.app-estrella.shop/loyalty/
 5. ${ctx?.reputacion === 'malo' || ctx?.reputacion === 'regular' ? 'NO menciones su reputación. Atiéndelo normal.' : ctx?.reputacion === 'excelente' ? 'Hazle saber que es un cliente muy valorado 🌟' : 'Sé amable con todos.'}
 6. Si quieren registrar un restaurante, usa REGISTRAR_RESTAURANTE.
@@ -205,6 +207,7 @@ function enforcerValidator(respuesta: AIRespuesta): AIRespuesta {
       break
     case 'BUSCAR_CLIENTE': case 'VER_HISTORIAL_CLIENTE':
     case 'MARCAR_VIP': case 'CANCELAR_PEDIDO': case 'AGREGAR_NOTA_CLIENTE':
+    case 'ACTUALIZAR_DIRECCION': case 'CALIFICAR_CLIENTE':
       if (!d.clienteTel || d.clienteTel.length !== 10) { blocked = true; respuesta.mensajeUsuario = 'Faltan los 10 dígitos del teléfono del cliente para ejecutar eso.' }
       break
     case 'CARGAR_SALDO':

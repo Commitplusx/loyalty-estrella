@@ -17,6 +17,7 @@ export interface Cliente {
   notas_crm?: string;
   foto_fachada_url?: string | null; // URL de la foto de la fachada para facilitar la entrega.
   pin?: string | null;              // PIN de 4 dígitos para acceso seguro
+  acepta_terminos?: boolean;        // Indica si el cliente ha aceptado los términos en el bot de WA
   created_at: string;
   updated_at: string;
 }

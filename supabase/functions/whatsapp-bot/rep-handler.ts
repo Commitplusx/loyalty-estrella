@@ -273,8 +273,9 @@ export async function handleRepMessage(
       ? `${usrMsg}\n\n🔍 *${c.nombre}* — ${c.puntos} pts — VIP: ${c.es_vip ? 'Sí ⭐' : 'No'}\n${c.notas_crm || ''}`
       : `${usrMsg}\n\n❌ Cliente no registrado.`)
   } else if (accion === 'SUMAR_PUNTOS' && d.clienteTel) {
-    const { data: c } = await supabase.from('clientes').select('id, nombre, puntos')
+    const { data: cData } = await supabase.from('clientes').select('id, nombre, puntos')
       .ilike('telefono', `%${d.clienteTel}%`).limit(1).maybeSingle()
+    const c = cData as any;
     if (c) {
       const cant = Number(d.puntosASumar) || 1
       const { data, error } = await supabase.rpc('fn_registrar_entrega_bulk', {
@@ -282,11 +283,11 @@ export async function handleRepMessage(
         p_cantidad: cant
       })
       if (error || !data?.ok) {
-        await sendWA(fromPhone, `❌ No pude sumar los puntos. Error: ${error?.message || data?.error || 'RPC falló'}`)
+        await sendWA(fromPhone, `❌ No pude sumar los puntos. Error: ${error?.message || (data as any)?.error || 'RPC falló'}`)
         await guardarMemoria(supabase, from10, ai?.nuevoHistorial || [])
         return new Response('OK', { status: 200 })
       }
-      const lastRes = data
+      const lastRes = data as any;
       // El procedimiento fn_registrar_entrega actualiza los puntos de forma atómica en la DB.
       // Sincronizar hacia Chatwoot inmediatamente
       try {

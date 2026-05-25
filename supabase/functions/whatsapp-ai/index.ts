@@ -106,9 +106,9 @@ async function handleRegistrationFlow(
     }
     await save({ step: 1 })
     await sendWAMulti(fromPhone,
-      `👋 ¡Hola! Soy el asistente de *Estrella Delivery* 🌟` +
-      `|||Tu número *${from10}* ya está detectado 📱 — solo necesito 3 datos rápidos.` +
-      `|||¿Cuál es tu *nombre completo*? 👤`
+      `👋 ¡Hola! Soy el asistente virtual de *Estrella Delivery* 🌟` +
+      `|||Para brindarte un mejor servicio y beneficios VIP, vamos a registrarte. Como tu número ya está vinculado (*${from10}*), ¡no necesitas escribirlo! 📱` +
+      `|||¿Me podrías decir tu *nombre completo*? 👤`
     )
     return true
   }

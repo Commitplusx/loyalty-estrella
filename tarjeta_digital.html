@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tarjeta VIP - Estrella</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@500;700&display=swap');
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: #0b0d10; /* Fondo muy oscuro para resaltar la tarjeta */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      color: #fff;
+    }
+
+    /* Contenedor de la Tarjeta tipo Crédito */
+    .credit-card {
+      position: relative;
+      width: 540px;
+      height: 320px;
+      background: linear-gradient(135deg, #181b21 0%, #0d0f12 100%);
+      border-radius: 20px;
+      padding: 30px;
+      display: flex;
+      justify-content: space-between;
+      overflow: hidden;
+      box-shadow: 
+        0 25px 50px -12px rgba(0, 0, 0, 0.7),
+        0 0 0 1px rgba(255, 215, 0, 0.15), /* Borde sutil dorado */
+        inset 0 1px 1px rgba(255, 255, 255, 0.1);
+      transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .credit-card:hover {
+      transform: translateY(-10px) rotateX(5deg) rotateY(5deg);
+      box-shadow: 
+        0 35px 60px -15px rgba(255, 215, 0, 0.15),
+        0 0 0 1px rgba(255, 215, 0, 0.3);
+    }
+
+    /* Logo de fondo gigante (Marca de agua) */
+    .bg-logo {
+      position: absolute;
+      top: -10%;
+      right: -10%;
+      height: 120%;
+      opacity: 0.05; /* Muy transparente */
+      filter: grayscale(100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Brillo diagonal estilo metal */
+    .credit-card::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 50%;
+      height: 100%;
+      background: linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0) 100%);
+      transform: skewX(-25deg);
+      animation: shine 6s infinite;
+      z-index: 1;
+    }
+
+    @keyframes shine {
+      0% { left: -100%; }
+      20% { left: 200%; }
+      100% { left: 200%; }
+    }
+
+    /* Lado Izquierdo: Datos */
+    .card-left {
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      width: 60%;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .small-logo {
+      width: 35px;
+      height: 35px;
+      border-radius: 8px;
+      background: #000;
+      padding: 4px;
+      border: 1px solid rgba(255,215,0,0.3);
+    }
+
+    .brand-title {
+      font-weight: 800;
+      font-size: 1.3rem;
+      letter-spacing: 2.5px;
+      background: linear-gradient(90deg, #FFDF00, #D4AF37, #FFDF00);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-transform: uppercase;
+      text-shadow: 0 2px 10px rgba(255, 215, 0, 0.2);
+    }
+
+    .vip-badge {
+      background: linear-gradient(135deg, #FFD700, #FFA500);
+      color: #000;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      font-weight: 800;
+      margin-left: 10px;
+    }
+
+    .user-info {
+      margin-top: 20px;
+    }
+
+    .user-name {
+      font-size: 1.6rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+    }
+
+    .user-phone {
+      font-size: 0.9rem;
+      color: #8892b0;
+      font-family: 'Space Grotesk', monospace;
+      letter-spacing: 2px;
+    }
+
+    .balances {
+      display: flex;
+      gap: 30px;
+      margin-top: auto;
+      background: rgba(0,0,0,0.3);
+      padding: 15px 20px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.05);
+      backdrop-filter: blur(5px);
+    }
+
+    .balance-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .balance-label {
+      font-size: 0.7rem;
+      color: #8892b0;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 4px;
+    }
+
+    .balance-value {
+      font-size: 1.4rem;
+      font-weight: 800;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+
+    .value-gold {
+      color: #FFD700;
+    }
+    
+    .value-green {
+      color: #00e676; /* Verde vibrante para el dinero */
+    }
+
+    /* Lado Derecho: Código QR */
+    .card-right {
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      justify-content: center;
+      width: 40%;
+    }
+
+    .qr-wrapper {
+      background: #fff;
+      padding: 10px;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      border: 2px solid rgba(255,215,0,0.5);
+    }
+
+    .qr-image {
+      width: 140px;
+      height: 140px;
+      display: block;
+      border-radius: 8px;
+    }
+
+    .qr-text {
+      margin-top: 15px;
+      font-size: 0.85rem;
+      font-weight: 800;
+      color: #FFD700;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      text-align: right;
+    }
+
+  </style>
+</head>
+<body>
+
+  <div class="credit-card">
+    <!-- Logo gigante de fondo -->
+    <img src="https://www.app-estrella.shop/logo.png" alt="Fondo" class="bg-logo">
+
+    <!-- Lado Izquierdo -->
+    <div class="card-left">
+      <div class="header-left">
+        <img src="https://www.app-estrella.shop/logo.png" alt="Logo" class="small-logo" onerror="this.style.display='none'">
+        <span class="brand-title">ESTRELLA</span>
+        <span class="vip-badge">VIP</span>
+      </div>
+
+      <div class="user-info">
+        <div class="user-name">Juan Pérez</div>
+        <div class="user-phone">963 123 4567</div>
+      </div>
+
+      <div class="balances">
+        <div class="balance-item">
+          <span class="balance-label">Puntos</span>
+          <span class="balance-value value-gold">145</span>
+        </div>
+        <div class="balance-item">
+          <span class="balance-label">Billetera</span>
+          <span class="balance-value value-green">$ 350.00</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lado Derecho (QR) -->
+    <div class="card-right">
+      <div class="qr-wrapper">
+        <!-- Generamos el QR de prueba puro (sin logo en el centro) -->
+        <img src="https://quickchart.io/qr?text=https://www.app-estrella.shop/loyalty/9631234567&size=300&dark=0a0a0a&margin=1" alt="QR Code" class="qr-image">
+      </div>
+      <div class="qr-text">CLIENTE VIP</div>
+    </div>
+  </div>
+
+</body>
+</html>

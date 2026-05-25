@@ -1,5 +1,6 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendWA, sendWAImage } from './whatsapp.ts'
-import { extract10Digits } from './db.ts'
+import { extract10Digits, generateCloudinaryVIPCard } from '../_shared/utils.ts'
 
 // Límites de seguridad para evitar abuso
 const MAX_PUNTOS_POR_ACCION = 10   // un restaurante no puede dar más de 10 puntos de golpe
@@ -152,7 +153,7 @@ export async function handleRestaurantCommand(
       await sendWA(fromPhone, `ℹ️ El cliente ${cTel} ya estaba registrado en Estrella Delivery (${estado})`)
     } else {
       const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${cTel}`
-      const qrCode = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data=${encodeURIComponent(loyaltyUrl)}`
+      const qrCode = generateCloudinaryVIPCard(cTel, nombreLimpio, 0, 0, false)
       const { error: insertErr } = await supabase.from('clientes').insert({
         telefono: cTel,
         nombre: nombreLimpio,
@@ -289,6 +290,14 @@ export async function handleRestaurantCommand(
 
     if (vipAscendido) {
       await sendWA(`52${cTel}`, `👑 *¡Felicidades!* 👑\n\nHas sido promovido a *Cliente VIP* ⭐ de Estrella Delivery.\n\nA partir de ahora acumularás *saldo real en pesos* en tu billetera. 💰🎉`)
+      
+      // Enviar la nueva tarjeta digital con el diseño VIP
+      const { data: cInfo } = await supabase.from('clientes').select('nombre, puntos, saldo_billetera').eq('telefono', cTel).single()
+      if (cInfo) {
+        const qrCode = generateCloudinaryVIPCard(cTel, cInfo.nombre || 'Cliente VIP', cInfo.puntos, cInfo.saldo_billetera || 0, true)
+        const { sendWAImage } = await import('./whatsapp.ts')
+        await sendWAImage(`52${cTel}`, qrCode, `🌟 *¡Aquí tienes tu nueva Tarjeta Digital VIP!* 🌟\n\nMuestra este código QR en tus pedidos para acumular recompensas.`)
+      }
     }
     return new Response('OK', { status: 200 })
   }

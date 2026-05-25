@@ -3,8 +3,8 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { extract10Digits } from './db.ts'
-import { sendWA, sendWAImage } from './whatsapp.ts'
+import { extract10Digits, pedidoLink, generateCloudinaryVIPCard } from '../_shared/utils.ts'
+import { sendWA, sendWAImage, sendWATemplate } from './whatsapp.ts'
 
 type Supa = ReturnType<typeof createClient>
 
@@ -126,9 +126,11 @@ export async function handleAdminPhoto(
     if (!c) {
       // Registro silencioso automático
       const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
+      const qrCode = generateCloudinaryVIPCard(tel10, extra || 'Cliente Nuevo', 0, 0, false)
+      
       const { data: nuevo } = await supabase.from('clientes').insert({
         telefono: tel10,
-        nombre: 'Cliente Express',
+        nombre: 'Cliente Nuevo',
         puntos: 0,
         acepta_terminos: false,
         qr_code: loyaltyUrl
@@ -181,10 +183,13 @@ export async function handleAdminPhoto(
 
   await supabase.from('clientes').update(updates).eq('id', clienteId)
 
-  await sendWA(fromPhone,
+  const { sendInteractiveButton } = await import('./whatsapp.ts')
+  await sendInteractiveButton(
+    fromPhone,
     `✅ *Foto guardada* — ${clienteNombre} (${tel10})\n` +
-    `${caption && !caption.match(/^\d+$/) ? `📝 Nota: _${caption}_\n` : ''}` +
-    `_Escribe /fin para cerrar la sesión o sigue mandando más fotos/notas._`
+    `${caption && !caption.match(/^\d+$/) ? `📝 Nota: _${caption}_\n` : ''}`,
+    'ACT_CERRAR_SESION',
+    'Cerrar Sesión'
   )
   return new Response('OK', { status: 200 })
 }
