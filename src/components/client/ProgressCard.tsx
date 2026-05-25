@@ -79,9 +79,16 @@ export function ProgressCard({
             </motion.div>
           )}
           {enviosRestantes > 1 && (
-            <p className="text-sm font-medium text-gray-500 mt-3 text-center">
-              {enviosRestantes} envío{enviosRestantes > 1 ? 's' : ''} más para envío gratis
-            </p>
+            <div className="text-center mt-3">
+              {Math.floor((cliente.puntos || 0) / metaVip) + (cliente.envios_gratis_disponibles || 0) > 0 && (
+                <p className="text-sm font-bold text-emerald-600 mb-1">
+                  ¡Ya tienes {Math.floor((cliente.puntos || 0) / metaVip) + (cliente.envios_gratis_disponibles || 0)} envío(s) gratis listos para usar!
+                </p>
+              )}
+              <p className="text-sm font-medium text-gray-500">
+                {enviosRestantes} envío{enviosRestantes > 1 ? 's' : ''} más para tu {Math.floor((cliente.puntos || 0) / metaVip) + (cliente.envios_gratis_disponibles || 0) > 0 ? 'siguiente' : ''} envío gratis
+              </p>
+            </div>
           )}
         </div>
         <div className="p-4">
