@@ -93,6 +93,27 @@ export async function sendWAImage(to: string, url: string, caption?: string): Pr
   }
 }
 
+// ── Documento (PDF) ───────────────────────────────────────────────────────────
+export async function sendWADocument(to: string, url: string, filename: string, caption: string = ''): Promise<void> {
+  try {
+    const res = await fetchConReintento(WA_BASE, {
+      method: 'POST',
+      headers: WA_HEADERS(),
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to,
+        type: 'document',
+        document: { link: url, caption: caption.substring(0, 1024), filename }
+      })
+    })
+    if (!res.ok) console.error('WA Document Error:', await res.text())
+    else syncOutgoingToChatwoot(to, `📄 [Documento enviado: ${filename}] ${caption}`).catch(e => console.error(e))
+  } catch (e) {
+    console.error('WA Fatal Net Error (Document):', e)
+  }
+}
+
 // ── Ubicación GPS ─────────────────────────────────────────────────────────────
 export async function sendWALocation(to: string, lat: number, lng: number, name: string, address: string): Promise<void> {
   try {
@@ -154,6 +175,7 @@ export async function sendInteractiveButtons(
   to: string,
   text: string,
   buttons: { id: string; title: string }[],
+  headerImageUrl?: string
 ): Promise<void> {
   try {
     const btns = buttons.slice(0, 3).map(b => ({
@@ -166,20 +188,29 @@ export async function sendInteractiveButtons(
       return await sendWA(to, text)
     }
 
+    const payload: any = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: text.substring(0, 1024) },
+        action: { buttons: btns },
+      },
+    }
+
+    if (headerImageUrl) {
+      payload.interactive.header = {
+        type: 'image',
+        image: { link: headerImageUrl }
+      }
+    }
+
     const res = await fetchConReintento(WA_BASE, {
       method: 'POST',
       headers: WA_HEADERS(),
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to,
-        type: 'interactive',
-        interactive: {
-          type: 'button',
-          body: { text: text.substring(0, 1024) },
-          action: { buttons: btns },
-        },
-      }),
+      body: JSON.stringify(payload),
     })
     if (!res.ok) console.error('WA InteractiveButtons Error:', await res.text())
     else syncOutgoingToChatwoot(to, `${text}\n[Botones] ${buttons.map(b => b.title).join(' | ')}`).catch(e => console.error(e))

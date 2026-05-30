@@ -239,6 +239,21 @@ serve(async (req: Request) => {
         })
       })
       if (!res.ok) console.error(`WA error (estrella_cupon_generado):`, await res.text())
+
+      const adminPhoneMain = Deno.env.get('ADMIN_PHONE_BILLETERA') || Deno.env.get('ADMIN_PHONE') || Deno.env.get('ADMIN_PHONES')?.split(',')[0]
+      if (adminPhoneMain) {
+        const adminTelFormateado = formatTel(adminPhoneMain)
+        const horaActual = new Date().toLocaleTimeString('es-MX', { timeZone: 'America/Mexico_City', hour: '2-digit', minute: '2-digit' })
+        const resAdm = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+          method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp', recipient_type: 'individual', to: adminTelFormateado, type: 'text',
+            text: { body: `🚨 *NUEVO CANJE DE BENEFICIO* 🚨\n\n👤 Cliente: ${cliente_nombre || 'Desconocido'} (${cliente_tel})\n🎟️ Cupón: *${codigo_cupon}*\n⏰ Hora: ${horaActual}\n\n📌 *Asegúrate de no cobrarle este descuento en su ticket.*` }
+          })
+        })
+        if (!resAdm.ok) console.error(`WA error admin cupon_generado:`, await resAdm.text())
+      }
+
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
 
@@ -526,23 +541,16 @@ serve(async (req: Request) => {
         // ── AUTO-NOTIFICAR si el cliente acaba de completar un ciclo de puntos ──
         if (tipo === 'entregado' && pedido.cliente_tel) {
           try {
-            const tel10 = pedido.cliente_tel.replace(/\D/g, '').slice(-10)
-            const { data: cl } = await supabase
-              .from('clientes')
-              .select('puntos, rango, es_vip, nombre')
-              .eq('telefono', tel10)
-              .maybeSingle()
-
-            if (cl) {
-              const meta = getMetaPuntos(cl.rango, cl.es_vip)
+            if (clInfo) {
+              const meta = getMetaPuntos(clInfo.rango, clInfo.es_vip)
               // Si los puntos son múltiplo exacto de meta (ciclo completado) y tiene al menos 1 ciclo
-              if (cl.puntos > 0 && cl.puntos % meta === 0) {
+              if (clInfo.puntos > 0 && clInfo.puntos % meta === 0) {
                 await notificarCliente(
                   'punto_acumulado',
                   pedido.cliente_tel,
                   '',
                   pedido.id,
-                  cl.nombre ?? pedido.cliente_nombre ?? undefined,
+                  clInfo.nombre ?? pedido.cliente_nombre ?? undefined,
                   undefined, undefined, undefined, supabase
                 )
                 results.push(`🎉 Notificación de ciclo completo enviada a ${tel10}`)

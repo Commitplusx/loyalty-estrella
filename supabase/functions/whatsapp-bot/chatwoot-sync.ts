@@ -1,13 +1,13 @@
 // chatwoot-sync.ts — Sync WhatsApp messages to Chatwoot API inbox (CRM bridge)
 
-const CW_BASE      = Deno.env.get('CHATWOOT_BASE_URL')   ?? 'https://app.chatwoot.com'
-const CW_ACCOUNT   = Deno.env.get('CHATWOOT_ACCOUNT_ID') ?? ''
+const CW_BASE = Deno.env.get('CHATWOOT_BASE_URL') ?? 'https://app.chatwoot.com'
+const CW_ACCOUNT = Deno.env.get('CHATWOOT_ACCOUNT_ID') ?? ''
 if (!CW_ACCOUNT) console.warn('⚠️ [CW Sync] CHATWOOT_ACCOUNT_ID no configurado — Chatwoot sync desactivado.')
 // Admin token: puede crear contactos/conversaciones y postear mensajes
-const CW_TOKEN     = Deno.env.get('CHATWOOT_API_TOKEN')  ?? Deno.env.get('CHATWOOT_BOT_TOKEN') ?? ''
+const CW_TOKEN = Deno.env.get('CHATWOOT_API_TOKEN') ?? Deno.env.get('CHATWOOT_BOT_TOKEN') ?? ''
 // Bot token: postea mensajes como "agent_bot" → evita que chatwoot-bot lo reenvíe por WA
-const CW_BOT_TOKEN = Deno.env.get('CHATWOOT_BOT_TOKEN')  ?? CW_TOKEN
-const CW_INBOX     = Deno.env.get('CHATWOOT_INBOX_ID')   ?? ''
+const CW_BOT_TOKEN = Deno.env.get('CHATWOOT_BOT_TOKEN') ?? CW_TOKEN
+const CW_INBOX = Deno.env.get('CHATWOOT_INBOX_ID') ?? ''
 
 const CW_TIMEOUT_MS = 5000
 
@@ -75,7 +75,7 @@ async function cwPut(path: string, body: unknown): Promise<any> {
 
 async function findOrCreateContact(phone: string, name?: string): Promise<number | null> {
   const digits = phone.replace(/\D/g, '')
-  const e164   = `+${digits}`
+  const e164 = `+${digits}`
 
   // Buscar por teléfono
   const sr = await cwGet(`/contacts/search?q=${encodeURIComponent(e164)}&page=1`)
@@ -144,11 +144,11 @@ export async function syncToChatwoot(
       private: false,
     })
     console.log(`[CW Sync] ✅ msg de ${fromPhone} → conv #${convId}`)
-    
+
     if (label) {
       cwPost(`/conversations/${convId}/labels`, { labels: [label] }).catch(e => console.error('[CW Sync] Lables Error:', e))
     }
-    
+
     return convId
   } catch (e) {
     console.error('[CW Sync] Error inesperado:', e)
@@ -223,7 +223,7 @@ export async function updateChatwootProfile(supabase: any, phone: string): Promi
     .select('puntos, es_vip, saldo_billetera, reputacion')
     .ilike('telefono', `%${p10}%`)
     .limit(1).maybeSingle()
-  
+
   if (c) {
     await syncContactAttributes(phone, {
       puntos_lealtad: c.puntos || 0,
@@ -244,7 +244,7 @@ export async function addPrivateNoteByPhone(phone: string, note: string): Promis
     if (!contactId) return
     const convId = await findOrCreateConversation(contactId)
     if (!convId) return
-    
+
     await fetch(`${CW_BASE}/api/v1/accounts/${CW_ACCOUNT}/conversations/${convId}/messages`, {
       method: 'POST',
       headers: { api_access_token: CW_BOT_TOKEN, 'Content-Type': 'application/json' },
@@ -255,3 +255,76 @@ export async function addPrivateNoteByPhone(phone: string, note: string): Promis
     console.error('[CW Sync] Error agregando nota privada:', e)
   }
 }
+
+/**
+ * Sube una imagen a Chatwoot como adjunto en una conversación ya conocida.
+ * Descarga la imagen de la URL y la postea vía multipart/form-data para que
+ * aparezca visualmente (inline) en el hilo de la conversación.
+ */
+export async function syncBotImageToConvId(
+  convId: number,
+  imageUrl: string,
+  caption: string = ''
+): Promise<void> {
+  if (!CW_BOT_TOKEN) return
+  try {
+    // Descargar la imagen desde Cloudinary/QuickChart
+    const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(12000) })
+    if (!imgRes.ok) {
+      // Fallback: postear solo el texto con la URL si no se puede descargar
+      console.warn('[CW Image Sync] No se pudo descargar imagen, posteando URL como texto.')
+      await syncBotReplyByConvId(convId, caption ? `${caption}\n🖼️ ${imageUrl}` : `🖼️ ${imageUrl}`)
+      return
+    }
+    const imgBlob = await imgRes.blob()
+    const ext = (imgBlob.type || 'image/png').includes('jpeg') ? 'jpg' : 'png'
+
+    // Chatwoot requiere multipart/form-data para adjuntos
+    const form = new FormData()
+    if (caption) form.append('content', caption)
+    form.append('message_type', 'outgoing')
+    form.append('private', 'false')
+    form.append('attachments[]', imgBlob, `tarjeta.${ext}`)
+
+    const res = await fetch(
+      `${CW_BASE}/api/v1/accounts/${CW_ACCOUNT}/conversations/${convId}/messages`,
+      {
+        method: 'POST',
+        headers: { api_access_token: CW_BOT_TOKEN },  // sin Content-Type — fetch lo pone solo para multipart
+        body: form,
+        signal: AbortSignal.timeout(15000),
+      }
+    )
+    if (!res.ok) {
+      const err = await res.text()
+      console.warn('[CW Image Sync] Error subiendo adjunto:', res.status, err.substring(0, 200))
+    } else {
+      console.log(`[CW Image Sync] ✅ imagen adjunta → conv #${convId}`)
+    }
+  } catch (e) {
+    console.error('[CW Image Sync] Error:', e)
+  }
+}
+
+/**
+ * Igual que syncBotImageToConvId pero resuelve el convId a partir del teléfono.
+ * Útil en handlers que no tienen acceso directo al convId.
+ * Fire-and-forget: no bloquea el flujo principal.
+ */
+export async function syncBotImageByPhone(
+  toPhone: string,
+  imageUrl: string,
+  caption: string = ''
+): Promise<void> {
+  if (!CW_BOT_TOKEN || !CW_INBOX) return
+  try {
+    const contactId = await findOrCreateContact(toPhone)
+    if (!contactId) return
+    const convId = await findOrCreateConversation(contactId)
+    if (!convId) return
+    await syncBotImageToConvId(convId, imageUrl, caption)
+  } catch (e) {
+    console.error('[CW Image Sync By Phone] Error:', e)
+  }
+}
+

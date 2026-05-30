@@ -22,6 +22,7 @@ export function generarNumeroOrden(pedidoId: string): string {
 
 /**
  * Genera la URL de la Tarjeta VIP compuesta con Cloudinary
+ * Base image: vip-nuevo (diseño horizontal Estrella Delivery)
  */
 export function generateCloudinaryVIPCard(
   telefono: string,
@@ -30,32 +31,27 @@ export function generateCloudinaryVIPCard(
   saldo: number,
   esVip: boolean = false
 ): string {
-  const nombre = encodeURIComponent((nombreRaw || 'Cliente').toUpperCase().substring(0, 26));
   const tel10 = extract10Digits(telefono);
-  const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`;
+  const loyaltyUrl = `https://app-estrella.shop/loyalty/${tel10}`;
 
-  // URL del QR de QuickChart
-  const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(loyaltyUrl)}&size=180&margin=0&dark=0a0a0a`;
+  // QR generado con QuickChart (sin margin para acortar URL)
+  const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(loyaltyUrl)}`;
 
-  // Convertimos a base64url estándar
+  // Codificar la URL del QR en base64url para el fetch layer de Cloudinary
   let qrB64 = btoa(qrUrl).replace(/\+/g, '-').replace(/\//g, '_');
 
   const baseCloudinary = `https://res.cloudinary.com/dlgcf3cht/image/upload`;
-  const transforms = [
-    // 1. Nombre (Más pequeño para que quepan apellidos)
-    `co_white,l_text:Montserrat_42_bold:${nombre}/fl_layer_apply,g_north_west,x_60,y_360`,
-    // 2. Teléfono (Debajo del QR)
-    `co_black,l_text:Roboto%20Mono_20_bold:${tel10}/fl_layer_apply,g_north_west,x_770,y_550`,
-    // 3. Puntos
-    `co_rgb:FFD700,l_text:Roboto%20Mono_48_bold:${puntos}/fl_layer_apply,g_north_west,x_60,y_495`,
-    // 4. Billetera y Textos VIP (Solo VIP)
-    esVip ? `co_rgb:00e676,l_text:Roboto%20Mono_48_bold:%24${saldo.toFixed(2)}/fl_layer_apply,g_north_west,x_240,y_495/co_rgb:FFD700,l_text:Montserrat_20_bold:SOCIO%20VIP/fl_layer_apply,g_north_west,x_140,y_110/co_rgb:FFD700,l_text:Montserrat_20_bold:CLIENTE%20VIP/fl_layer_apply,g_north_west,x_760,y_490` : '',
-    // 5. Código QR (180x180 centrado en la caja blanca de 220, posicion y_260)
-    `l_fetch:${qrB64}/c_scale,w_180,h_180/fl_layer_apply,g_north_west,x_740,y_260`
-  ].filter(Boolean).join('/');
 
-  return `${baseCloudinary}/${transforms}/tarjeta_base_v3.png`;
+  // Escalar la imagen base a 1000px de ancho para estabilizar coordenadas.
+  // El QR se posiciona sobre el recuadro blanco de la derecha.
+  const transforms = [
+    `c_scale,w_1000`,
+    `l_fetch:${qrB64}/c_scale,w_220/fl_layer_apply,g_north_west,x_695,y_305`
+  ].join('/');
+
+  return `${baseCloudinary}/${transforms}/vip-nuevo`;
 }
+
 
 /** Genera link al pedido con key de acceso (primeros 8 chars del UUID sin guiones) */
 export function pedidoLink(pedidoId: string): string {

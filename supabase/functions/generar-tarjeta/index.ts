@@ -5,15 +5,10 @@ import { html } from 'https://esm.sh/satori-html@0.3.2';
 import { initWasm, Resvg } from 'https://deno.land/x/resvg_wasm@0.2.0/mod.ts';
 
 // Initialize WASM for Resvg
-let wasmInitialized = false;
-async function initializeWasm() {
-  if (wasmInitialized) return;
-  try {
-    await initWasm(fetch('https://deno.land/x/resvg_wasm@0.2.0/index_bg.wasm'));
-    wasmInitialized = true;
-  } catch (e) {
-    console.error("Error initializing wasm", e);
-  }
+try {
+  await initWasm(fetch('https://deno.land/x/resvg_wasm@0.2.0/index_bg.wasm'));
+} catch (e) {
+  console.error("Error initializing wasm", e);
 }
 
 serve(async (req: Request) => {
@@ -128,7 +123,7 @@ serve(async (req: Request) => {
       ],
     });
 
-    await initializeWasm();
+
     const resvg = new Resvg(svg, {
       fitTo: { mode: 'width', value: 1000 },
     });

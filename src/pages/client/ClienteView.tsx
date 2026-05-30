@@ -8,10 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
-  Phone, Search, Gift,
+  Phone, Search, Gift, Star, ArrowRight,
   TrendingUp, Clock, Download,
   ChevronLeft, QrCode, AlertCircle, Sun, Moon,
-  Truck, X, Share2, Utensils, Heart
+  Truck, X, Share2, Utensils, Heart, LogOut
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast-native';
 import QRCode from 'qrcode';
@@ -26,8 +26,10 @@ import { HistorialTimeline } from '@/components/client/HistorialTimeline';
 import { PinEntry } from '@/components/client/PinEntry';
 import AuthorityCounter from '@/components/client/AuthorityCounter';
 import { OnboardingWelcome } from '@/components/client/OnboardingWelcome';
+import { BottomNav, type TabType } from '@/components/client/BottomNav';
 import { useSchedule } from '@/hooks/useSchedule';
 import { useDarkMode } from '@/hooks/useDarkMode';
+import { generateCloudinaryVIPCard } from '@/lib/utils';
 import type { Cliente, RegistroMovimiento } from '@/types';
 
 
@@ -43,6 +45,7 @@ export function ClienteView() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [historial, setHistorial] = useState<RegistroMovimiento[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<TabType>('home');
 
   // Onboarding: mostrar solo en primera visita (sin sesión guardada ni deep link)
   const [showOnboarding, setShowOnboarding] = useState(() => {
@@ -646,163 +649,167 @@ export function ClienteView() {
         )}
 
         {viewState === 'search' && (
-          <motion.div 
-            initial={{ opacity: 0, y: 15 }} 
-            animate={{ opacity: 1, y: 0 }} 
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             exit={{ opacity: 0, y: -15 }}
-            transition={{ duration: 0.3 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1fr_minmax(auto,450px)_1fr] gap-6 lg:gap-8 items-start"
-            style={{ background: 'transparent' }}
+            transition={{ duration: 0.4 }}
+            className="flex flex-col -mx-4 sm:-mx-6 lg:-mx-8 -mt-4 min-h-[calc(100vh-4rem)]"
           >
-            {/* Left Column (PC) / Bottom (Mobile): Authority Counter y Promos */}
-            <div className="space-y-6 order-2 lg:order-1 pt-2 lg:pt-0 md:col-span-2 lg:col-span-1">
-              <div className="hidden lg:block pt-4">
-                <AuthorityCounter />
-              </div>
-              <PromosBanner />
-            </div>
+            {/* ── HERO ── */}
+            <div className="relative flex flex-col items-center justify-center px-6 pt-14 pb-12 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 overflow-hidden">
+              {/* Blobs */}
+              <div className="absolute top-0 right-0 w-72 h-72 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
+              <div className="absolute bottom-0 left-0 w-52 h-52 bg-black/10 rounded-full translate-y-1/3 -translate-x-1/4" />
 
-            {/* Center Column: El Formulario Principal */}
-            <div className="space-y-6 order-1 lg:order-2 md:col-span-2 lg:col-span-1">
-              <div className="block lg:hidden pt-6 pb-2">
-                <AuthorityCounter />
-              </div>
+              {/* Logo badge */}
+              <motion.div
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.1, type: 'spring', stiffness: 300, damping: 22 }}
+                className="relative z-10 w-20 h-20 bg-white/15 backdrop-blur-sm rounded-3xl flex items-center justify-center mb-5 border border-white/20 shadow-2xl"
+              >
+                <Star className="w-9 h-9 text-white fill-white/40" />
+              </motion.div>
 
-              <div className="text-center">
-                <h1 className="text-4xl lg:text-5xl font-black text-foreground mb-3 leading-tight tracking-tight">
-                  Consulta tus <span className="text-gradient">puntos</span>
-                </h1>
-                <p className="text-muted-foreground text-xl mb-6">Ingresa tu numero para ver tu fidelidad</p>
-              </div>
+              <motion.div
+                initial={{ y: 12, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.18, duration: 0.4 }}
+                className="relative z-10 text-center"
+              >
+                <h1 className="text-4xl font-black text-white tracking-tight mb-2">Billetera Digital</h1>
+                <p className="text-blue-100/80 text-base font-medium max-w-xs mx-auto">
+                  Descubre tus beneficios y envíos gratis acumulados
+                </p>
+              </motion.div>
 
-              <Card className="border-0 shadow-xl ring-1 ring-orange-100 dark:ring-orange-900/30">
-                <CardContent className="p-6">
-                  <form onSubmit={handleBuscar} className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground">Numero de telefono</label>
-                      <div className="relative">
-                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                        <Input
-                          ref={inputRef}
-                          value={telefono}
-                          onChange={(e) => {
-                            const onlyDigits = e.target.value.replace(/\D/g, '');
-                            setTelefono(onlyDigits);
-                          }}
-                          placeholder="Ej: 9631234567"
-                          className="pl-12 h-16 text-xl font-bold rounded-2xl border-2 focus:ring-4 focus:ring-orange-500/20"
-                          type="tel"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          maxLength={10}
-                          required
-                        />
-                      </div>
-                    </div>
-                    <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                      <Button
-                        type="submit"
-                        disabled={telefono.length < 10}
-                        className="w-full h-16 bg-gradient-primary hover:opacity-90 text-white font-black text-xl rounded-2xl shadow-lg shadow-orange-500/30 disabled:opacity-50 transition-all"
-                      >
-                        <Search className="w-6 h-6 mr-3" />
-                        Consultar mis puntos
-                      </Button>
-                    </motion.div>
-
-                    <div className="pt-2">
-                      <div className="relative flex items-center py-2">
-                        <div className="flex-grow border-t border-muted"></div>
-                        <span className="flex-shrink-0 mx-4 text-muted-foreground text-sm font-medium">O descubre</span>
-                        <div className="flex-grow border-t border-muted"></div>
-                      </div>
-                      <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="mt-3">
-                        <Button
-                          type="button"
-                          onClick={() => toast.success('¡Próximamente! 🚀', 'Estamos afiliando nuevos restaurantes para ti muy pronto.')}
-                          className="w-full h-16 bg-white dark:bg-zinc-900 hover:bg-orange-50 dark:hover:bg-zinc-800 text-orange-600 dark:text-orange-400 border-2 border-orange-200 dark:border-orange-900/50 font-bold text-xl rounded-2xl"
-                        >
-                          <Utensils className="w-6 h-6 mr-3" />
-                          Restaurantes Asociados
-                        </Button>
-                      </motion.div>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
-
-              {/* Info cards (Mobile only or stacked) */}
-              <div className="grid sm:grid-cols-2 gap-5 lg:hidden">
-                <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group rounded-3xl">
-                  <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                  <CardContent className="p-6 flex items-center gap-5 relative z-10">
-                    <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-200 dark:from-orange-500/20 dark:to-orange-500/10 rounded-2xl flex items-center justify-center shrink-0 border border-orange-200 dark:border-orange-500/30">
-                      <Gift className="w-8 h-8 text-orange-600 dark:text-orange-400" />
-                    </div>
-                    <div>
-                      <p className="font-black text-xl text-foreground tracking-tight">5 = 1 Gratis</p>
-                      <p className="text-base font-bold text-orange-600/70 dark:text-orange-400/70">Mucha más fidelidad</p>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group rounded-3xl">
-                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                  <CardContent className="p-6 flex items-center gap-5 relative z-10">
-                    <div className="w-16 h-16 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-2xl flex items-center justify-center shrink-0 shadow-inner shadow-indigo-500/50">
-                      <Truck className="w-8 h-8 text-white" />
-                    </div>
-                    <div>
-                      <p className="font-black text-xl text-foreground tracking-tight">Compromiso</p>
-                      <p className="text-base font-bold text-blue-600/70 dark:text-blue-400/70">Tus envíos garantizados</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-            
-            {/* Right Column (PC): Info cards PC & Horarios */}
-            <div className="space-y-6 order-3 lg:order-3 pt-2 lg:pt-0">
-              <div className="space-y-4 hidden lg:block">
-                <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                  <CardContent className="p-4 flex items-center gap-4 relative z-10">
-                    <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-orange-200 dark:from-orange-500/20 dark:to-orange-500/10 rounded-xl flex items-center justify-center shrink-0 border border-orange-200 dark:border-orange-500/30">
-                      <Gift className="w-6 h-6 text-orange-600 dark:text-orange-400" />
-                    </div>
-                    <div>
-                      <p className="font-extrabold text-foreground tracking-tight">5 = 1 Gratis</p>
-                      <p className="text-sm font-medium text-orange-600/70 dark:text-orange-400/70">Mucha más fidelidad</p>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                  <CardContent className="p-4 flex items-center gap-4 relative z-10">
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-xl flex items-center justify-center shrink-0 shadow-inner shadow-indigo-500/50">
-                      <Truck className="w-6 h-6 text-white" />
-                    </div>
-                    <div>
-                      <p className="font-extrabold text-foreground tracking-tight">Compromiso</p>
-                      <p className="text-sm font-medium text-blue-600/70 dark:text-blue-400/70">Tus envíos garantizados</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Horario */}
-              <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
-                <CardContent className="p-6">
-                  <div className="flex items-center gap-3 mb-8">
-                    <Clock className="w-8 h-8 text-orange-500" />
-                    <h3 className="font-black text-2xl text-foreground">Horario de Atención</h3>
+              {/* Stats row */}
+              <motion.div
+                initial={{ y: 12, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.28, duration: 0.4 }}
+                className="relative z-10 flex gap-8 mt-8"
+              >
+                {[
+                  { val: '35K+', label: 'Entregas' },
+                  { val: '6 años', label: 'Experiencia' },
+                  { val: '100%', label: 'Garantía' },
+                ].map((s) => (
+                  <div key={s.label} className="text-center">
+                    <p className="text-white font-black text-lg">{s.val}</p>
+                    <p className="text-blue-200/70 text-xs font-medium">{s.label}</p>
                   </div>
-                  <div className="flex flex-col xl:flex-row xl:items-center justify-between p-5 bg-muted/30 dark:bg-muted/50 rounded-2xl mb-2 gap-2 border-2 border-dashed border-muted">
-                    <span className="text-muted-foreground font-bold text-lg">Lunes a Domingo</span>
-                    <span className="font-black text-foreground text-lg">9:00 AM - 10:00 PM</span>
-                  </div>
-                </CardContent>
-              </Card>
+                ))}
+              </motion.div>
             </div>
+
+            {/* ── FORM PANEL ── */}
+            <motion.div
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.2, type: 'spring', stiffness: 260, damping: 26 }}
+              className="flex-1 bg-gray-50 dark:bg-gray-950 -mt-6 rounded-t-[32px] px-5 pt-8 pb-28 space-y-5"
+            >
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 text-center">
+                Ingresa tu número
+              </p>
+
+              {/* Phone input */}
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none gap-2.5 z-10">
+                  <span className="text-gray-800 dark:text-gray-200 font-bold text-lg">+52</span>
+                  <div className="h-6 w-px bg-gray-200 dark:bg-gray-700" />
+                </div>
+                <Input
+                  ref={inputRef}
+                  value={telefono}
+                  onChange={(e) => {
+                    const onlyDigits = e.target.value.replace(/\D/g, '');
+                    setTelefono(onlyDigits);
+                  }}
+                  placeholder="10 dígitos"
+                  className="pl-[4.5rem] pr-14 h-16 text-2xl font-black rounded-2xl border-2 border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10 transition-all tracking-widest shadow-sm"
+                  type="tel"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={10}
+                  required
+                  autoFocus
+                />
+                <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
+                  <span className={`text-sm font-bold tabular-nums transition-colors ${
+                    telefono.length === 10 ? 'text-green-500' : 'text-gray-300 dark:text-gray-600'
+                  }`}>
+                    {telefono.length}/10
+                  </span>
+                </div>
+              </div>
+
+              {/* Digit progress dots */}
+              <div className="flex gap-1.5 justify-center">
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <motion.div
+                    key={i}
+                    className="h-1 rounded-full"
+                    animate={{
+                      backgroundColor: i < telefono.length ? '#2563eb' : '#e5e7eb',
+                      width: i < telefono.length ? 20 : 10,
+                    }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  />
+                ))}
+              </div>
+
+              {/* CTA */}
+              <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.97 }}>
+                <Button
+                  type="button"
+                  onClick={(e) => handleBuscar(e as any)}
+                  disabled={telefono.length < 10}
+                  className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-xl shadow-blue-600/30 disabled:opacity-40 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+                >
+                  Consultar mi saldo
+                  <ArrowRight className="w-5 h-5" />
+                </Button>
+              </motion.div>
+
+              {/* Divider */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-gray-200 dark:bg-gray-800" />
+                <span className="text-xs text-gray-400 font-medium">¿Nuevo aquí?</span>
+                <div className="flex-1 h-px bg-gray-200 dark:bg-gray-800" />
+              </div>
+
+              {/* Register via WhatsApp */}
+              <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.97 }}>
+                <Button
+                  type="button"
+                  onClick={() => window.open(`${whatsappUrl}?text=Quiero%20registrarme`, '_blank')}
+                  className="w-full h-12 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-2 border-gray-200 dark:border-gray-800 font-semibold text-sm rounded-2xl hover:border-green-400 hover:text-green-700 transition-all flex items-center justify-center gap-2"
+                >
+                  <Phone className="w-4 h-4 text-green-500" />
+                  Regístrate gratis por WhatsApp
+                </Button>
+              </motion.div>
+
+              {/* Benefit chips */}
+              <div className="grid grid-cols-3 gap-3 pt-1">
+                {[
+                  { icon: Gift, label: '6to gratis', sub: 'Cada 5 envíos', cls: 'text-orange-500 bg-orange-50 dark:bg-orange-900/20' },
+                  { icon: Star, label: 'Fidelidad', sub: 'Suma beneficios', cls: 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' },
+                  { icon: Truck, label: 'Garantizado', sub: 'Envío seguro', cls: 'text-green-600 bg-green-50 dark:bg-green-900/20' },
+                ].map(({ icon: Icon, label, sub, cls }) => (
+                  <div key={label} className="flex flex-col items-center gap-2 p-3 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm text-center">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${cls}`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <p className="text-[11px] font-black text-gray-800 dark:text-gray-200 leading-tight">{label}</p>
+                    <p className="text-[10px] text-gray-400 leading-tight">{sub}</p>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
           </motion.div>
         )}
 
@@ -924,212 +931,73 @@ export function ClienteView() {
           <motion.div
             initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="w-full overflow-hidden"
+            className="w-full overflow-hidden pb-24 lg:pb-0"
           >
-            {/* --- DESKTOP: 2-column sidebar layout | MOBILE: single column --- */}
+            {/* Header Actions (Share & Exit) - Solo visible en mobile arriba */}
+            <div className="flex items-center justify-between px-4 pb-4 lg:hidden">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                {activeTab === 'home' ? 'Inicio' : activeTab === 'wallet' ? 'Billetera' : 'Perfil'}
+              </h2>
+              <div className="flex items-center gap-2">
+                <button onClick={handleShare} className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-50 dark:bg-blue-900/30 text-blue-500">
+                  <Share2 className="w-4 h-4" />
+                </button>
+                <button onClick={handleReset} className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 bg-gray-50 dark:bg-gray-800">
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
             <div className="flex flex-col lg:flex-row gap-4 lg:gap-8 items-start">
-            {/* --- LEFT SIDEBAR (Profile + Progress + QR) --- */}
-            <div className="w-full lg:w-80 xl:w-96 shrink-0 min-w-0 lg:sticky lg:top-24 space-y-3 overflow-hidden">
-
-              {/* Header Actions (Share & Exit) */}
-              <div className="flex items-center justify-between px-2 pb-2">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Mi Tarjeta VIP</h2>
-                <div className="flex items-center gap-2">
-                  <button onClick={handleShare} title="Compartir" className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 text-blue-500 transition-colors shadow-sm">
-                    <Share2 className="w-4 h-4" />
-                  </button>
-                  <button onClick={handleReset} className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Digital Loyalty Card */}
-              <div className="relative w-full aspect-[1.6/1] max-w-[420px] mx-auto rounded-[20px] p-5 sm:p-6 flex justify-between overflow-hidden shadow-2xl transition-transform hover:-translate-y-1 bg-gradient-to-br from-[#181b21] to-[#0d0f12] ring-1 ring-amber-500/15 group">
-                {/* Logo gigante de fondo */}
-                <img 
-                  src="https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png" 
-                  alt="Fondo" 
-                  className="absolute -top-[10%] -right-[10%] h-[120%] opacity-5 grayscale pointer-events-none z-0" 
-                />
-                
-                {/* Lado Izquierdo */}
-                <div className="relative z-10 flex flex-col justify-between w-[58%]">
+              
+              {/* HOME TAB (Mobile) OR LEFT SIDEBAR (Desktop) */}
+              <div className={`w-full lg:w-96 shrink-0 min-w-0 lg:sticky lg:top-24 space-y-6 overflow-hidden ${activeTab === 'home' ? 'block' : 'hidden lg:block'}`}>
+                {/* Desktop Header */}
+                <div className="hidden lg:flex items-center justify-between px-2 pb-2">
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">Mi Tarjeta VIP</h2>
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 sm:w-9 sm:h-9 bg-black rounded-lg p-1 border border-amber-500/30">
-                        <img src="https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png" alt="Logo" className="w-full h-full object-contain" />
-                    </div>
-                    <span className="font-extrabold text-[12px] sm:text-[14px] tracking-[0.15em] sm:tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-[#FFDF00] via-[#D4AF37] to-[#FFDF00] uppercase drop-shadow-md" style={{ textShadow: '0 2px 10px rgba(255, 215, 0, 0.2)' }}>ESTRELLA</span>
-                    {isVip && <span className="bg-gradient-to-br from-amber-400 to-orange-500 text-black px-1.5 py-0.5 rounded text-[9px] font-black uppercase">VIP</span>}
-                  </div>
-
-                  <div className="mt-4 sm:mt-6">
-                    <div className="text-lg sm:text-2xl font-semibold tracking-wide uppercase text-white truncate">{cliente.nombre}</div>
-                    <div className="text-xs sm:text-sm text-slate-400 font-mono tracking-widest mt-0.5">{cliente.telefono}</div>
-                  </div>
-
-                  <div className="flex gap-4 sm:gap-6 mt-auto bg-black/30 p-2 sm:p-3 rounded-xl border border-white/5 backdrop-blur-sm">
-                    <div className="flex flex-col">
-                      <span className="text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Puntos</span>
-                      <span className="text-base sm:text-xl font-black text-amber-400">{cliente.puntos}</span>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Billetera</span>
-                      <span className="text-base sm:text-xl font-black text-emerald-400">${cliente.saldo_billetera?.toFixed(2) || '0.00'}</span>
-                    </div>
+                    <button onClick={handleShare} className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-50 dark:bg-blue-900/30 text-blue-500">
+                      <Share2 className="w-4 h-4" />
+                    </button>
+                    <button onClick={handleReset} className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 bg-gray-50 dark:bg-gray-800">
+                      <LogOut className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
 
-                {/* Lado Derecho (QR) */}
-                <div className="relative z-10 flex flex-col items-end justify-center w-[38%]">
-                  <div className="bg-white p-1.5 sm:p-2.5 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] border-2 border-amber-500/40 group-hover:scale-105 transition-transform">
-                    <img src={`https://quickchart.io/qr?text=https://www.app-estrella.shop/loyalty/${cliente.telefono}&size=300&dark=0a0a0a&margin=1`} alt="QR Code" className="w-[100px] h-[100px] sm:w-[130px] sm:h-[130px] rounded-lg object-contain" />
-                  </div>
-                  <div className="mt-4 text-[10px] sm:text-[11px] font-black text-amber-400 uppercase tracking-[0.15em] sm:tracking-[0.2em] text-right">
-                    {isVip ? 'CLIENTE VIP' : `NIVEL ${cliente.rango || 'BRONCE'}`}
-                  </div>
+                {/* Cloudinary VIP Card */}
+                <div className="relative w-full max-w-[420px] mx-auto rounded-[20px] overflow-hidden shadow-[0_20px_40px_-15px_rgba(0,0,0,0.3)] transition-transform hover:-translate-y-1 ring-1 ring-black/5 dark:ring-white/10">
+                  <img src={generateCloudinaryVIPCard(cliente.telefono)} alt="Tarjeta VIP" className="w-full h-auto object-cover" />
                 </div>
+                <ProgressCard 
+                  cliente={cliente}
+                  metaVip={metaVip}
+                  progreso={progreso}
+                  enviosRestantes={enviosRestantes}
+                  displayPointsRounded={displayPointsRounded}
+                  onCanjear={() => setShowCanjeModal(true)}
+                />
               </div>
 
-              {/* Cupón activo — solo para clientes NO VIP
-                  Para VIP el cupón se muestra dentro de WalletSection */}
-              {cliente.cupon_activo && !isVip && (
-                <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-                  className="relative overflow-hidden rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 p-4 text-white shadow-md shadow-orange-500/30">
-                  <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/20 rounded-full blur-2xl pointer-events-none" />
-                  <div className="relative z-10">
-                    <div className="flex items-center gap-2.5 mb-2">
-                      <motion.span animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>🎟️</motion.span>
-                      <span className="text-xs font-black uppercase tracking-widest text-white/80">Cupón activo</span>
-                    </div>
-                    <p className="font-mono font-black text-xl tracking-wide break-all mb-3">{cliente.cupon_activo}</p>
-                    <button onClick={() => { navigator.clipboard.writeText(cliente.cupon_activo!); toast.success('¡Copiado!', 'Listo para usar'); }}
-                      className="text-sm font-black bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl transition-colors">📋 Copiar</button>
-                  </div>
-                </motion.div>
-              )}
-            </div>{/* end left sidebar */}
-
-            {/* --- RIGHT CONTENT AREA --- */}
-            <div className="flex-1 min-w-0 overflow-hidden w-full space-y-6">
-
-              {/* Progress + QR side by side on desktop */}
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-5 items-start w-full min-w-0 overflow-hidden">
-
-              {/* Progress card - full width on mobile, left slot on desktop */}
-              <div className="space-y-6 min-w-0 overflow-hidden w-full">
-                {/* Mobile toggle - hidden on desktop */}
-                <div className="flex lg:hidden justify-center gap-3">
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex-1 max-w-[180px]">
-                    <Button
-                      variant={!showQR ? 'default' : 'outline'}
-                      onClick={() => setShowQR(false)}
-                      className={`w-full py-6 text-base font-bold rounded-2xl ${!showQR ? 'bg-gradient-primary text-white shadow-lg shadow-orange-500/20' : 'text-gray-500'}`}
-                    >
-                      <TrendingUp className="w-5 h-5 mr-2" />
-                      Mi Progreso
-                    </Button>
-                  </motion.div>
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex-1 max-w-[180px]">
-                    <Button
-                      variant={showQR ? 'default' : 'outline'}
-                      onClick={() => setShowQR(true)}
-                      className={`w-full py-6 text-base font-bold rounded-2xl ${showQR ? 'bg-gradient-primary text-white shadow-lg shadow-orange-500/20' : 'text-gray-500'}`}
-                    >
-                      <QrCode className="w-5 h-5 mr-2" />
-                      Mi QR
-                    </Button>
-                  </motion.div>
-                </div>
-
-                {!showQR ? (
-                  <>
-                    {/* Progress card */}
-                    {isVip ? (
-                      <WalletSection
-                        cliente={cliente}
-                        onClienteUpdate={setCliente}
-                      />
-                    ) : (
-                      <ProgressCard
-                        cliente={cliente}
-                        metaVip={metaVip}
-                        progreso={progreso}
-                        enviosRestantes={enviosRestantes}
-                        displayPointsRounded={displayPointsRounded}
-                        onCanjear={() => setShowCanjeModal(true)}
-                      />
-                    )}
-                  </>
-                ) : (
-                  // QR View "” mobile only (on desktop it's in the center column)
-                  <Card className="border-0 shadow-xl lg:hidden">
-                    <CardContent className="p-6 flex flex-col items-center text-center gap-4">
-                      <h2 className="text-lg font-bold text-gray-800">Tu Código QR Personal</h2>
-                      <p className="text-sm text-gray-500">Muéstraselo al repartidor</p>
-                      {qrDataUrl ? (
-                        <div className="p-4 bg-white rounded-2xl shadow-inner border border-gray-100">
-                          <img src={qrDataUrl} alt="Tu QR" className="w-56 h-56 rounded-xl" />
-                        </div>
-                      ) : (
-                        <div className="w-56 h-56 bg-gray-100 rounded-2xl flex items-center justify-center animate-pulse">
-                          <QrCode className="w-16 h-16 text-gray-300" />
-                        </div>
-                      )}
-                      <p className="text-xs text-gray-400">{cliente.telefono} · {cliente.nombre}</p>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>{/* end progress card column */}
-
-              {/* --- QR column (desktop: right of progress, mobile: hidden) --- */}
-              <div className="hidden lg:flex flex-col items-center gap-3 shrink-0">
-                <Card className="border-0 shadow-lg dark:bg-card">
-                  <CardContent className="p-4 flex flex-col items-center gap-3">
-                    <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tu QR Personal</h3>
-                    <div className="p-3 bg-white rounded-2xl shadow-inner border border-gray-100 dark:border-gray-700 dark:bg-gray-900">
-                      {qrDataUrl ? (
-                        <img src={qrDataUrl} alt="Tu QR" className="w-40 h-40 rounded-xl" />
-                      ) : (
-                        <div className="w-40 h-40 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center animate-pulse">
-                          <QrCode className="w-12 h-12 text-gray-300" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">{cliente.nombre}</p>
-                      <p className="text-[10px] text-gray-400">{cliente.telefono}</p>
-                    </div>
-                    {qrDataUrl && (
-                      <button onClick={handleDownloadQR}
-                        className="w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 rounded-xl py-2 transition-colors">
-                        <Download className="w-3.5 h-3.5" /> Guardar QR
-                      </button>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>{/* end QR column */}
-
-              </div>{/* end progress+QR grid */}
-
-              {/* --- Stats + Historial (full width below progress+QR) --- */}
-              <div className="space-y-5 min-w-0 overflow-hidden w-full">
-                {/* Wrapped Stats */}
+              {/* MIDDLE COLUMN (Wallet & Stats) */}
+              <div className={`w-full min-w-0 space-y-6 lg:max-w-xl ${activeTab === 'wallet' ? 'block' : 'hidden lg:block'}`}>
+                <WalletSection cliente={cliente} />
                 <ClientStats cliente={cliente} historial={historial} />
+              </div>
 
-                {/* Historial Estrella con Tabs */}
+              {/* RIGHT COLUMN (Profile / History) */}
+              <div className={`w-full min-w-0 space-y-6 lg:max-w-md ${activeTab === 'profile' ? 'block' : 'hidden lg:block'}`}>
                 <HistorialTimeline historial={historial} cuponActivo={cliente?.cupon_activo} />
+              </div>
 
-              </div>{/* end stats+historial */}
-
-            </div>{/* end right content area */}
-
-          </div>{/* end flex sidebar+right */}
+            </div>
           </motion.div>
         )}
       </main>
 
-      <footer className="border-t border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
+      <BottomNav activeTab={activeTab} onChange={setActiveTab} />
+      
+      <footer className="hidden lg:block border-t border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
@@ -1141,16 +1009,13 @@ export function ClienteView() {
             <div className="flex items-center gap-1.5 text-xs text-gray-400">
               <Clock className="w-3.5 h-3.5" /> Lun - Dom: 9 AM - 10 PM
             </div>
-            <a href={whatsappUrl} target="_blank" rel="noopener noreferrer"
-              className="text-xs text-green-600 dark:text-green-400 font-semibold hover:underline flex items-center gap-1">
-              Hacer un pedido →
-            </a>
           </div>
           <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 text-center text-[10px] text-gray-300 dark:text-gray-600">
             © {new Date().getFullYear()} Estrella Delivery - Hecho con <Heart className="w-2.5 h-2.5 text-red-400 fill-red-400 inline mx-0.5" /> para nuestros clientes
           </div>
         </div>
       </footer>
+
       <AnimatePresence>
         {showRating && activeRegistroId && (
           <RatingModal 
@@ -1171,7 +1036,7 @@ export function ClienteView() {
         href={whatsappUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="fixed bottom-6 right-5 z-40 w-14 h-14 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center shadow-xl shadow-green-500/40 transition-colors"
+        className="fixed bottom-24 lg:bottom-6 right-5 z-40 w-14 h-14 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center shadow-xl shadow-green-500/40 transition-colors"
         style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}

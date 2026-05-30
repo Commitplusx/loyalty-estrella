@@ -8,11 +8,19 @@ const WHATSAPP_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_ID')!
 const APPROVAL_SECRET = Deno.env.get('ADMIN_APPROVAL_SECRET') ?? ''
 
 async function sendWA(to: string, text: string) {
-  await fetch(`https://graph.facebook.com/v19.0/${WHATSAPP_PHONE_ID}/messages`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'text', text: { body: text } })
-  })
+  try {
+    const res = await fetch(`https://graph.facebook.com/v19.0/${WHATSAPP_PHONE_ID}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'text', text: { body: text } })
+    })
+    if (!res.ok) {
+      const errText = await res.text()
+      console.error(`Error sending WA message to ${to}: ${res.status} ${res.statusText} - ${errText}`)
+    }
+  } catch (error) {
+    console.error(`Exception sending WA message to ${to}:`, error)
+  }
 }
 
 function htmlResponse(title: string, message: string, isError = false) {
@@ -49,10 +57,9 @@ serve(async (req: Request) => {
 
   if (!action || !tel) return htmlResponse('Error', 'Faltan parámetros (action o tel).', true)
 
-  // Verificación de seguridad (opcional): si ADMIN_APPROVAL_SECRET está configurado, lo valida.
-  // Si no está configurado, permite el acceso como antes (retrocompatible).
+  // Verificación de seguridad obligatoria
   const secret = url.searchParams.get('secret')
-  if (APPROVAL_SECRET && secret !== APPROVAL_SECRET) {
+  if (!APPROVAL_SECRET || secret !== APPROVAL_SECRET) {
     return htmlResponse('No Autorizado', 'Token de seguridad inválido o faltante.', true)
   }
 
@@ -76,7 +83,8 @@ serve(async (req: Request) => {
 
   if (action === 'accept') {
     // Generar contraseña
-    const genPassword = `Estrella${Math.floor(Math.random() * 9000) + 1000}!`
+    const randomBytes = crypto.getRandomValues(new Uint16Array(1));
+    const genPassword = `Estrella${(randomBytes[0] % 9000) + 1000}!`
 
     // Crear Usuario en Auth
     const { data: authData, error: authErr } = await supabase.auth.admin.createUser({

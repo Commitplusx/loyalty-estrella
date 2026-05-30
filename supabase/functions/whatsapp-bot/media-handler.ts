@@ -3,7 +3,8 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { extract10Digits, pedidoLink, generateCloudinaryVIPCard } from '../_shared/utils.ts'
+import { extract10Digits } from './db.ts'
+import { generateCloudinaryVIPCard } from '../_shared/utils.ts'
 import { sendWA, sendWAImage, sendWATemplate } from './whatsapp.ts'
 
 type Supa = ReturnType<typeof createClient>
@@ -12,7 +13,7 @@ const WA_TOKEN = Deno.env.get('WHATSAPP_TOKEN')!
 const BUCKET = 'fachadas_clientes'
 
 // ── Descargar media de WhatsApp Cloud API ─────────────────────────────────────
-async function downloadWhatsAppMedia(mediaId: string): Promise<{ buffer: ArrayBuffer; mimeType: string } | null> {
+export async function downloadWhatsAppMedia(mediaId: string): Promise<{ buffer: ArrayBuffer; mimeType: string } | null> {
   try {
     // 1. Obtener la URL del media
     const metaRes = await fetch(`https://graph.facebook.com/v19.0/${mediaId}`, {
@@ -41,14 +42,15 @@ async function downloadWhatsAppMedia(mediaId: string): Promise<{ buffer: ArrayBu
 }
 
 // ── Subir archivo a Supabase Storage ──────────────────────────────────────────
-async function uploadToStorage(
+export async function uploadToStorage(
   supabase: Supa,
+  bucketName: string,
   filePath: string,
   buffer: ArrayBuffer,
   contentType: string
 ): Promise<string | null> {
   const { error } = await supabase.storage
-    .from(BUCKET)
+    .from(bucketName)
     .upload(filePath, buffer, { contentType, upsert: true })
 
   if (error) {
@@ -56,7 +58,7 @@ async function uploadToStorage(
     return null
   }
 
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(filePath)
+  const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath)
   return data?.publicUrl || null
 }
 
@@ -122,12 +124,12 @@ export async function handleAdminPhoto(
   if (!clienteId) {
     const { data: c } = await supabase.from('clientes')
       .select('id, nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
-    
+
     if (!c) {
       // Registro silencioso automático
       const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
       const qrCode = generateCloudinaryVIPCard(tel10, extra || 'Cliente Nuevo', 0, 0, false)
-      
+
       const { data: nuevo } = await supabase.from('clientes').insert({
         telefono: tel10,
         nombre: 'Cliente Nuevo',
@@ -135,7 +137,7 @@ export async function handleAdminPhoto(
         acepta_terminos: false,
         qr_code: loyaltyUrl
       }).select('id, nombre').single()
-      
+
       if (nuevo) {
         clienteId = nuevo.id
         clienteNombre = nuevo.nombre
@@ -162,7 +164,7 @@ export async function handleAdminPhoto(
   // ── 6. Subir a Storage ────────────────────────────────────────────────────
   const ext = media.mimeType.includes('png') ? 'png' : 'jpg'
   const filePath = `${tel10}/fachada_${Date.now()}.${ext}`
-  const publicUrl = await uploadToStorage(supabase, filePath, media.buffer, media.mimeType)
+  const publicUrl = await uploadToStorage(supabase, BUCKET, filePath, media.buffer, media.mimeType)
 
   if (!publicUrl) {
     await sendWA(fromPhone, `❌ Error subiendo la foto al servidor. Intenta de nuevo.`)

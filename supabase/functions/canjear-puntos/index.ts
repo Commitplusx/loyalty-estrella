@@ -68,7 +68,9 @@ serve(async (req) => {
     )
 
   } catch (error: any) {
+    const { logError } = await import('../_shared/utils.ts')
     console.error("Error Edge Function canjear-puntos:", error)
+    await logError('canjear-puntos', `Unhandled error: ${error.message}`, { stack: error.stack }, 'high')
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }

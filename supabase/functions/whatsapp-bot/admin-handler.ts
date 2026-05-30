@@ -1,10 +1,11 @@
 // admin-handler.ts — Manejador de las acciones del Administrador (Comandante Alpha)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { sendWA, sendWAImage, sendWALocation, sendWATemplate, sendInteractiveButtons } from './whatsapp.ts'
-import { extract10Digits, guardarMemoria, limpiarMemoria, buscarRepartidor, crearPedidoDesdeBot, barChart } from './db.ts'
-import { pedidoLink, generateCloudinaryVIPCard } from '../_shared/utils.ts'
+import { extract10Digits, guardarMemoria, limpiarMemoria, buscarRepartidor } from './db.ts'
+import { generateCloudinaryVIPCard } from '../_shared/utils.ts'
+import { getMetaPuntos } from '../_shared/constants.ts'
 import { conversacionDeepSeek } from './ai.ts'
-import { updateChatwootProfile, addPrivateNoteByPhone, syncContactAttributes } from './chatwoot-sync.ts'
+import { updateChatwootProfile, addPrivateNoteByPhone, syncContactAttributes, syncBotImageByPhone } from './chatwoot-sync.ts'
 
 type Supa = ReturnType<typeof createClient>
 
@@ -14,6 +15,8 @@ const ADMIN_PHONE_MAIN = (() => {
   return n ? `52${n}` : ''
 })()
 
+// --- PEDIDOS DESHABILITADO ---
+/*
 export async function handleAdminGPS(
   supabase: Supa, fromPhone: string, admin10: string,
   lat: number, lng: number, contextText: string, messageId: string
@@ -31,7 +34,10 @@ export async function handleAdminGPS(
   }
   return new Response('OK', { status: 200 })
 }
+*/
 
+// --- PEDIDOS DESHABILITADO ---
+/*
 export async function handleAdminAssignRest(
   supabase: Supa, fromPhone: string, admin10: string, textoAdmin: string, pendingState: any
 ): Promise<Response | null> {
@@ -106,11 +112,18 @@ export async function handleAdminAssignRest(
   await sendWA(fromPhone, resumen)
   return new Response('OK', { status: 200 })
 }
+*/
 
 export async function handleAdminMessage(
   supabase: Supa, fromPhone: string, messageId: string, texto: string
 ): Promise<Response> {
   const chat = await conversacionDeepSeek(supabase, fromPhone, texto, false, null)
+  return await executeAdminAction(supabase, fromPhone, messageId, chat)
+}
+
+export async function executeAdminAction(
+  supabase: Supa, fromPhone: string, messageId: string, chat: any
+): Promise<Response> {
   if (!chat) {
     await sendWA(fromPhone, '❌ Cerebro AI devolvió un valor nulo.')
     return new Response('OK', { status: 200 })
@@ -187,7 +200,7 @@ export async function handleAdminMessage(
     }
     case 'SUMAR_PUNTOS': {
       const tel10 = extract10Digits(d.clienteTel)
-      const { data: c } = await supabase.from('clientes').select('id, puntos, acepta_terminos, nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      const { data: c } = await supabase.from('clientes').select('id, puntos, acepta_terminos, nombre, rango, es_vip').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
 
       if (c) {
         if (c.acepta_terminos === false) {
@@ -243,7 +256,8 @@ export async function handleAdminMessage(
 
         const saldoInfo = lastRes.saldo_billetera > 0 ? `\n💳 Saldo en billetera: *$${lastRes.saldo_billetera}*` : ''
         let promoAviso = ''
-        const enviosGratisPorPuntos = Math.floor(lastRes.puntos / 5)
+        const meta = getMetaPuntos(c.rango, c.es_vip)
+        const enviosGratisPorPuntos = Math.floor(lastRes.puntos / meta)
         if (enviosGratisPorPuntos > 0) {
           promoAviso += `\n\n🎉 *¡TIENE ${enviosGratisPorPuntos} ENVÍO(S) GRATIS DISPONIBLE(S)!* 🎉\n(Gracias a sus puntos acumulados).`
         }
@@ -266,6 +280,7 @@ export async function handleAdminMessage(
         )
         if (ptsResult?.ok === false) {
           console.error(`[SUMAR_PUNTOS] Template error:`, ptsResult.error)
+          await sendWA(fromPhone, `⚠️ Los puntos se sumaron correctamente, pero Meta rechazó el envío de la plantilla al cliente.\n\n*Error de Meta:*\n_${ptsResult.error}_`)
         }
       } else { await sendWA(fromPhone, `🤖 Cliente no encontrado.`) }
       await limpiarMemoria(supabase, fromPhone)
@@ -316,31 +331,7 @@ export async function handleAdminMessage(
       break
     }
     case 'VER_PEDIDOS': {
-      const { data: activos } = await supabase.from('pedidos')
-        .select('id, descripcion, estado, cliente_nombre, cliente_tel, created_at')
-        .in('estado', ['asignado', 'recibido', 'en_camino'])
-        .order('created_at', { ascending: false })
-        .limit(10)
-
-      if (!activos?.length) {
-        await sendWA(fromPhone, '📦 *OPERACIÓN DE HOY*\n\n✅ Todo bajo control. No hay pedidos activos pendientes.')
-        break
-      }
-
-      let msg = '📦 *PEDIDOS EN CURSO*\n'
-      msg += '───────────────────\n\n'
-      const emo: any = { asignado: '🕘', recibido: '🛍️', en_camino: '🚀' }
-
-      activos.forEach((p: any) => {
-        const statusIcon = emo[p.estado] || '📦'
-        const cliente = p.cliente_nombre || p.cliente_tel || '?'
-        msg += `${statusIcon} *${p.descripcion?.toUpperCase().slice(0, 30)}...*\n`
-        msg += `   ↳ _${cliente}_ | *${p.estado.toUpperCase()}*\n\n`
-      })
-
-      msg += '───────────────────\n'
-      msg += '_Actualiza estados desde la App Admin o vía WhatsApp._'
-      await sendWA(fromPhone, msg)
+      await sendWA(fromPhone, '❌ El sistema de pedidos está deshabilitado. Solo funciona Loyalty.');
       break
     }
     case 'BUSCAR_CLIENTE': {
@@ -357,11 +348,30 @@ export async function handleAdminMessage(
         msg += `🛵 Entregas: ${c.envios_totales || 0} | Envíos gratis: ${c.envios_gratis_disponibles || 0}\n`
         msg += `💰 Billetera: *$${c.saldo_billetera || 0}*\n`
         if (c.direccion) msg += `🏠 Dirección: ${c.direccion}\n`
+        if (c.lat_frecuente && c.lng_frecuente) {
+          msg += `📍 GPS: https://maps.google.com/?q=${c.lat_frecuente},${c.lng_frecuente}\n`
+        }
         if (c.cupon_activo) msg += `🎟️ Cupón: ${c.cupon_activo}\n`
         if (c.notas_crm) msg += `📝 ${c.notas_crm.slice(0, 200)}\n`
         msg += `📋 T&C: ${c.acepta_terminos ? '✅ Aceptados' : '❌ Pendientes'}`
 
-        await sendWA(fromPhone, msg)
+        const { sendInteractiveList } = await import('./whatsapp.ts')
+        await sendInteractiveList(
+          fromPhone,
+          msg,
+          'Editar Perfil',
+          [
+            {
+              title: '📝 Opciones de Edición',
+              rows: [
+                { id: `EDIT_NOM_${tel10}`, title: '✏️ Cambiar Nombre' },
+                { id: `EDIT_DIR_${tel10}`, title: '🏠 Cambiar Dirección' },
+                { id: `EDIT_NOT_${tel10}`, title: '📝 Editar Notas CRM' },
+                { id: `EDIT_SCO_${tel10}`, title: '⭐ Calificar' }
+              ]
+            }
+          ]
+        )
 
         // Enviar foto si existe
         if (c.foto_fachada_url) {
@@ -524,32 +534,11 @@ Al registrarte:
       return new Response('OK', { status: 200 })
     }
     case 'CANCELAR_PEDIDO': {
-      // Marcamos los pedidos como cancelados en lugar de eliminarlos para mantener el historial.
-      const tel10 = extract10Digits(d.clienteTel)
-      const { data: peds } = await supabase.from('pedidos').select('id, descripcion')
-        .ilike('cliente_tel', `%${tel10}%`).in('estado', ['asignado', 'aceptado', 'recibido', 'en_camino']).order('created_at', { ascending: false })
-      if (peds && peds.length > 0) {
-        const ids = peds.map((p: any) => p.id)
-        await supabase.from('pedidos').update({ estado: 'cancelado' }).in('id', ids)
-        await sendWA(fromPhone, `❌ *Cancelado*\nSe cancelaron ${peds.length} pedido(s) de: ${d.clienteTel}\n📦 _${peds[0].descripcion?.slice(0, 60)}_`)
-      } else { await sendWA(fromPhone, `🔍 No encontré pedidos activos para ese cliente.`) }
+      await sendWA(fromPhone, `❌ Los pedidos están deshabilitados.`)
       break
     }
     case 'REASIGNAR_PEDIDO': {
-      const { data: peds } = await supabase.from('pedidos').select('id').ilike('cliente_tel', `%${extract10Digits(d.clienteTel)}%`).in('estado', ['asignado', 'recibido']).order('created_at', { ascending: false })
-      const nuevoRep = await buscarRepartidor(supabase, d.repartidorAlias)
-      if (peds && peds.length > 0 && nuevoRep) {
-        const ids = peds.map((p: any) => p.id)
-        await supabase.from('pedidos').update({ repartidor_id: nuevoRep.user_id }).in('id', ids)
-        if (nuevoRep.telefono) {
-          // Fire-and-forget: no bloqueamos al admin esperando que se envíen todas las notificaciones
-          for (const id of ids) {
-            supabase.functions.invoke('notificar-whatsapp', { body: { pedido_id: id, tipo: 'asignacion' } })
-              .catch((e: any) => console.error('[REASIGNAR] notificar error:', e?.message))
-          }
-        }
-        await sendWA(fromPhone, `🔀 *Reasignado*\nSe pasaron ${peds.length} pedido(s) a *${nuevoRep.nombre}*. 🛵`)
-      } else { await sendWA(fromPhone, `⚠️ Falla localizando pedido o repartidor.`) }
+      await sendWA(fromPhone, `❌ Los pedidos están deshabilitados.`)
       break
     }
     case 'AGREGAR_NOTA_CLIENTE': {
@@ -619,65 +608,23 @@ Al registrarte:
       break
     }
     case 'REVISAR_ENTREGADOS': {
-      const dias = d.diasAtras || 0
-      const dIni = new Date(); dIni.setDate(dIni.getDate() - dias); dIni.setHours(0, 0, 0, 0)
-      const dFin = new Date(dIni); dFin.setHours(23, 59, 59, 999)
-
-      const { data: e } = await supabase.from('pedidos')
-        .select('descripcion, cliente_nombre, updated_at')
-        .eq('estado', 'entregado')
-        .gte('updated_at', dIni.toISOString())
-        .lte('updated_at', dFin.toISOString())
-        .order('updated_at', { ascending: false })
-
-      const label = dias === 0 ? 'HOY' : dias === 1 ? 'AYER' : `HACE ${dias} DÍA(S)`
-      let msg = `✅ *${label} (${e?.length || 0})*\n\n`
-      e?.forEach((p: any) => msg += `💚 [${new Date(p.updated_at).toTimeString().slice(0, 5)}] ${p.cliente_nombre || ''} - ${p.descripcion?.slice(0, 35)}\n`)
-      await sendWA(fromPhone, msg)
+      await sendWA(fromPhone, `❌ Los pedidos están deshabilitados.`)
       break
     }
     case 'ENTREGAR_TODOS': {
-      let q = supabase.from('pedidos').update({ estado: 'entregado' }).in('estado', ['pendiente', 'en_camino', 'asignado', 'recibido'])
-      if (d?.restaurante) q = q.ilike('restaurante', `%${d.restaurante}%`)
-      const { error } = await q
-      if (error) await sendWA(fromPhone, `❌ Error: ${error.message}`)
-      else await sendWA(fromPhone, `✅ Marcados como entregados.`)
+      await sendWA(fromPhone, `❌ Los pedidos están deshabilitados.`)
       break
     }
     case 'CANCELAR_TODOS': {
-      let q = supabase.from('pedidos').update({ estado: 'cancelado' }).in('estado', ['pendiente', 'en_camino', 'asignado', 'recibido'])
-      if (d?.restaurante) q = q.ilike('restaurante', `%${d.restaurante}%`)
-      const { error } = await q
-      if (error) await sendWA(fromPhone, `❌ Error: ${error.message}`)
-      else await sendWA(fromPhone, `🚫 Cancelados.`)
+      await sendWA(fromPhone, `❌ Los pedidos están deshabilitados.`)
       break
     }
     case 'ESTADISTICAS': {
-      const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
-      const { data: today } = await supabase.from('pedidos').select('estado').gte('created_at', hoy.toISOString())
-      const t = today?.length || 0, e = today?.filter(x => x.estado === 'entregado').length || 0, c = today?.filter(x => x.estado === 'en_camino').length || 0
-      const { count: tc } = await supabase.from('clientes').select('*', { count: 'exact', head: true })
-      await sendWA(fromPhone, `📊 *HOY*\n\`\`\`\n${barChart('Entregados', e, t)}\n${barChart('En Camino', c, t)}\n${barChart('Pendiente', t - e - c, t)}\n\`\`\`\nClientes: ${tc || '?'}`)
+      await sendWA(fromPhone, `❌ Estadísticas de pedidos deshabilitadas.`)
       break
     }
     case 'REPORTE_SEMANAL': {
-      const hace7 = new Date(); hace7.setDate(hace7.getDate() - 6); hace7.setHours(0, 0, 0, 0)
-      const { data: semana } = await supabase.from('pedidos').select('estado, created_at').gte('created_at', hace7.toISOString())
-      if (!semana) { await sendWA(fromPhone, '⚠️ No pude obtener los datos.'); break }
-      const diasMap: Record<string, { total: number; entregados: number }> = {}
-      const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
-      semana.forEach((p: any) => {
-        const key = dayNames[new Date(p.created_at).getDay()]
-        if (!diasMap[key]) diasMap[key] = { total: 0, entregados: 0 }
-        diasMap[key].total++
-        if (p.estado === 'entregado') diasMap[key].entregados++
-      })
-      const mx = Math.max(...Object.values(diasMap).map(v => v.total), 1), ts = semana.length
-      const es = semana.filter((p: any) => p.estado === 'entregado').length
-      const lines = ['📈 *REPORTE SEMANAL*', '', '```']
-      Object.entries(diasMap).forEach(([day, v]) => lines.push(barChart(day, v.total, mx, 8)))
-      lines.push('```', '', `📦 Pedidos: *${ts}*`, `✅ Entregados: *${es}*`, `📉 Tasa: *${ts > 0 ? Math.round((es / ts) * 100) : 0}%*`)
-      await sendWA(fromPhone, lines.join('\n'))
+      await sendWA(fromPhone, `❌ Reportes de pedidos deshabilitados.`)
       break
     }
     case 'AGREGAR_REPARTIDOR': {
@@ -715,60 +662,38 @@ Al registrarte:
     }
     case 'CARGAR_SALDO': {
       const tel10 = extract10Digits(d.clienteTel)
-      const { data: cli } = await supabase.from('clientes').select('id, nombre, saldo_billetera').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
-      if (cli) {
-        // TODO: Race condition — si dos admins cargan saldo simultáneamente, uno se pierde.
-        // Migrar a un RPC atómico: UPDATE clientes SET saldo_billetera = saldo_billetera + p_monto
-        const ns = (parseFloat(String(cli.saldo_billetera)) || 0) + (parseFloat(String(d.montoSaldo)) || 0)
-        await supabase.from('clientes').update({ saldo_billetera: ns }).eq('id', cli.id)
-        await supabase.from('registros_puntos').insert({ cliente_id: cli.id, tipo: 'acumulacion', puntos: 0, monto_saldo: d.montoSaldo, descripcion: `Ajuste admin: $${d.montoSaldo}` })
-        await sendWA(fromPhone, `💲 *Billetera*\nCargado $${d.montoSaldo} al cliente ${cli.nombre || tel10}.\nSaldo final: *$${ns}*`)
-      } else { await sendWA(fromPhone, `🔍 No encontrado.`) }
+      const monto = parseFloat(String(d.montoSaldo)) || 0
+      if (monto <= 0) { await sendWA(fromPhone, `⚠️ Monto inválido.`); break }
+
+      // Incremento ATÓMICO: evita race condition si dos admins cargan saldo al mismo tiempo.
+      // La función suma directamente en la DB: saldo_billetera = saldo_billetera + p_monto
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('increment_cliente_saldo', {
+        p_tel: tel10,
+        p_monto: monto
+      })
+
+      if (rpcErr || !rpcRes?.ok) {
+        // Fallback: si el RPC no existe aún, usar el update directo con aviso
+        console.warn('[CARGAR_SALDO] RPC atómico falló, usando fallback:', rpcErr?.message || rpcRes?.error)
+        const { data: cli } = await supabase.from('clientes').select('id, nombre, saldo_billetera').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+        if (cli) {
+          const ns = (parseFloat(String(cli.saldo_billetera)) || 0) + monto
+          await supabase.from('clientes').update({ saldo_billetera: ns }).eq('id', cli.id)
+          await supabase.from('registros_puntos').insert({ cliente_id: cli.id, tipo: 'acumulacion', puntos: 0, monto_saldo: monto, descripcion: `Ajuste admin: $${monto}` })
+          await sendWA(fromPhone, `💲 *Billetera*\nCargado $${monto} al cliente ${cli.nombre || tel10}.\nSaldo final: *$${ns}*`)
+        } else { await sendWA(fromPhone, `🔍 No encontrado.`) }
+      } else {
+        await supabase.from('registros_puntos').insert({ cliente_id: rpcRes.cliente_id, tipo: 'acumulacion', puntos: 0, monto_saldo: monto, descripcion: `Ajuste admin: $${monto}` })
+        await sendWA(fromPhone, `💲 *Billetera*\nCargado $${monto} al cliente ${rpcRes.nombre || tel10}.\nSaldo final: *$${rpcRes.nuevo_saldo}*`)
+      }
       break
     }
     case 'VER_ATRASOS': {
-      const c = new Date(Date.now() - 45 * 60000).toISOString()
-      const { data: at } = await supabase.from('pedidos').select('descripcion, estado, created_at').not('estado', 'in', '(entregado,cancelado)').lt('created_at', c)
-      if (at?.length) {
-        let msg = `🚨 *ATRASOS (+45 mins)*\n\n`
-        at.forEach((p: any) => msg += `⏱️ ${Math.floor((Date.now() - new Date(p.created_at).getTime()) / 60000)}m : _${p.descripcion?.substring(0, 25)}_\nEstado: ${p.estado}\n\n`)
-        await sendWA(fromPhone, msg)
-      } else { await sendWA(fromPhone, `✅ Operación sana. Sin atrasos.`) }
+      await sendWA(fromPhone, `❌ Los pedidos están deshabilitados.`)
       break
     }
     case 'ESTADO_REPARTIDOR': {
-      const repAlias = d?.repartidorAlias
-      const repTel = d?.clienteTel
-      if (!repAlias && !repTel) {
-        await sendWA(fromPhone, `⚠️ Dime el nombre o alias del repartidor para consultar.\n\nEj: _"Estado de Jorge"_`)
-        break
-      }
-      let repQuery = supabase.from('repartidores').select('id, user_id, nombre, telefono').eq('activo', true)
-      if (repAlias) {
-        repQuery = repQuery.or(`alias.ilike.%${repAlias}%,nombre.ilike.%${repAlias}%`) as any
-      } else if (repTel) {
-        repQuery = repQuery.ilike('telefono', `%${extract10Digits(String(repTel))}%`) as any
-      }
-      const { data: rep } = await (repQuery as any).limit(1).maybeSingle()
-      if (!rep) {
-        await sendWA(fromPhone, `🔍 No encontré a "${repAlias || repTel}" en el equipo activo.`)
-        break
-      }
-      const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
-      // Buscar por user_id O por id (fallback para repartidores sin Auth)
-      const orFilter = rep.user_id
-        ? `repartidor_id.eq.${rep.user_id},repartidor_id.eq.${rep.id}`
-        : `repartidor_id.eq.${rep.id}`
-      const { data: pt } = await supabase
-        .from('pedidos')
-        .select('estado')
-        .or(orFilter)
-        .gte('created_at', hoy.toISOString())
-      const entregados = pt?.filter((p: any) => p.estado === 'entregado').length || 0
-      const pendientes = pt?.filter((p: any) => !['entregado', 'cancelado'].includes(p.estado)).length || 0
-      const total = pt?.length || 0
-      const telInfo = rep.telefono ? `📱 ${rep.telefono}` : '_Sin teléfono_'
-      await sendWA(fromPhone, `📋 *ESTADO: ${rep.nombre.toUpperCase()}*\n${telInfo}\n\n✅ Entregados hoy: *${entregados}*\n⏳ En curso: *${pendientes}*\n📦 Total asignados: *${total}*`)
+      await sendWA(fromPhone, `❌ Los pedidos están deshabilitados.`)
       break
     }
     case 'UBICACION_RESTAURANTE': {
@@ -784,6 +709,7 @@ Al registrarte:
         let sent = 0
         for (const r of ra) {
           await sendWA(`52${extract10Digits(r.telefono)}`, `📢 *ANUNCIO DE BASE*\n\n${d.descripcion}`)
+          await new Promise(res => setTimeout(res, 350)) // throttle para no saturar Meta API
           sent++
         }
         await sendWA(fromPhone, `✅ Radiado a *${sent}* miembros activos.`)
@@ -869,7 +795,7 @@ export async function handleCalificacion(supabase: Supa, fromPhone: string, butt
     if (clienteId) {
       await supabase.from('clientes').update({ reputacion: 'excelente' }).eq('id', clienteId)
     } else {
-      await supabase.from('clientes').insert({ telefono: tel10, nombre: clienteNombre, reputacion: 'excelente', puntos: 0 })
+      await supabase.from('clientes').upsert({ telefono: tel10, nombre: clienteNombre, reputacion: 'excelente', puntos: 0 }, { onConflict: 'telefono' })
     }
     // Borrar calificación pendiente si existe
     await supabase.from('calificaciones_pendientes').delete().eq('cliente_tel', tel10)
@@ -881,7 +807,7 @@ export async function handleCalificacion(supabase: Supa, fromPhone: string, butt
     if (clienteId) {
       await supabase.from('clientes').update({ reputacion: 'bueno' }).eq('id', clienteId)
     } else {
-      await supabase.from('clientes').insert({ telefono: tel10, nombre: clienteNombre, reputacion: 'bueno', puntos: 0 })
+      await supabase.from('clientes').upsert({ telefono: tel10, nombre: clienteNombre, reputacion: 'bueno', puntos: 0 }, { onConflict: 'telefono' })
     }
     await supabase.from('calificaciones_pendientes').delete().eq('cliente_tel', tel10)
     await sendWA(fromPhone, `👍 *${clienteNombre}* → Reputación: *Bueno*\n¡Registrado!`)
@@ -926,7 +852,7 @@ export async function handleCalificacion(supabase: Supa, fromPhone: string, butt
     if (clienteId) {
       await supabase.from('clientes').update({ reputacion, etiquetas: nuevasEtiquetas }).eq('id', clienteId)
     } else {
-      await supabase.from('clientes').insert({ telefono: tel10, nombre: clienteNombre, reputacion, etiquetas: nuevasEtiquetas, puntos: 0 })
+      await supabase.from('clientes').upsert({ telefono: tel10, nombre: clienteNombre, reputacion, etiquetas: nuevasEtiquetas, puntos: 0 }, { onConflict: 'telefono' })
     }
     await updateChatwootProfile(supabase, tel10).catch(console.error)
     await addPrivateNoteByPhone(tel10, `⚠️ Alerta: El repartidor acaba de calificar a este cliente con mala actitud: *${etiqueta.toUpperCase()}*`).catch(console.error)
@@ -943,7 +869,7 @@ export async function handleCalificacion(supabase: Supa, fromPhone: string, butt
     if (clienteId) {
       await supabase.from('clientes').update({ reputacion: 'vetado', etiquetas: nuevasEtiquetas }).eq('id', clienteId)
     } else {
-      await supabase.from('clientes').insert({ telefono: tel10, nombre: clienteNombre, reputacion: 'vetado', etiquetas: nuevasEtiquetas, puntos: 0 })
+      await supabase.from('clientes').upsert({ telefono: tel10, nombre: clienteNombre, reputacion: 'vetado', etiquetas: nuevasEtiquetas, puntos: 0 }, { onConflict: 'telefono' })
     }
     await updateChatwootProfile(supabase, tel10).catch(console.error)
     await addPrivateNoteByPhone(tel10, `🔴 ALERTA MÁXIMA: Este cliente ha sido VETADO permanentemente por el repartidor.`).catch(console.error)
@@ -985,6 +911,8 @@ Guárdala muy bien en tus favoritos. Con ella irás acumulando recompensas en ca
 ¡Gracias por preferir Estrella Delivery! 🛵💨`
 
     await sendWAImage(`52${tel10}`, qrImageUrl, mensajeBienvenida)
+    // Espejo en Chatwoot: adjuntar la imagen para que los agentes la vean inline
+    syncBotImageByPhone(`52${tel10}`, qrImageUrl, '🎟️ Tarjeta VIP enviada al cliente').catch(console.error)
 
     // Notificar al admin si había un pendiente de admin en cache
     const { data: pendingQR } = await supabase.from('bot_memory').select('history').eq('phone', `pending_qr_${tel10}`).maybeSingle()
@@ -1057,31 +985,6 @@ Guárdala muy bien en tus favoritos. Con ella irás acumulando recompensas en ca
 }
 
 export async function handleAdminCommands(supabase: Supa, fromPhone: string, buttonId: string): Promise<Response> {
-  const isCancel = buttonId.startsWith('CMD_CANCELAR_')
-  const isReasignar = buttonId.startsWith('CMD_REASIGNAR_')
-
-  const prefixLength = isCancel ? 'CMD_CANCELAR_'.length : 'CMD_REASIGNAR_'.length
-  const ordenOrId = buttonId.substring(prefixLength)
-
-  const suffix = ordenOrId.replace('EST-', '').toLowerCase()
-  const { data: pIdData } = await supabase.from('pedidos').select('id, estado').ilike('id', `%${suffix}`).limit(1).maybeSingle()
-
-  if (!pIdData) {
-    await sendWA(fromPhone, `❌ No encontré el pedido ${ordenOrId}.`)
-    return new Response('OK', { status: 200 })
-  }
-
-  if (isCancel) {
-    if (pIdData.estado === 'cancelado') {
-      await sendWA(fromPhone, `⚠️ El pedido ${ordenOrId} ya estaba cancelado.`)
-    } else {
-      await supabase.from('pedidos').update({ estado: 'cancelado' }).eq('id', pIdData.id)
-      await sendWA(fromPhone, `✅ Pedido ${ordenOrId} CANCELADO exitosamente.`)
-    }
-  } else if (isReasignar) {
-    await supabase.from('pedidos').update({ estado: 'asignado', repartidor_id: null }).eq('id', pIdData.id)
-    await sendWA(fromPhone, `🔄 La orden *${ordenOrId}* ha sido removida del repartidor actual y devuelta a la lista de *Asignados*.\n\n👉 Para dársela a alguien más, usa tu panel Web o escribe su nombre.`)
-  }
-
+  await sendWA(fromPhone, `❌ Los comandos de pedidos están deshabilitados.`)
   return new Response('OK', { status: 200 })
 }

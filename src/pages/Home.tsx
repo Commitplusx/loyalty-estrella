@@ -1,11 +1,12 @@
 import { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useInView, type Variants } from 'framer-motion';
-import { ArrowRight, Phone, Star, Gift, Zap, Shield, Heart, Truck, MapPin, Sparkles, CheckCircle, Clock, Store, ChevronRight } from 'lucide-react';
+import { ArrowRight, Phone, Star, Gift, Zap, Shield, Heart, Truck, MapPin, Sparkles, CheckCircle, Clock, Store, ChevronRight, Home as HomeIcon } from 'lucide-react';
 import { useSchedule } from '@/hooks/useSchedule';
 import { supabase } from '@/lib/supabase';
 import AuthorityCounter from '@/components/client/AuthorityCounter';
 import { StepsLottie } from '@/components/StepsLottie';
+import { BottomNav } from '@/components/client/BottomNav';
 
 /* ── Shared variants — GPU-only properties (transform + opacity) ── */
 const fadeUp: Variants = {
@@ -150,19 +151,22 @@ export function Home() {
               Acumula puntos con cada envío y el 6to es completamente gratis. Sin apps, sin trámites.
             </motion.p>
 
-            <motion.div variants={fadeUp} initial="hidden" animate="show" custom={3}
-              className="flex flex-col sm:flex-row gap-3">
-              <motion.button onClick={() => navigate('/cliente')}
-                whileHover={{ scale: 1.02, y: -1 }} whileTap={{ scale: 0.98 }}
-                className="flex items-center justify-center gap-2 bg-gray-950 text-white font-semibold px-7 py-3.5 rounded-xl text-sm shadow-xl shadow-gray-950/20 hover:bg-gray-800 transition-colors">
-                Ver mis puntos <ArrowRight className="w-4 h-4" />
-              </motion.button>
-              <motion.button
-                onClick={() => whatsappUrl && window.open(whatsappUrl, '_blank', 'noopener')}
-                whileHover={{ scale: 1.02, y: -1 }} whileTap={{ scale: 0.98 }}
-                className="flex items-center justify-center gap-2 bg-white text-gray-700 font-semibold px-7 py-3.5 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all text-sm">
-                <Phone className="w-4 h-4" /> Pedir ahora
-              </motion.button>
+            <motion.div variants={fadeUp} initial="hidden" animate="show" custom={3}>
+              <form onSubmit={(e) => { 
+                e.preventDefault(); 
+                const tel = new FormData(e.currentTarget).get('tel'); 
+                if(tel) navigate('/loyalty/' + tel); 
+              }} className="flex flex-col sm:flex-row gap-3 w-full max-w-md">
+                <div className="relative flex-1">
+                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input type="tel" name="tel" placeholder="Tu número celular..." className="w-full pl-12 pr-4 py-3.5 rounded-xl border-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-600/20 focus:border-blue-600 text-gray-900 bg-white font-bold text-lg" required minLength={10} maxLength={10} />
+                </div>
+                <motion.button type="submit"
+                  whileHover={{ scale: 1.02, y: -1 }} whileTap={{ scale: 0.98 }}
+                  className="flex items-center justify-center gap-2 bg-blue-600 text-white font-semibold px-7 py-3.5 rounded-xl text-sm shadow-xl shadow-blue-600/30 hover:bg-blue-700 transition-colors shrink-0">
+                  Ver mi progreso <ArrowRight className="w-4 h-4" />
+                </motion.button>
+              </form>
             </motion.div>
           </div>
 
@@ -209,7 +213,7 @@ export function Home() {
       )}
 
       {/* ── FEATURES ── */}
-      <section className="py-24 px-5 max-w-5xl mx-auto">
+      <section id="beneficios" className="py-24 px-5 max-w-5xl mx-auto">
         <Reveal className="mb-14 text-center">
           <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-3">Por qué elegirnos</p>
           <h2 className="text-3xl sm:text-4xl font-black tracking-tight">Más que un delivery</h2>
@@ -379,7 +383,7 @@ export function Home() {
       </section>
 
       {/* ── FOOTER ── */}
-      <footer className="border-t border-gray-100 bg-white/60 backdrop-blur-sm">
+      <footer className="border-t border-gray-100 bg-white/60 backdrop-blur-sm pb-20 lg:pb-0">
         <div className="max-w-5xl mx-auto px-5 py-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-5 text-sm text-gray-400">
             <div className="flex items-center gap-2">
@@ -407,7 +411,7 @@ export function Home() {
         href={whatsappUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="fixed bottom-6 right-5 z-40 flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white text-sm font-bold px-4 py-3 rounded-full shadow-xl shadow-green-500/40 transition-colors"
+        className="fixed bottom-24 lg:bottom-6 right-5 z-40 flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white text-sm font-bold px-4 py-3 rounded-full shadow-xl shadow-green-500/40 transition-colors"
         style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -421,8 +425,25 @@ export function Home() {
         </svg>
         Pedir ahora
       </motion.a>
+      
+      <BottomNav 
+        activeTab="home" 
+        items={[
+          { id: 'home', icon: HomeIcon, label: 'Inicio' },
+          { id: 'beneficios', icon: Star, label: 'Beneficios' },
+          { id: 'pedir', icon: Store, label: 'Pedir' },
+        ]}
+        onChange={(tab) => {
+          if (tab === 'home') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          } else if (tab === 'beneficios') {
+            document.getElementById('beneficios')?.scrollIntoView({ behavior: 'smooth' });
+          } else if (tab === 'pedir') {
+            if (whatsappUrl) window.open(whatsappUrl, '_blank', 'noopener');
+          }
+        }} 
+      />
 
     </div>
   );
 }
-

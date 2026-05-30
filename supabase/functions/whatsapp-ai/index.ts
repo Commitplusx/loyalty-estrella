@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { conversacionDeepSeek } from '../whatsapp-bot/ai.ts'
-import { sendWA, sendWALocation } from '../whatsapp-bot/whatsapp.ts'
+import { sendWA, sendWALocation, sendInteractiveButtons } from '../whatsapp-bot/whatsapp.ts'
 import { guardarMemoria } from '../whatsapp-bot/db.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -58,7 +58,7 @@ async function handleRegistrationFlow(
   }
 
   const showConfirmation = async (coloniaFinal: string, dirFinal: string, latFinal?: number, lngFinal?: number) => {
-    const { sendInteractiveButtons } = await import('../whatsapp-bot/whatsapp.ts')
+
     await sendWA(fromPhone,
       `¡Perfecto! Confirma tus datos 📋\n\n` +
       `👤 Nombre: *${nombre}*\n` +
@@ -235,7 +235,7 @@ async function handleRegistrationFlow(
       const ADMIN_PHONES_ENV = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHONE') ?? ''
       const admin10 = ADMIN_PHONES_ENV.split(',')[0]?.trim() || ''
       if (admin10) {
-        const { sendInteractiveButtons } = await import('../whatsapp-bot/whatsapp.ts')
+
         await sendWA(`52${admin10}`,
           `🔔 *Nueva Solicitud VIP*\n\n` +
           `👤 Nombre: ${nombre}\n📞 Tel: ${from10}\n` +
@@ -266,7 +266,7 @@ async function handleRegistrationFlow(
     const mapLink = regState?.lat && regState?.lng
       ? `\n📍 https://maps.google.com/?q=${regState.lat},${regState.lng}`
       : ''
-    const { sendInteractiveButtons } = await import('../whatsapp-bot/whatsapp.ts')
+
     await sendWA(fromPhone,
       `¿Confirmas estos datos? 😊\n\n` +
       `👤 *${nombre}* | 📱 *${from10}*\n🏠 *${colonia}* | 📍 *${direccion}*` + mapLink
@@ -346,7 +346,7 @@ serve(async (req: Request) => {
       const functionUrl = `${SUPABASE_URL}/functions/v1/admin-approval`
       const secret = Deno.env.get('ADMIN_APPROVAL_SECRET') || ''
       if (admin10) {
-        await sendWA(`52${admin10}`, `🔔 *Nueva Solicitud de Restaurante*\nNombre: ${nombre}\nCorreo: ${correo}\nTel: wa.me/52${from10}`)
+        await sendWA(`52${admin10}`, `🔔 *Nueva Solicitud de Restaurante*\nNombre: ${nombreRest}\nCorreo: ${correo}\nTel: wa.me/52${from10}`)
         await sendWA(`52${admin10}`, `✅ ${functionUrl}?action=accept&tel=${from10}&secret=${secret}`)
         await sendWA(`52${admin10}`, `❌ ${functionUrl}?action=reject&tel=${from10}&secret=${secret}`)
       }
