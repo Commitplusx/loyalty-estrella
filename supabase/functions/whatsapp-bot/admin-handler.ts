@@ -625,8 +625,8 @@ Al registrarte:
       const { count: totalRestaurantes } = await supabase.from('restaurantes').select('*', { count: 'exact', head: true })
       const { count: totalRepartidores } = await supabase.from('repartidores').select('*', { count: 'exact', head: true })
 
-      const msg = `📊 *Tu Resumen, Comandante*\n\n`
-        + `Aquí tienes las métricas actuales del ecosistema Estrella:\n\n`
+      const msg = `📊 *Resumen de Estadísticas*\n\n`
+        + `Hola, aquí tienes las métricas actuales del sistema Estrella:\n\n`
         + `👥 *Clientes:* ${totalClientes || 0}\n`
         + `⭐ *VIPs:* ${totalVIP || 0}\n`
         + `🍔 *Restaurantes:* ${totalRestaurantes || 0}\n`
