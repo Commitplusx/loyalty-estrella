@@ -3,7 +3,7 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-import { sendWA, markMessageAsRead } from './whatsapp.ts'
+import { sendWA, sendWATemplate, markMessageAsRead } from './whatsapp.ts'
 import { extract10Digits } from './db.ts'
 import { logError } from '../_shared/utils.ts'
 import { handleRepButtons, handleRepMessage } from './rep-handler.ts'
@@ -304,8 +304,12 @@ serve(async (req: Request) => {
 
             // Enviar T&C si aún no los ha aceptado
             if (!existe || existe.acepta_terminos === false) {
-              const { sendWATemplate } = await import('./whatsapp.ts')
-              await sendWATemplate(`52${tel}`, 'estrella_terminos_condiciones', [nombre])
+              const templateResult = await sendWATemplate(`52${tel}`, 'estrella_terminos_condiciones', [nombre])
+              if (!templateResult.ok) {
+                await sendWA(fromPhone, `⚠️ El registro se guardó pero hubo un problema al enviar los Términos al cliente.\nError: ${templateResult.error?.substring(0, 200)}`)
+              }
+            } else {
+              await sendWA(fromPhone, `ℹ️ Este cliente ya había aceptado los Términos anteriormente. Solo se actualizaron sus datos.`)
             }
 
             await sendWA(fromPhone,
