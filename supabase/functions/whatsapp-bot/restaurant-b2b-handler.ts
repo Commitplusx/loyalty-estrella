@@ -186,12 +186,23 @@ export async function handleRestaurantCommand(
         const cTel = extract10Digits(userInput)
         if (!cTel || cTel.length !== 10) { await sendWA(fromPhone, `⚠️ Número inválido. Escribe los 10 dígitos o "cancelar":`); return new Response('OK', { status: 200 }) }
         
-        const { data: exist } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${cTel}%`).maybeSingle()
+        const { data: exist } = await supabase.from('clientes').select('id, nombre, acepta_terminos').ilike('telefono', `%${cTel}%`).maybeSingle()
         if (exist) {
-          await supabase.from('bot_memory').delete().eq('phone', `b2b_state_${from10}`)
-          await sendWA(fromPhone, `ℹ️ El cliente ${cTel} ya estaba registrado como *${exist.nombre}*.`)
-          await enviarMenuPrincipal(fromPhone, nombreRest)
-          return new Response('OK', { status: 200 })
+          if (!exist.acepta_terminos) {
+            await sendWA(fromPhone, `ℹ️ El cliente *${exist.nombre}* ya está en el sistema pero no ha aceptado los términos. Le reenviaré la invitación VIP.`)
+            await sendWATemplate(`52${cTel}`, 'estrella_terminos_condiciones', [exist.nombre])
+            await supabase.from('bot_memory').delete().eq('phone', `b2b_state_${from10}`)
+            await enviarMenuPrincipal(fromPhone, nombreRest)
+            return new Response('OK', { status: 200 })
+          } else {
+            await sendWA(fromPhone, `ℹ️ El cliente *${exist.nombre}* ya está registrado en el programa VIP. Pasando directamente a sumarle puntos...`)
+            stateObj.state = 'PUNTOS_CANT'
+            stateObj.cTel = cTel
+            stateObj.cNombre = exist.nombre
+            await supabase.from('bot_memory').update({ history: [stateObj], updated_at: new Date().toISOString() }).eq('phone', `b2b_state_${from10}`)
+            await sendWA(fromPhone, `🔢 ¿Cuántos puntos deseas sumar a *${exist.nombre}*?\n(Ejemplo: 1 o 2. Máximo 10)`)
+            return new Response('OK', { status: 200 })
+          }
         }
         
         stateObj.state = 'AFILIAR_NOM'
@@ -232,9 +243,12 @@ export async function handleRestaurantCommand(
         // Log de auditoría
         await supabase.from('restaurante_loyalty_log').insert({ restaurante_id: restauranteId, cliente_tel: cTel, accion: 'afiliar_cliente', valor: 0, descripcion: `Afilió a ${nombreLimpio}` })
         
-        await sendWA(fromPhone, `🎉 *${nombreLimpio}* ha sido afiliado.\nLe estoy enviando su invitación VIP ahora mismo. 📲`)
-        const tcMsg = `👋 ¡Hola *${nombreLimpio}*!\n\n*${nombreRest}* te ha invitado al programa VIP de *Estrella Delivery* 🌟\n\nAcumularás recompensas aquí y en envíos. ¿Deseas unirte?`
-        await sendInteractiveButtons(`52${cTel}`, tcMsg, [{ id: 'ACEPTAR_TERMINOS', title: '✅ Sí, unirme' }, { id: 'RECHAZAR_TERMINOS', title: '❌ No, gracias' }])
+        await sendWA(fromPhone, `🎉 *${nombreLimpio}* ha sido afiliado en el sistema.\nLe estoy enviando la invitación oficial a los Términos y Condiciones ahora mismo. 📲`)
+        
+        const templateResult = await sendWATemplate(`52${cTel}`, 'estrella_terminos_condiciones', [nombreLimpio])
+        if (!templateResult.ok) {
+           await sendWA(fromPhone, `⚠️ Hubo un problema al enviar la invitación a WhatsApp: ${templateResult.error?.substring(0,100)}`)
+        }
         await enviarMenuPrincipal(fromPhone, nombreRest)
         return new Response('OK', { status: 200 })
       }
@@ -295,11 +309,11 @@ export async function handleRestaurantCommand(
         const progressBar = buildProgressBar(newPts, META_B2B)
 
         await sendWA(fromPhone, `✅ Has sumado *${cant} punto(s)* a ${cNombre}.\n📊 Puntos en tu local: *${newPts} pts*\n👀 Visitas totales: ${newVisitas}`)
-        try {
-          // Usa plantilla para brincar la restricción de 24 horas de WhatsApp
-          await sendWATemplate(`52${cTel}`, 'estrella_puntos_acumulados', [cNombre, cant.toString(), newPts.toString()], undefined, cTel)
-        } catch (e) {
-          // Si falla la plantilla, intenta texto libre con la barra de progreso
+        
+        // Usa plantilla para brincar la restricción de 24 horas de WhatsApp
+        const templateResult = await sendWATemplate(`52${cTel}`, 'estrella_puntos_acumulados', [cNombre, cant.toString(), newPts.toString()], undefined, cTel)
+        if (!templateResult.ok) {
+          // Si falla la plantilla, intenta texto libre con la barra de progreso (funciona si hay ventana de 24h abierta)
           await sendWA(`52${cTel}`, `⭐ *¡Sumamos puntos en ${nombreRest}!*\n\n${progressBar}`)
         }
         await enviarMenuPrincipal(fromPhone, nombreRest)
