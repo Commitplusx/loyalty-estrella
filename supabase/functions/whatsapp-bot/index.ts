@@ -259,10 +259,86 @@ serve(async (req: Request) => {
         if (actState?.history?.[0]?.action) {
           const action     = actState.history[0].action
           const targetText = slashText.trim()
+
+          // ── WIZARD LOYALTY (3 pasos: tel → nombre → dirección) ──
+          if (action === 'LOYALTY_STEP_NOMBRE') {
+            // Paso 2: recibir nombre
+            await supabase.from('bot_memory').upsert({
+              phone: `admin_action_state_${from10}`,
+              history: [{ action: 'LOYALTY_STEP_DIR', tel: actState.history[0].tel, nombre: targetText }],
+              updated_at: new Date().toISOString()
+            })
+            await sendWA(fromPhone,
+              `3️⃣ *¿Cuál es la dirección de entrega?*\n\n_Escribe la dirección o escribe_ *sin dirección* _para omitirla._`
+            )
+            return await exitSafely(new Response('OK', { status: 200 }))
+          }
+
+          if (action === 'LOYALTY_STEP_DIR') {
+            // Paso 3: recibir dirección y ejecutar registro
+            const tel    = actState.history[0].tel as string
+            const nombre = actState.history[0].nombre as string
+            const dir    = (targetText.toLowerCase() === 'sin dirección' || targetText.toLowerCase() === 'sin direccion') ? null : targetText
+            await supabase.from('bot_memory').delete().eq('phone', `admin_action_state_${from10}`)
+
+            // Crear o actualizar cliente
+            const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel}`
+            const { data: existe } = await supabase.from('clientes').select('id, nombre, acepta_terminos').ilike('telefono', `%${tel}%`).limit(1).maybeSingle()
+            let clienteNombre = nombre
+            if (existe) {
+              await supabase.from('clientes').update({
+                nombre,
+                ...(dir ? { direccion: dir } : {})
+              }).eq('id', existe.id)
+              clienteNombre = nombre
+            } else {
+              await supabase.from('clientes').insert({
+                telefono: tel,
+                nombre,
+                puntos: 0,
+                acepta_terminos: false,
+                qr_code: loyaltyUrl,
+                ...(dir ? { direccion: dir } : {})
+              })
+            }
+
+            // Enviar T&C si aún no los ha aceptado
+            if (!existe || existe.acepta_terminos === false) {
+              const { sendWATemplate } = await import('./whatsapp.ts')
+              await sendWATemplate(`52${tel}`, 'estrella_terminos_condiciones', [nombre])
+            }
+
+            await sendWA(fromPhone,
+              `✅ *Registro Loyalty completado*\n\n` +
+              `👤 *Nombre:* ${nombre}\n` +
+              `📱 *Teléfono:* ${tel}\n` +
+              `🏠 *Dirección:* ${dir || 'No especificada'}\n\n` +
+              `📤 Se le envió la invitación de Términos y Condiciones. Cuando acepte, recibirá su tarjeta QR automáticamente.`
+            )
+            return await exitSafely(new Response('OK', { status: 200 }))
+          }
+
+          // Primer paso del wizard LOYALTY: recibir teléfono
+          if (action === 'ACT_MENU_LOYALTY') {
+            const tel = targetText.replace(/\D/g, '').slice(-10)
+            if (!tel || tel.length !== 10) {
+              await sendWA(fromPhone, `⚠️ Ese número no parece válido. Escribe los *10 dígitos* del teléfono del cliente:`)
+              return await exitSafely(new Response('OK', { status: 200 }))
+            }
+            // No borramos el estado aún — avanzamos al paso 2
+            await supabase.from('bot_memory').upsert({
+              phone: `admin_action_state_${from10}`,
+              history: [{ action: 'LOYALTY_STEP_NOMBRE', tel }],
+              updated_at: new Date().toISOString()
+            })
+            await sendWA(fromPhone, `2️⃣ *¿Cuál es el nombre completo del cliente?*`)
+            return await exitSafely(new Response('OK', { status: 200 }))
+          }
+
+          // ── Resto de acciones del menú ──
           await supabase.from('bot_memory').delete().eq('phone', `admin_action_state_${from10}`)
           let cmd = ''
           if      (action === 'ACT_MENU_NOREGO')  cmd = `/fachada ${targetText}`
-          else if (action === 'ACT_MENU_LOYALTY')  cmd = `/loyalty ${targetText}`
           else if (action === 'ACT_MENU_QR')       cmd = `/qr ${targetText}`
           else if (action === 'ACT_MENU_INFO')     cmd = `/info ${targetText}`
           else if (action === 'ACT_MENU_SCORE')    cmd = `/score ${targetText}`
@@ -271,7 +347,6 @@ serve(async (req: Request) => {
           else if (action === 'ACT_MENU_REST')     cmd = `/rest_clientes ${targetText}`
           else if (action.startsWith('EDIT_'))     cmd = `/set_field ${action} ${actState.history[0].tel} ${targetText}`
           if (cmd) {
-            // For REGALAR, we need to handle it natively here or in slash-commands
             if (action === 'ACT_MENU_REGALAR') {
               const telMatch = targetText.trim().replace(/\D/g, '').slice(-10)
               const { data: c } = await supabase.from('clientes').select('nombre').ilike('telefono', `%${telMatch}%`).maybeSingle()
