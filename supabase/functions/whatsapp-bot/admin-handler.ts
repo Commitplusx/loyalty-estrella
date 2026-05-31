@@ -620,7 +620,18 @@ Al registrarte:
       break
     }
     case 'ESTADISTICAS': {
-      await sendWA(fromPhone, `❌ Estadísticas de pedidos deshabilitadas.`)
+      const { count: totalClientes } = await supabase.from('clientes').select('*', { count: 'exact', head: true })
+      const { count: totalVIP } = await supabase.from('clientes').select('*', { count: 'exact', head: true }).eq('es_vip', true)
+      const { count: totalRestaurantes } = await supabase.from('restaurantes').select('*', { count: 'exact', head: true })
+      const { count: totalRepartidores } = await supabase.from('repartidores').select('*', { count: 'exact', head: true })
+
+      const msg = `📊 *Estadísticas de Estrella*\n\n`
+        + `👥 Clientes registrados: *${totalClientes || 0}*\n`
+        + `⭐ Clientes VIP activos: *${totalVIP || 0}*\n`
+        + `🍔 Restaurantes afiliados: *${totalRestaurantes || 0}*\n`
+        + `🛵 Repartidores en flotilla: *${totalRepartidores || 0}*`
+
+      await sendWA(fromPhone, msg)
       break
     }
     case 'REPORTE_SEMANAL': {

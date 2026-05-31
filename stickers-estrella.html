@@ -40,6 +40,7 @@
     .info{font-size:.72rem;color:#444;text-align:center;line-height:1.7;max-width:540px}
     .info strong{color:#666}
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -56,6 +57,7 @@
     <span class="badge">6 cm · Charola unicell</span>
     <canvas id="c-grande" width="280" height="280"></canvas>
     <button class="dl" onclick="dl('grande')">⬇ Descargar PNG (709×709px)</button>
+    <button class="dl" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);" onclick="dlPdf('grande')">📄 Descargar PDF (6x6 cm)</button>
   </div>
 
   <!-- PEQUEÑO: Bolsa -->
@@ -64,6 +66,7 @@
     <span class="badge">3.5 cm · Bolsa</span>
     <canvas id="c-pequeno" width="180" height="180"></canvas>
     <button class="dl" onclick="dl('pequeno')">⬇ Descargar PNG (413×413px)</button>
+    <button class="dl" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);" onclick="dlPdf('pequeno')">📄 Descargar PDF (3.5x3.5 cm)</button>
   </div>
 
 </div>
@@ -125,9 +128,10 @@ function drawSeal(canvas, printSize) {
   ctx.stroke();
 
   // ─── 4. Curved text on ring ──────────────────────────────────
-  const textTop    = '✦ SELLADO POR ESTRELLA ✦';
-  const textBottom = '✦ MOTO SERVICIO ✦';
-  const fontSize   = Math.round(ringW * 0.38);
+  const textTop    = '✦ CALIDAD GARANTIZADA • OBTÉN ENVÍOS GRATIS ✦';
+  const textBottom = '✦ EN CADA PEDIDO • INFO: 963 153 9156 ✦';
+  // Letras mucho más grandes para que destaquen
+  const fontSize   = Math.round(ringW * 0.35);
 
   ctx.save();
   ctx.font = `900 ${fontSize}px 'Segoe UI', Arial, sans-serif`;
@@ -135,8 +139,10 @@ function drawSeal(canvas, printSize) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  drawArcText(ctx, textTop,    cx, cy, ringR, -Math.PI * 0.58, true);
-  drawArcText(ctx, textBottom, cx, cy, ringR,  Math.PI * 0.42, true);
+  // -Math.PI * 0.5 es exactamente arriba (12 en el reloj)
+  drawArcText(ctx, textTop,    cx, cy, ringR, -Math.PI * 0.5, true);
+  // Math.PI * 0.5 es exactamente abajo (6 en el reloj)
+  drawArcText(ctx, textBottom, cx, cy, ringR,  Math.PI * 0.5, true);
   ctx.restore();
 
   // ─── 5. Inner circle (logo area) ─────────────────────────────
@@ -208,6 +214,27 @@ function dl(which) {
     a.download = 'sello-estrella-' + which + '-' + printSize + 'px.png';
     a.href = c.toDataURL('image/png');
     a.click();
+  }, 80);
+}
+
+// ── Descarga en PDF exacto ─────────────────────────────────────
+function dlPdf(which) {
+  const printSize = PRINT_SIZES[which];
+  const sizeMM = which === 'grande' ? 60 : 35;
+  const c = document.createElement('canvas');
+  c.width  = printSize;
+  c.height = printSize;
+  drawSeal(c, printSize);
+
+  setTimeout(() => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({
+      orientation: 'p',
+      unit: 'mm',
+      format: [sizeMM, sizeMM]
+    });
+    doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, sizeMM, sizeMM);
+    doc.save('sello-estrella-' + which + '-' + sizeMM + 'mm.pdf');
   }, 80);
 }
 
