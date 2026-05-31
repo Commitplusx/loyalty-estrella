@@ -46,8 +46,9 @@ async function enviarMenuPrincipal(fromPhone: string, nombreRest: string) {
       {
         title: 'Gestión de Clientes',
         rows: [
-          { id: 'REST_MENU_AFILIAR', title: '➕ Afiliar Cliente', description: 'Registrar nuevo cliente VIP' },
-          { id: 'REST_MENU_PUNTOS', title: '⭐ Sumar Puntos', description: 'Premiar visita al restaurante' },
+          { id: 'REST_MENU_AFILIAR', title: '➕ Afiliar Cliente', description: 'Registrar nuevo VIP' },
+          { id: 'REST_MENU_PUNTOS', title: '⭐ Sumar Puntos', description: 'Premiar visita al local' },
+          { id: 'REST_MENU_CANJEAR', title: '🎟️ Canjear Puntos', description: 'Cobrar recompensa' },
           { id: 'REST_MENU_INFO', title: '📊 Ver Perfil', description: 'Consultar datos de un cliente' },
           { id: 'REST_MENU_REGALAR', title: '🎁 Regalar Envío', description: `Patrocinar envío gratis (Máx ${MAX_REGALOS_POR_DIA}/día)` }
         ]
@@ -101,6 +102,7 @@ export async function handleRestaurantCommand(
     else if (action === 'INFO') targetState = 'INFO_TEL'
     else if (action === 'REGALAR') targetState = 'REGALAR_TEL'
     else if (action === 'AFILIAR') targetState = 'AFILIAR_TEL'
+    else if (action === 'CANJEAR') targetState = 'CANJEAR_TEL'
 
     if (targetState) {
       await supabase.from('bot_memory').upsert({
@@ -152,6 +154,7 @@ export async function handleRestaurantCommand(
     let newState = ''
     if (buttonId === 'REST_MENU_AFILIAR') { promptMsg = 'Escribe el número a *10 dígitos* del cliente nuevo:\n_(También puedes enviar una foto de su Tarjeta VIP QR)_ 📸'; newState = 'AFILIAR_TEL' }
     else if (buttonId === 'REST_MENU_PUNTOS') { promptMsg = 'Escribe el número a *10 dígitos* del cliente:\n_(También puedes enviar una foto de su Tarjeta VIP QR)_ 📸'; newState = 'PUNTOS_TEL' }
+    else if (buttonId === 'REST_MENU_CANJEAR') { promptMsg = 'Escribe el número a *10 dígitos* del cliente que va a cobrar su recompensa:'; newState = 'CANJEAR_TEL' }
     else if (buttonId === 'REST_MENU_REGALAR') { promptMsg = 'Escribe el número a *10 dígitos* del cliente a premiar:'; newState = 'REGALAR_TEL' }
     else if (buttonId === 'REST_MENU_INFO') { promptMsg = 'Escribe el número a *10 dígitos* del cliente a consultar:'; newState = 'INFO_TEL' }
 
@@ -244,6 +247,13 @@ export async function handleRestaurantCommand(
         // Log de auditoría
         await supabase.from('restaurante_loyalty_log').insert({ restaurante_id: restauranteId, cliente_tel: cTel, accion: 'afiliar_cliente', valor: 0, descripcion: `Afilió a ${nombreLimpio}` })
         
+        // Guardar estado pendiente para notificar al restaurante cuando acepte
+        await supabase.from('bot_memory').upsert({
+          phone: `pending_rest_invite_${cTel}`,
+          history: [{ restPhone: fromPhone, restName: nombreRest }],
+          updated_at: new Date().toISOString()
+        })
+        
         await sendWA(fromPhone, `🎉 *${nombreLimpio}* ha sido afiliado en el sistema.\nLe estoy enviando la invitación oficial a los Términos y Condiciones ahora mismo. 📲`)
         
         const templateResult = await sendWATemplate(`52${cTel}`, 'estrella_terminos_condiciones', [nombreLimpio])
@@ -317,6 +327,77 @@ export async function handleRestaurantCommand(
           // Si falla la plantilla, intenta texto libre con la barra de progreso (funciona si hay ventana de 24h abierta)
           await sendWA(`52${cTel}`, `⭐ *¡Sumamos puntos en ${nombreRest}!*\n\n${progressBar}`)
         }
+        await enviarMenuPrincipal(fromPhone, nombreRest)
+        return new Response('OK', { status: 200 })
+      }
+
+      // CANJEAR FLUJO
+      if (state === 'CANJEAR_TEL') {
+        const cTel = extract10Digits(userInput)
+        if (!cTel || cTel.length !== 10) { await sendWA(fromPhone, `⚠️ Número inválido. Escríbelo bien o "cancelar":`); return new Response('OK', { status: 200 }) }
+        
+        const { data: c } = await supabase.from('clientes').select('id, nombre, acepta_terminos').ilike('telefono', `%${cTel}%`).maybeSingle()
+        if (!c) {
+          await supabase.from('bot_memory').delete().eq('phone', `b2b_state_${from10}`)
+          await sendWA(fromPhone, `❌ Cliente no encontrado.`)
+          await enviarMenuPrincipal(fromPhone, nombreRest)
+          return new Response('OK', { status: 200 })
+        }
+        
+        const { data: restPts } = await supabase.from('restaurante_clientes_puntos').select('puntos').eq('restaurante_id', restauranteId).eq('cliente_tel', cTel).maybeSingle()
+        const ptsDisponibles = restPts?.puntos || 0
+        
+        if (ptsDisponibles <= 0) {
+          await supabase.from('bot_memory').delete().eq('phone', `b2b_state_${from10}`)
+          await sendWA(fromPhone, `⚠️ El cliente *${c.nombre || cTel}* tiene *0 puntos* en tu local. No hay recompensas por canjear.`)
+          await enviarMenuPrincipal(fromPhone, nombreRest)
+          return new Response('OK', { status: 200 })
+        }
+
+        stateObj.state = 'CANJEAR_CANT'
+        stateObj.cTel = cTel
+        stateObj.cNombre = c.nombre || cTel
+        stateObj.ptsDisp = ptsDisponibles
+        await supabase.from('bot_memory').update({ history: [stateObj], updated_at: new Date().toISOString() }).eq('phone', `b2b_state_${from10}`)
+        await sendWA(fromPhone, `🎟️ El cliente *${stateObj.cNombre}* tiene *${ptsDisponibles} puntos*.\n¿Cuántos puntos deseas canjear/descontar? (Ejemplo: 5)`)
+        return new Response('OK', { status: 200 })
+      }
+
+      if (state === 'CANJEAR_CANT') {
+        const cant = parseInt(userInput) || 0
+        const ptsDisponibles = stateObj.ptsDisp || 0
+        const cTel   = stateObj.cTel
+        const cNombre = stateObj.cNombre
+        
+        if (cant <= 0 || cant > ptsDisponibles) { 
+          await sendWA(fromPhone, `⚠️ Número inválido. Escribe una cantidad entre 1 y ${ptsDisponibles}, o escribe "cancelar".`)
+          return new Response('OK', { status: 200 }) 
+        }
+        
+        await supabase.from('bot_memory').delete().eq('phone', `b2b_state_${from10}`)
+
+        // Restar puntos atómicamente usando RPC de incremento con número negativo
+        const { data: rpcResult, error: rpcError } = await supabase.rpc('fn_incrementar_puntos_restaurante', {
+          p_restaurante_id: restauranteId,
+          p_cliente_tel:    cTel,
+          p_puntos:         -cant
+        })
+
+        if (rpcError || !rpcResult?.ok) {
+          await sendWA(fromPhone, `❌ Error interno al descontar puntos. Intenta de nuevo.`)
+          return new Response('OK', { status: 200 })
+        }
+
+        const newPts = rpcResult.puntos
+        await supabase.from('restaurante_loyalty_log').insert({ restaurante_id: restauranteId, cliente_tel: cTel, accion: 'canjear_recompensa', valor: cant, descripcion: `Canjeó recompensa` })
+
+        await sendWA(fromPhone, `✅ Has canjeado *${cant} punto(s)* de ${cNombre}.\n📊 Saldo restante en tu local: *${newPts} pts*`)
+        
+        const notifyResult = await sendWA(`52${cTel}`, `🎟️ *¡Recompensa Canjeada!*\n\nHas usado *${cant} puntos* en *${nombreRest}*. ¡Esperamos que lo hayas disfrutado! 🤤\n\nTe quedan ${newPts} puntos en este local.`)
+        if (!notifyResult.ok) {
+          // Ignorar silenciosamente si no hay ventana de 24h
+        }
+        
         await enviarMenuPrincipal(fromPhone, nombreRest)
         return new Response('OK', { status: 200 })
       }
@@ -416,6 +497,7 @@ export async function handleRestaurantCommand(
       if (existeRapido) {
         rows = [
           { id: `RFAST_PUNTOS_${posibleTelefono}`, title: '⭐ Sumar Puntos', description: 'Premiar visita al local' },
+          { id: `RFAST_CANJEAR_${posibleTelefono}`, title: '🎟️ Canjear Puntos', description: 'Cobrar recompensa' },
           { id: `RFAST_INFO_${posibleTelefono}`, title: '📊 Ver Perfil', description: 'Consultar datos' },
           { id: `RFAST_REGALAR_${posibleTelefono}`, title: '🎁 Regalar Envío', description: 'Patrocinar envío' }
         ]

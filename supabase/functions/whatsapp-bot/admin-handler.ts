@@ -988,6 +988,13 @@ Guárdala muy bien en tus favoritos. Con ella irás acumulando recompensas en ca
       await sendWA(ADMIN_PHONE_MAIN, `✅ *${cliAcep?.nombre || tel10}* (${tel10}) *aceptó* los términos y condiciones.`)
     }
 
+    // 5. Notificar al Restaurante (si fue invitado por uno)
+    const { data: pendingRestInvite } = await supabase.from('bot_memory').select('history').eq('phone', `pending_rest_invite_${tel10}`).maybeSingle()
+    if (pendingRestInvite?.history?.[0]?.restPhone) {
+      await sendWA(pendingRestInvite.history[0].restPhone, `✅ ¡Excelentes noticias! El cliente *${cliAcep?.nombre || tel10}* aceptó tu invitación VIP y ya está afiliado formalmente a tu local. 🎉`)
+      await supabase.from('bot_memory').delete().eq('phone', `pending_rest_invite_${tel10}`)
+    }
+
   } else if (upId === 'RECHAZAR_TERMINOS' || upId === 'RECHAZAR') {
     console.warn(`❌ [T&C] Cliente ${tel10} RECHAZÓ los términos.`)
     await sendWA(fromPhone, "Lamentablemente, para poder usar el sistema de lealtad y beneficios de Estrella Delivery, es necesario aceptar los términos y condiciones. Si cambias de opinión, puedes volver a intentarlo más tarde. ¡Saludos! 👋")
