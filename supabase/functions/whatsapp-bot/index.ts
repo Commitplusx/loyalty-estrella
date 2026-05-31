@@ -302,8 +302,9 @@ serve(async (req: Request) => {
               })
             }
 
-            // Enviar T&C si aún no los ha aceptado
-            if (!existe || existe.acepta_terminos === false) {
+            const tcEnviado = (!existe || existe.acepta_terminos === false);
+
+            if (tcEnviado) {
               const templateResult = await sendWATemplate(`52${tel}`, 'estrella_terminos_condiciones', [nombre])
               if (!templateResult.ok) {
                 await sendWA(fromPhone, `⚠️ El registro se guardó pero hubo un problema al enviar los Términos al cliente.\nError: ${templateResult.error?.substring(0, 200)}`)
@@ -312,12 +313,16 @@ serve(async (req: Request) => {
               await sendWA(fromPhone, `ℹ️ Este cliente ya había aceptado los Términos anteriormente. Solo se actualizaron sus datos.`)
             }
 
+            const pieMensaje = tcEnviado 
+              ? `📤 Se le envió la invitación de Términos y Condiciones. Cuando acepte, recibirá su tarjeta QR automáticamente.`
+              : `✅ Perfil actualizado correctamente.`;
+
             await sendWA(fromPhone,
               `✅ *Registro Loyalty completado*\n\n` +
               `👤 *Nombre:* ${nombre}\n` +
               `📱 *Teléfono:* ${tel}\n` +
               `🏠 *Dirección:* ${dir || 'No especificada'}\n\n` +
-              `📤 Se le envió la invitación de Términos y Condiciones. Cuando acepte, recibirá su tarjeta QR automáticamente.`
+              pieMensaje
             )
             return await exitSafely(new Response('OK', { status: 200 }))
           }
