@@ -100,6 +100,7 @@ export async function handleRestaurantCommand(
     if (action === 'PUNTOS') targetState = 'PUNTOS_TEL'
     else if (action === 'INFO') targetState = 'INFO_TEL'
     else if (action === 'REGALAR') targetState = 'REGALAR_TEL'
+    else if (action === 'AFILIAR') targetState = 'AFILIAR_TEL'
 
     if (targetState) {
       await supabase.from('bot_memory').upsert({
@@ -389,10 +390,10 @@ export async function handleRestaurantCommand(
         await supabase.from('restaurante_loyalty_log').insert({ restaurante_id: restauranteId, cliente_tel: cTel, accion: 'regalar_envio', valor: 1, descripcion: `Regalo ${nombreRest}` })
 
         await sendWA(fromPhone, `✅ Has regalado 1 envío gratis a *${c.nombre || cTel}*.\n(${regalosHoy + 1}/${MAX_REGALOS_POR_DIA} regalos hoy)`)
-        try {
-          await sendWA(`52${cTel}`, `🎁 *¡Sorpresa!*\n\n*${nombreRest}* te acaba de patrocinar un *Envío Gratis* como agradecimiento. 🎉\n¡Pídeles algo rico a través de Estrella Delivery! 🛵`)
-        } catch(e) {
-          await sendWA(fromPhone, `⚠️ Regalo procesado, pero no se pudo notificar al cliente por WhatsApp.`)
+        
+        const notifyResult = await sendWA(`52${cTel}`, `🎁 *¡Sorpresa!*\n\n*${nombreRest}* te acaba de patrocinar un *Envío Gratis* como agradecimiento. 🎉\n¡Pídeles algo rico a través de Estrella Delivery! 🛵`)
+        if (!notifyResult.ok) {
+          await sendWA(fromPhone, `⚠️ El envío gratis se guardó en su cuenta, pero WhatsApp bloqueó el mensaje de notificación porque el cliente lleva más de 24 horas inactivo.`)
         }
         await enviarMenuPrincipal(fromPhone, nombreRest)
         return new Response('OK', { status: 200 })
@@ -409,6 +410,21 @@ export async function handleRestaurantCommand(
     const numDigits = textBody.replace(/\D/g, '').length
     if (numDigits >= 10 && numDigits <= 15 && textBody.length <= 25) {
       const posibleTelefono = extract10Digits(textBody)
+      const { data: existeRapido } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${posibleTelefono}%`).maybeSingle()
+      
+      let rows: any[] = []
+      if (existeRapido) {
+        rows = [
+          { id: `RFAST_PUNTOS_${posibleTelefono}`, title: '⭐ Sumar Puntos', description: 'Premiar visita al local' },
+          { id: `RFAST_INFO_${posibleTelefono}`, title: '📊 Ver Perfil', description: 'Consultar datos' },
+          { id: `RFAST_REGALAR_${posibleTelefono}`, title: '🎁 Regalar Envío', description: 'Patrocinar envío' }
+        ]
+      } else {
+        rows = [
+          { id: `RFAST_AFILIAR_${posibleTelefono}`, title: '➕ Afiliar Cliente', description: 'Registrar nuevo VIP' }
+        ]
+      }
+
       await sendInteractiveList(
         fromPhone,
         `📲 *Acción rápida* para el cliente \`${posibleTelefono}\`\nSelecciona qué deseas hacer:`,
@@ -416,11 +432,7 @@ export async function handleRestaurantCommand(
         [
           {
             title: 'Opciones Rápidas',
-            rows: [
-              { id: `RFAST_PUNTOS_${posibleTelefono}`, title: '⭐ Sumar Puntos', description: 'Premiar visita al local' },
-              { id: `RFAST_INFO_${posibleTelefono}`, title: '📊 Ver Perfil', description: 'Consultar datos' },
-              { id: `RFAST_REGALAR_${posibleTelefono}`, title: '🎁 Regalar Envío', description: 'Patrocinar envío' }
-            ]
+            rows: rows
           }
         ]
       )
