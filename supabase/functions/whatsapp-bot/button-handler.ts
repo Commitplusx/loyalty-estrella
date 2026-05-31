@@ -28,6 +28,15 @@ export async function handleButtonEvent(
     if (res) return res
   }
 
+  // ── Admin: Estadísticas interactive actions (EST_VER_) ──
+  if (esAdmin && buttonId.startsWith('EST_VER_')) {
+    const { handleAdminMessage } = await import('./admin-handler.ts')
+    if (buttonId === 'EST_VER_VIPS') await handleAdminMessage(supabase, fromPhone, 'VER_VIPS', null)
+    else if (buttonId === 'EST_VER_REST') await handleAdminMessage(supabase, fromPhone, 'VER_RESTAURANTES', null)
+    else if (buttonId === 'EST_VER_REPS') await handleAdminMessage(supabase, fromPhone, 'VER_REPARTIDORES', null)
+    return new Response('OK', { status: 200 })
+  }
+
   // ── Registro: confirmación SI/NO ──
   if (buttonId.toUpperCase().startsWith('REG_CONFIRM_')) {
     const esSi = buttonId.toUpperCase().startsWith('REG_CONFIRM_SI_')

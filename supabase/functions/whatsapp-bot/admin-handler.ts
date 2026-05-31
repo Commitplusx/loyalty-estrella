@@ -625,13 +625,19 @@ Al registrarte:
       const { count: totalRestaurantes } = await supabase.from('restaurantes').select('*', { count: 'exact', head: true })
       const { count: totalRepartidores } = await supabase.from('repartidores').select('*', { count: 'exact', head: true })
 
-      const msg = `📊 *Estadísticas de Estrella*\n\n`
-        + `👥 Clientes registrados: *${totalClientes || 0}*\n`
-        + `⭐ Clientes VIP activos: *${totalVIP || 0}*\n`
-        + `🍔 Restaurantes afiliados: *${totalRestaurantes || 0}*\n`
-        + `🛵 Repartidores en flotilla: *${totalRepartidores || 0}*`
+      const msg = `📊 *Tu Resumen, Comandante*\n\n`
+        + `Aquí tienes las métricas actuales del ecosistema Estrella:\n\n`
+        + `👥 *Clientes:* ${totalClientes || 0}\n`
+        + `⭐ *VIPs:* ${totalVIP || 0}\n`
+        + `🍔 *Restaurantes:* ${totalRestaurantes || 0}\n`
+        + `🛵 *Flotilla:* ${totalRepartidores || 0}\n\n`
+        + `¿Qué detalle te gustaría revisar? 👇`
 
-      await sendWA(fromPhone, msg)
+      await sendInteractiveButtons(fromPhone, msg, [
+        { id: 'EST_VER_VIPS', title: '⭐ VIPs' },
+        { id: 'EST_VER_REST', title: '🍔 Restaurantes' },
+        { id: 'EST_VER_REPS', title: '🛵 Repartidores' }
+      ])
       break
     }
     case 'REPORTE_SEMANAL': {
