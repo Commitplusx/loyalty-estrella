@@ -28,6 +28,26 @@ export async function handleButtonEvent(
     if (res) return res
   }
 
+  // ── Repartidor: menú interactivo y calificaciones ──
+  if (userLabel === 'repartidor' && (buttonId.startsWith('REP_CMD_') || buttonId.startsWith('REP_SCORE_'))) {
+    if (buttonId.startsWith('REP_SCORE_')) {
+      // REP_SCORE_excelente_9631234567 → ejecutar directo
+      const { data: repRow } = await supabase.from('repartidores').select('id, nombre, alias').ilike('telefono', `%${from10}%`).maybeSingle()
+      const repData = repRow ?? { nombre: 'Repartidor' }
+      const parts = buttonId.replace('REP_SCORE_', '').split('_') // ['excelente', '9631234567']
+      const rep = parts[0]
+      const tel = parts[1]
+      const { data: c } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${tel}%`).maybeSingle()
+      if (!c) { await sendWA(fromPhone, `❌ No encontré al cliente.`); return new Response('OK', { status: 200 }) }
+      const repIcon: Record<string, string> = { excelente: '🌟', bueno: '👍', regular: '⚠️', malo: '❌' }
+      await supabase.from('clientes').update({ reputacion: rep }).eq('id', c.id)
+      await sendWA(fromPhone, `${repIcon[rep] || '✅'} Calificación guardada: *${c.nombre}* → *${rep}*`)
+    } else {
+      await handleRepButtons(supabase, fromPhone, buttonId)
+    }
+    return new Response('OK', { status: 200 })
+  }
+
   // ── Admin: Estadísticas interactive actions (EST_VER_) ──
   if (esAdmin && buttonId.startsWith('EST_VER_')) {
     const { handleAdminMessage } = await import('./admin-handler.ts')
