@@ -288,8 +288,66 @@ async function ejecutarComando(
     } else {
       await sendWA(fromPhone, `✅ *${nombre}* (${tel}) registrado silenciosamente.\nPuedes sumarle puntos en cualquier momento.`)
       if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN, `🌟 [OP] *${repNombre}* registró a ${nombre} (${tel}) silenciosamente.`)
+      await logRep(supabase, from10, repNombre, 'noregistrado', tel, nombre)
+    }
+    return
+  }
 
-    // Enviar T&C vía plantilla (repartidor no tiene ventana de 24h con el cliente)
+  // ── LOYALTY (registro completo con T&C y QR) ──────────────────────────────
+  if (cmd === 'LOYALTY') {
+    const tel = extract10Digits(valor)
+    if (!tel || tel.length !== 10) { await sendWA(fromPhone, `⚠️ Número inválido.`); return }
+    const { data: existe } = await supabase.from('clientes').select('id, nombre, acepta_terminos').ilike('telefono', `%${tel}%`).maybeSingle()
+    if (existe && existe.acepta_terminos) {
+      await sendWA(fromPhone, `ℹ️ *${existe.nombre}* (${tel}) ya está registrado y aceptó los Términos. No necesita registro nuevo.`)
+      return
+    }
+    await setRepState(supabase, from10, { cmd: 'LOYALTY_NOMBRE', tel, yaExiste: !!existe, nombreActual: existe?.nombre })
+    await sendWA(fromPhone,
+      existe
+        ? `ℹ️ *${existe.nombre}* (${tel}) ya existe pero no aceptó los Términos.\n\nEscribe su nombre para confirmarlo o corregirlo:`
+        : `🌟 Registro Loyalty para *${tel}*\n\nEscribe el *nombre completo* del cliente:`
+    )
+    return
+  }
+
+  if (cmd === 'LOYALTY_NOMBRE') {
+    const state = await getRepState(supabase, from10)
+    if (!state?.tel) { await sendWA(fromPhone, `⚠️ Sesión expirada. Intenta de nuevo.`); return }
+    await setRepState(supabase, from10, { ...state, cmd: 'LOYALTY_COLONIA', nombre: valor.trim() })
+    await sendWA(fromPhone, `🏠 ¿En qué colonia o zona vive *${valor.trim()}*?\n_(Escribe la colonia o zona. Escribe *omitir* si no la sabes)_`)
+    return
+  }
+
+  if (cmd === 'LOYALTY_COLONIA') {
+    const state = await getRepState(supabase, from10)
+    if (!state?.tel) { await sendWA(fromPhone, `⚠️ Sesión expirada. Intenta de nuevo.`); return }
+    await clearRepState(supabase, from10)
+
+    const tel      = state.tel as string
+    const nombre   = state.nombre as string
+    const colonia  = valor.trim().toLowerCase() === 'omitir' ? null : valor.trim()
+    const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel}`
+    const { sendWATemplate } = await import('./whatsapp.ts')
+
+    // Crear o actualizar cliente
+    if (state.yaExiste) {
+      await supabase.from('clientes').update({ nombre, direccion: colonia, qr_code: loyaltyUrl }).ilike('telefono', `%${tel}%`)
+    } else {
+      const { error } = await supabase.from('clientes').insert({
+        telefono: tel, nombre, direccion: colonia, puntos: 0, acepta_terminos: false, qr_code: loyaltyUrl
+      })
+      if (error) { await sendWA(fromPhone, `❌ Error al crear cliente: ${error.message}`); return }
+    }
+
+    // Guardar pendiente para cuando acepte T&C
+    await supabase.from('bot_memory').upsert({
+      phone: `pending_qr_${tel}`,
+      history: [{ admin: fromPhone }],
+      updated_at: new Date().toISOString()
+    })
+
+    // Enviar T&C vía plantilla
     const tycResult = await sendWATemplate(`52${tel}`, 'estrella_terminos_condiciones', [nombre])
     if (tycResult?.ok === false) {
       await sendWA(fromPhone,
