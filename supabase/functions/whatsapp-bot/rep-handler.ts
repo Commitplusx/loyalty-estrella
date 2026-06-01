@@ -109,6 +109,13 @@ export async function handleRepButtons(
       return true
     }
 
+    const repState = await getRepState(supabase, from10)
+    if (repState?.prefill) {
+      await setRepState(supabase, from10, { cmd })
+      await handleRepMessage(supabase, fromPhone, from10, repState.prefill, { id: '', nombre: repData?.nombre || 'Repartidor', alias: '' })
+      return true
+    }
+
     await setRepState(supabase, from10, { cmd })
     await sendWA(fromPhone, prompt)
     return true
@@ -482,11 +489,12 @@ export async function handleRepMessage(
           [{
             title: 'Opciones',
             rows: [
-              { id: 'REP_CMD_NOREGISTRADO', title: '🌟 Registrar Express', description: 'Alta silenciosa en sistema' },
+              { id: 'REP_CMD_LOYALTY', title: '🌟 Registro Loyalty', description: 'Alta completa con T&C y QR' },
+              { id: 'REP_CMD_NOREGISTRADO', title: '🔇 Registrar Express', description: 'Alta silenciosa en sistema' },
             ]
           }]
         )
-        await setRepState(supabase, from10, { cmd: 'NOREGISTRADO', prefill: posibleTel })
+        await setRepState(supabase, from10, { prefill: posibleTel })
       }
       return new Response('OK', { status: 200 })
     }
