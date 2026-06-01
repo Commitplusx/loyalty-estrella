@@ -39,7 +39,7 @@ export async function fetchConReintento(url: string, options: RequestInit, retri
 }
 
 // ── Texto simple ──────────────────────────────────────────────────────────────
-export async function sendWA(to: string, body: string): Promise<void> {
+export async function sendWA(to: string, body: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await fetchConReintento(WA_BASE, {
       method: 'POST',
@@ -56,11 +56,16 @@ export async function sendWA(to: string, body: string): Promise<void> {
       const errText = await res.text();
       console.error('WA Error:', errText);
       await logError('whatsapp-bot', `WhatsApp API Error (Text)`, { phone: to, error: errText }, 'error');
+      return { ok: false, error: errText }
     }
-    else syncOutgoingToChatwoot(to, body).catch(e => console.error(e))
-  } catch (e) {
+    else {
+      syncOutgoingToChatwoot(to, body).catch(e => console.error(e))
+      return { ok: true }
+    }
+  } catch (e: any) {
     console.error('WA Fatal Net Error:', e)
     await logError('whatsapp-bot', `WhatsApp Fatal Net Error (Text)`, { phone: to, error: String(e) }, 'critical');
+    return { ok: false, error: e.message }
   }
 }
 
