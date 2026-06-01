@@ -494,6 +494,9 @@ export async function handleRestaurantCommand(
       const { data: existeRapido } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${posibleTelefono}%`).maybeSingle()
       
       let rows: any[] = []
+      let tituloMensaje = ''
+      let tituloBoton = ''
+
       if (existeRapido) {
         rows = [
           { id: `RFAST_PUNTOS_${posibleTelefono}`, title: '⭐ Sumar Puntos', description: 'Premiar visita al local' },
@@ -501,16 +504,20 @@ export async function handleRestaurantCommand(
           { id: `RFAST_INFO_${posibleTelefono}`, title: '📊 Ver Perfil', description: 'Consultar datos' },
           { id: `RFAST_REGALAR_${posibleTelefono}`, title: '🎁 Regalar Envío', description: 'Patrocinar envío' }
         ]
+        tituloMensaje = `📲 *Acción rápida* para el cliente \`${posibleTelefono}\`\nSelecciona qué deseas hacer:`
+        tituloBoton = `Elegir acción`
       } else {
         rows = [
           { id: `RFAST_AFILIAR_${posibleTelefono}`, title: '➕ Afiliar Cliente', description: 'Registrar nuevo VIP' }
         ]
+        tituloMensaje = `⚠️ El número \`${posibleTelefono}\` *no está registrado*.\n¿Deseas afiliarlo ahora?`
+        tituloBoton = `Opciones de registro`
       }
 
       await sendInteractiveList(
         fromPhone,
-        `📲 *Acción rápida* para el cliente \`${posibleTelefono}\`\nSelecciona qué deseas hacer:`,
-        `Elegir acción`,
+        tituloMensaje,
+        tituloBoton,
         [
           {
             title: 'Opciones Rápidas',
