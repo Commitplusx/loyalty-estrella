@@ -44,9 +44,10 @@ async function enviarMenuRepartidor(fromPhone: string, nombre: string): Promise<
         rows: [
           { id: 'REP_CMD_INFO',         title: '🔍 Info de Cliente',     description: 'Ver ficha y puntos' },
           { id: 'REP_CMD_QR',           title: '🎟️ Enviar Tarjeta VIP',  description: 'Reenviar QR al cliente' },
+          { id: 'REP_CMD_LOYALTY',      title: '🌟 Registro Loyalty',    description: 'Alta completa con T&C y QR' },
           { id: 'REP_CMD_SCORE',        title: '📝 Calificar Cliente',   description: 'Registrar reputación' },
           { id: 'REP_CMD_DIRECCION',    title: '🏠 Actualizar Dirección',description: 'Guardar nueva dirección' },
-          { id: 'REP_CMD_NOREGISTRADO', title: '🌟 Registro Express',    description: 'Alta silenciosa en sistema' },
+          { id: 'REP_CMD_NOREGISTRADO', title: '🔇 Registro Express',    description: 'Alta silenciosa sin T&C' },
         ]
       },
       {
@@ -94,7 +95,8 @@ export async function handleRepButtons(
       QR:           '🎟️ Escribe el *número a 10 dígitos* del cliente para reenviarle su Tarjeta VIP:',
       SCORE:        '📝 Escribe el *número a 10 dígitos* del cliente a calificar:',
       DIRECCION:    '🏠 Escribe el *número a 10 dígitos* del cliente cuya dirección quieres actualizar:',
-      NOREGISTRADO: '🌟 Escribe el *número a 10 dígitos* del cliente a registrar silenciosamente:',
+      NOREGISTRADO: '🔇 Escribe el *número a 10 dígitos* del cliente a registrar silenciosamente:',
+      LOYALTY:      '🌟 Escribe el *número a 10 dígitos* del cliente para el Registro Loyalty completo:',
       CUPON:        '🎟️ Escribe el *código del cupón* a marcar como usado (Ejemplo: EST-ABC123):',
       SOS:          '🚨 Escribe tu *mensaje de emergencia* para enviar al administrador:',
       AYUDA:        '__help__',
@@ -286,8 +288,24 @@ async function ejecutarComando(
     } else {
       await sendWA(fromPhone, `✅ *${nombre}* (${tel}) registrado silenciosamente.\nPuedes sumarle puntos en cualquier momento.`)
       if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN, `🌟 [OP] *${repNombre}* registró a ${nombre} (${tel}) silenciosamente.`)
-      await logRep(supabase, from10, repNombre, 'noregistrado', tel, nombre)
+
+    // Enviar T&C vía plantilla (repartidor no tiene ventana de 24h con el cliente)
+    const tycResult = await sendWATemplate(`52${tel}`, 'estrella_terminos_condiciones', [nombre])
+    if (tycResult?.ok === false) {
+      await sendWA(fromPhone,
+        `✅ *${nombre}* (${tel}) registrado.\n⚠️ No pude enviar los Términos. Inténtalo desde el admin.`
+      )
+    } else {
+      await sendWA(fromPhone,
+        `✅ *Registro Loyalty Completo*\n👤 *${nombre}* (${tel})\n🏠 Colonia: ${colonia || 'No especificada'}\n\n📲 Los Términos y Condiciones ya le llegaron a su WhatsApp.\n⏳ Cuando los acepte, recibirá su Tarjeta VIP automáticamente.`
+      )
+      if (ADMIN_PHONE_MAIN) {
+        await sendWA(ADMIN_PHONE_MAIN,
+          `🌟 [OP] *${repNombre}* registró a *${nombre}* (${tel}) en el Loyalty.${colonia ? ` Colonia: ${colonia}` : ''}`
+        )
+      }
     }
+    await logRep(supabase, from10, repNombre, 'loyalty_registro', tel, nombre)
     return
   }
 
@@ -360,6 +378,10 @@ export async function handleRepMessage(
     if (cmd === 'DIRECCION_NUEVA')  { await setRepState(supabase, from10, repState); await ejecutarComando(supabase, fromPhone, from10, 'DIRECCION_NUEVA', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
     if (cmd === 'CUPON')            { await ejecutarComando(supabase, fromPhone, from10, 'CUPON', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
     if (cmd === 'SOS')              { await ejecutarComando(supabase, fromPhone, from10, 'SOS', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+    // Loyalty flujo multi-paso
+    if (cmd === 'LOYALTY')         { await ejecutarComando(supabase, fromPhone, from10, 'LOYALTY', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+    if (cmd === 'LOYALTY_NOMBRE')  { await setRepState(supabase, from10, repState); await ejecutarComando(supabase, fromPhone, from10, 'LOYALTY_NOMBRE', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+    if (cmd === 'LOYALTY_COLONIA') { await setRepState(supabase, from10, repState); await ejecutarComando(supabase, fromPhone, from10, 'LOYALTY_COLONIA', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
   }
 
   // ── Comandos de texto directos (retrocompatibilidad) ──────────────────────
