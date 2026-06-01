@@ -10,6 +10,28 @@ const ADMIN_PHONES_ENV = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHO
 const _adminMain10 = ADMIN_PHONES_ENV.split(',').map((s: string) => extract10Digits(s)).filter(Boolean)[0] ?? ''
 const ADMIN_PHONE_MAIN = _adminMain10 ? `52${_adminMain10}` : ''
 
+// ── Log de auditoría del repartidor ─────────────────────────────────────────
+async function logRep(
+  supabase: Supa,
+  repTel: string,
+  repNombre: string,
+  accion: string,
+  clienteTel?: string,
+  detalle?: string
+): Promise<void> {
+  try {
+    await supabase.from('repartidor_log').insert({
+      repartidor_tel: repTel,
+      repartidor_nombre: repNombre,
+      accion,
+      cliente_tel: clienteTel ?? null,
+      detalle: detalle ?? null
+    })
+  } catch (e) {
+    console.error('[REP_LOG] Error guardando log:', e)
+  }
+}
+
 // ── Menú principal del Repartidor como Lista Interactiva ─────────────────────
 async function enviarMenuRepartidor(fromPhone: string, nombre: string): Promise<void> {
   await sendInteractiveList(
@@ -150,6 +172,7 @@ async function ejecutarComando(
       `✅ *T&C:* ${c.acepta_terminos ? 'Aceptados' : 'Pendientes'}\n` +
       `🏠 *Dirección:* ${c.direccion || 'Sin registrar'}`
     )
+    await logRep(supabase, from10, repNombre, 'info', tel, c.nombre || 'sin nombre')
     return
   }
 
@@ -167,6 +190,7 @@ async function ejecutarComando(
     } else {
       await sendWA(fromPhone, `⚠️ No pude enviar la tarjeta. El cliente tiene más de 24h inactivo en WhatsApp.`)
     }
+    await logRep(supabase, from10, repNombre, 'qr', tel, result.ok ? 'enviado' : 'bloqueado 24h')
     return
   }
 
@@ -208,6 +232,7 @@ async function ejecutarComando(
     await supabase.from('clientes').update({ reputacion: rep }).eq('id', c.id)
     await sendWA(fromPhone, `${repMap[rep] || '✅'} Calificación guardada: *${c.nombre}* → *${rep}*`)
     if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN, `📝 [OP] *${repNombre}* calificó a ${c.nombre || tel} como *${rep}*.`)
+    await logRep(supabase, from10, repNombre, 'score', tel, rep)
     return
   }
 
@@ -231,6 +256,7 @@ async function ejecutarComando(
     await clearRepState(supabase, from10)
     await handleActualizarDireccion(supabase, fromPhone, tel, valor)
     if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN, `🏠 [OP] *${repNombre}* actualizó dirección de ${tel}: "${valor}"`)
+    await logRep(supabase, from10, repNombre, 'direccion', tel, valor)
     return
   }
 
@@ -260,6 +286,7 @@ async function ejecutarComando(
     } else {
       await sendWA(fromPhone, `✅ *${nombre}* (${tel}) registrado silenciosamente.\nPuedes sumarle puntos en cualquier momento.`)
       if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN, `🌟 [OP] *${repNombre}* registró a ${nombre} (${tel}) silenciosamente.`)
+      await logRep(supabase, from10, repNombre, 'noregistrado', tel, nombre)
     }
     return
   }
@@ -280,6 +307,7 @@ async function ejecutarComando(
           `🎟️ *[OP] Cupón Usado*\n🛵 Repartidor: *${repNombre}*\n🎟️ Código: *${codigo}*\n👤 ${data.cliente_nombre || '-'} (${data.cliente_tel || '-'})`
         )
       }
+      await logRep(supabase, from10, repNombre, 'cupon', data.cliente_tel, codigo)
     } else {
       await sendWA(fromPhone, `⚠️ *Cupón no válido:* ${data?.error || 'No encontrado o ya fue usado.'}`)
     }
@@ -291,6 +319,7 @@ async function ejecutarComando(
     const sosMsg = valor.trim() || 'Emergencia sin detalles'
     if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN, `🚨 *SOS de ${repNombre}*\n\n${sosMsg}`)
     await sendWA(fromPhone, `✅ Alerta enviada al admin.`)
+    await logRep(supabase, from10, repNombre, 'sos', undefined, sosMsg)
     return
   }
 }
@@ -337,6 +366,50 @@ export async function handleRepMessage(
   if (trimCmd === '/help' || trimCmd === '/ayuda' || trimCmd.toLowerCase() === 'hola' || trimCmd.toLowerCase() === 'menu' || trimCmd.toLowerCase() === '/menu') {
     await enviarMenuRepartidor(fromPhone, isRep.nombre)
     return new Response('OK', { status: 200 })
+  }
+
+  // ── Detección de teléfono en formato libre (acción rápida) ────────────────
+  const numDigits = trimCmd.replace(/\D/g, '').length
+  if (numDigits >= 10 && numDigits <= 15 && trimCmd.length <= 25) {
+    const posibleTel = extract10Digits(trimCmd)
+    if (posibleTel && posibleTel.length === 10) {
+      const { data: existe } = await supabase.from('clientes').select('id, nombre, reputacion, puntos').ilike('telefono', `%${posibleTel}%`).maybeSingle()
+      if (existe) {
+        const repIcon: Record<string, string> = { excelente: '🌟', bueno: '👍', regular: '⚠️', malo: '❌', vetado: '🚫' }
+        await sendInteractiveList(
+          fromPhone,
+          `📲 *Acción rápida* para *${existe.nombre || posibleTel}*\n` +
+          `📱 ${posibleTel} | ⭐ ${existe.puntos ?? 0} pts | ${repIcon[existe.reputacion] || '❓'} ${existe.reputacion || 'sin calificar'}\n\n` +
+          `¿Qué deseas hacer?`,
+          'Elegir acción',
+          [{
+            title: 'Opciones',
+            rows: [
+              { id: `REP_CMD_INFO`,      title: '🔍 Ver Ficha',          description: posibleTel },
+              { id: `REP_CMD_QR`,        title: '🎟️ Enviar Tarjeta VIP', description: posibleTel },
+              { id: `REP_CMD_SCORE`,     title: '📝 Calificar',          description: posibleTel },
+              { id: `REP_CMD_DIRECCION`, title: '🏠 Actualizar Dirección',description: posibleTel },
+            ]
+          }]
+        )
+        // Pre-cargar el teléfono en estado para que el siguiente paso lo use directo
+        await setRepState(supabase, from10, { cmd: 'INFO', prefill: posibleTel })
+      } else {
+        await sendInteractiveList(
+          fromPhone,
+          `⚠️ El número *${posibleTel}* no está registrado en el sistema.\n\n¿Qué deseas hacer?`,
+          'Opciones',
+          [{
+            title: 'Opciones',
+            rows: [
+              { id: 'REP_CMD_NOREGISTRADO', title: '🌟 Registrar Express', description: 'Alta silenciosa en sistema' },
+            ]
+          }]
+        )
+        await setRepState(supabase, from10, { cmd: 'NOREGISTRADO', prefill: posibleTel })
+      }
+      return new Response('OK', { status: 200 })
+    }
   }
 
   if (trimCmd.toLowerCase().startsWith('/sos')) {
