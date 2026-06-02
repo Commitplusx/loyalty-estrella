@@ -111,8 +111,19 @@ export async function handleRepButtons(
 
     const repState = await getRepState(supabase, from10)
     if (repState?.prefill) {
+      const prefill = repState.prefill as string
       await setRepState(supabase, from10, { cmd })
-      await handleRepMessage(supabase, fromPhone, from10, repState.prefill, { id: '', nombre: repData?.nombre || 'Repartidor', alias: '' })
+      // Llamar directamente a ejecutarComando con el teléfono ya conocido
+      // evita que handleRepMessage lo busque en el estado otra vez
+      await ejecutarComando(
+        supabase, fromPhone, from10,
+        cmd === 'NOREGISTRADO' ? 'NOREGISTRADO_TEL' :
+        cmd === 'SCORE'        ? 'SCORE_TEL' :
+        cmd === 'DIRECCION'    ? 'DIRECCION_TEL' :
+        cmd,
+        prefill,
+        repData?.nombre || 'Repartidor'
+      )
       return true
     }
 
