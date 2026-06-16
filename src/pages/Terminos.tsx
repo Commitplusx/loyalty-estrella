@@ -172,6 +172,7 @@ export function Terminos() {
             <footer className="pt-12 border-t border-white/10 text-center text-gray-500 text-xs space-y-2">
               <p>Al interactuar con nuestro bot de WhatsApp o utilizar esta plataforma, usted confirma que ha leído y acepta estos términos en su totalidad.</p>
               <p>© {new Date().getFullYear()} Estrella Delivery. Comitán de Domínguez, Chiapas, México.</p>
+              <p className="opacity-70 mt-2">Razón Social: CALEBXANDER VAZQUEZ HERNANDEZ</p>
             </footer>
           </div>
         </motion.div>

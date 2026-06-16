@@ -401,8 +401,11 @@ export function Home() {
             </div>
           </div>
           <div className="mt-6 pt-5 border-t border-gray-50 text-center text-xs text-gray-300">
-            © {new Date().getFullYear()} Estrella Delivery — Hecho con{' '}
-            <Heart className="w-3 h-3 text-red-400 fill-red-400 inline mx-0.5" /> para nuestros clientes
+            <p>
+              © {new Date().getFullYear()} Estrella Delivery — Hecho con{' '}
+              <Heart className="w-3 h-3 text-red-400 fill-red-400 inline mx-0.5" /> para nuestros clientes
+            </p>
+            <p className="mt-1 opacity-70">Razón Social: CALEBXANDER VAZQUEZ HERNANDEZ</p>
           </div>
         </div>
       </footer>
