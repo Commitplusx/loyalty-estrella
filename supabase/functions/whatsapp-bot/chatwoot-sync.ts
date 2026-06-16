@@ -221,7 +221,7 @@ export async function updateChatwootProfile(supabase: any, phone: string): Promi
   const p10 = phone.replace(/\D/g, '').slice(-10)
   const { data: c } = await supabase.from('clientes')
     .select('puntos, es_vip, saldo_billetera, reputacion')
-    .ilike('telefono', `%${p10}%`)
+    .eq('telefono', p10)
     .limit(1).maybeSingle()
 
   if (c) {

@@ -82,9 +82,9 @@ serve(async (req: Request) => {
   }
 
   if (action === 'accept') {
-    // Generar contraseña
-    const randomBytes = crypto.getRandomValues(new Uint16Array(1));
-    const genPassword = `Estrella${(randomBytes[0] % 9000) + 1000}!`
+    // Generar contraseña segura (BUG FIX: Increased entropy)
+    const randomBytes = crypto.getRandomValues(new Uint8Array(12));
+    const genPassword = btoa(String.fromCharCode(...randomBytes)).slice(0, 16);
 
     // Crear Usuario en Auth
     const { data: authData, error: authErr } = await supabase.auth.admin.createUser({

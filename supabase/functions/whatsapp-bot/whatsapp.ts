@@ -69,6 +69,7 @@ export async function sendWA(to: string, body: string): Promise<{ ok: boolean; e
   }
 }
 
+
 // ── Imagen con caption ────────────────────────────────────────────────────────
 export async function sendWAImage(to: string, url: string, caption?: string): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -145,6 +146,31 @@ export async function sendWALocation(to: string, lat: number, lng: number, name:
   }
 }
 
+// ── Pedir Ubicación (Location Request Message) ─────────────────────────────────
+export async function sendLocationRequest(to: string, text: string): Promise<void> {
+  try {
+    const res = await fetchConReintento(WA_BASE, {
+      method: 'POST',
+      headers: WA_HEADERS(),
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to,
+        type: 'interactive',
+        interactive: {
+          type: 'location_request_message',
+          body: { text: text.substring(0, 1024) },
+          action: { name: 'send_location' }
+        },
+      }),
+    })
+    if (!res.ok) console.error('WA Location Request Error:', await res.text())
+    else syncOutgoingToChatwoot(to, `${text}\n[Botón: 📍 Enviar Ubicación]`).catch(e => console.error(e))
+  } catch (e) {
+    console.error('WA Fatal Net Error (Location Request):', e)
+  }
+}
+
 // ── Botón interactivo ─────────────────────────────────────────────────────────
 export async function sendInteractiveButton(
   to: string,
@@ -176,23 +202,27 @@ export async function sendInteractiveButton(
 }
 
 // ── Múltiples botones interactivos (hasta 3) ──────────────────────────────────
+// Intento 1: con imagen en header (si aplica)
+// Intento 2: sin imagen en header
+// Intento 3: texto plano con las opciones escritas
 export async function sendInteractiveButtons(
   to: string,
   text: string,
   buttons: { id: string; title: string }[],
   headerImageUrl?: string
-): Promise<void> {
-  try {
-    const btns = buttons.slice(0, 3).map(b => ({
-      type: 'reply',
-      reply: { id: b.id.substring(0, 256), title: b.title.substring(0, 20) }
-    }))
-    
-    if (btns.length === 0) {
-      console.warn('⚠️ sendInteractiveButtons called with empty buttons array. Sending as normal text.')
-      return await sendWA(to, text)
-    }
+): Promise<boolean> {
+  const btns = buttons.slice(0, 3).map(b => ({
+    type: 'reply',
+    reply: { id: b.id.substring(0, 256), title: b.title.substring(0, 20) }
+  }))
 
+  if (btns.length === 0) {
+    console.warn('⚠️ sendInteractiveButtons: botones vacíos, mandando como texto.')
+    await sendWA(to, text)
+    return true
+  }
+
+  const buildPayload = (withImage: boolean): any => {
     const payload: any = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
@@ -204,23 +234,43 @@ export async function sendInteractiveButtons(
         action: { buttons: btns },
       },
     }
-
-    if (headerImageUrl) {
-      payload.interactive.header = {
-        type: 'image',
-        image: { link: headerImageUrl }
-      }
+    if (withImage && headerImageUrl) {
+      payload.interactive.header = { type: 'image', image: { link: headerImageUrl } }
     }
+    return payload
+  }
 
-    const res = await fetchConReintento(WA_BASE, {
-      method: 'POST',
-      headers: WA_HEADERS(),
-      body: JSON.stringify(payload),
-    })
-    if (!res.ok) console.error('WA InteractiveButtons Error:', await res.text())
-    else syncOutgoingToChatwoot(to, `${text}\n[Botones] ${buttons.map(b => b.title).join(' | ')}`).catch(e => console.error(e))
+  // Intento 1: con imagen
+  if (headerImageUrl) {
+    try {
+      const res = await fetchConReintento(WA_BASE, { method: 'POST', headers: WA_HEADERS(), body: JSON.stringify(buildPayload(true)) })
+      if (res.ok) {
+        syncOutgoingToChatwoot(to, `${text}\n[Botones+Imagen] ${buttons.map(b => b.title).join(' | ')}`).catch(console.error)
+        return true
+      }
+      console.warn('WA Buttons+Image failed:', await res.text())
+    } catch (e) { console.error('WA Buttons+Image exception:', e) }
+  }
+
+  // Intento 2: sin imagen
+  try {
+    const res = await fetchConReintento(WA_BASE, { method: 'POST', headers: WA_HEADERS(), body: JSON.stringify(buildPayload(false)) })
+    if (res.ok) {
+      syncOutgoingToChatwoot(to, `${text}\n[Botones] ${buttons.map(b => b.title).join(' | ')}`).catch(console.error)
+      return true
+    }
+    console.warn('WA Buttons (no image) failed:', await res.text())
+  } catch (e) { console.error('WA Buttons exception:', e) }
+
+  // Intento 3: texto plano con las opciones
+  console.warn('⚠️ Botones interactivos fallaron en todos los intentos. Mandando como texto plano.')
+  try {
+    const opts = buttons.map((b, i) => `${i + 1}. ${b.title}`).join('\n')
+    await sendWA(to, `${text}\n\n${opts}`)
+    return true
   } catch (e) {
-    console.error('WA Fatal Net Error (InteractiveButtons):', e)
+    console.error('WA Fallback text also failed:', e)
+    return false
   }
 }
 
@@ -250,17 +300,63 @@ export async function sendInteractiveList(
               rows: s.rows.slice(0, 10).map(r => ({
                 id: r.id.substring(0, 200),
                 title: r.title.substring(0, 24),
-                description: r.description ? r.description.substring(0, 72) : undefined
+                description: (r.description || '').substring(0, 72)
               }))
             }))
-          }
-        }
-      })
+          },
+        },
+      }),
     })
     if (!res.ok) console.error('WA InteractiveList Error:', await res.text())
     else syncOutgoingToChatwoot(to, `${text}\n[Lista] ${buttonText}`).catch(e => console.error(e))
   } catch (e) {
     console.error('WA Fatal Net Error (InteractiveList):', e)
+  }
+}
+
+// ── CTA URL Button (Abrir enlace) ─────────────────────────────────────────────
+export async function sendInteractiveCtaUrl(
+  to: string,
+  text: string,
+  buttonText: string,
+  url: string,
+  headerText?: string
+): Promise<void> {
+  try {
+    const payload: any = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'cta_url',
+        body: { text: text.substring(0, 1024) },
+        action: {
+          name: 'cta_url',
+          parameters: {
+            display_text: buttonText.substring(0, 20),
+            url: url
+          }
+        }
+      }
+    }
+    
+    if (headerText) {
+      payload.interactive.header = {
+        type: 'text',
+        text: headerText.substring(0, 60)
+      }
+    }
+
+    const res = await fetchConReintento(WA_BASE, {
+      method: 'POST',
+      headers: WA_HEADERS(),
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) console.error('WA CTA URL Error:', await res.text())
+    else syncOutgoingToChatwoot(to, `${text}\n[Enlace: ${url}]`).catch(e => console.error(e))
+  } catch (e) {
+    console.error('WA Fatal Net Error (CTA URL):', e)
   }
 }
 
@@ -379,5 +475,27 @@ export async function markMessageAsRead(messageId: string): Promise<void> {
     if (!res.ok) console.error('WA Read Receipt Error:', await res.text())
   } catch (e) {
     console.error('WA Fatal Net Error (Read Receipt):', e)
+  }
+}
+
+// ── Notificar al Admin (Alertas de B2B y Críticas) ──────────────────────────
+export async function notifyAdmin(message: string): Promise<void> {
+  const adminPhonesStr = Deno.env.get('ADMIN_PHONES') || Deno.env.get('ADMIN_PHONE') || ''
+  const adminPhones = adminPhonesStr.split(',').map(p => p.trim()).filter(Boolean)
+  
+  if (adminPhones.length === 0) {
+    console.warn('⚠️ No hay ADMIN_PHONES/ADMIN_PHONE configurados para notifyAdmin')
+    return
+  }
+
+  // Solo notificamos al primer admin para evitar spam
+  const primaryAdmin = adminPhones[0]
+  let admin10 = primaryAdmin
+  if (primaryAdmin.length > 10) admin10 = primaryAdmin.slice(-10)
+
+  try {
+    await sendWA(`52${admin10}`, `🚨 *ALERTA DEL SISTEMA*\n\n${message}`)
+  } catch (e) {
+    console.error('Error enviando notifyAdmin:', e)
   }
 }

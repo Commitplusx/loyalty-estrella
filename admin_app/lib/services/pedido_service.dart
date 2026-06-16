@@ -11,14 +11,18 @@ import '../models/pedido_model.dart';
 final pedidoServiceProvider = Provider((ref) => PedidoService());
 
 class PedidoService {
-  /// Obtiene todos los pedidos activos (no entregados)
-  Future<List<PedidoModel>> getPedidosActivos() async {
-    final data = await supabase
+  /// Obtiene todos los pedidos activos (no entregados). Filtra por repartidor si no es admin.
+  Future<List<PedidoModel>> getPedidosActivos({String? repartidorUserId}) async {
+    var query = supabase
         .from('pedidos')
         .select()
-        // BUG FIX #8: Also filter out cancelled orders
-        .not('estado', 'in', '("entregado","cancelado")')
-        .order('created_at', ascending: false);
+        .not('estado', 'in', '("entregado","cancelado")');
+
+    if (repartidorUserId != null) {
+      query = query.eq('repartidor_id', repartidorUserId);
+    }
+    
+    final data = await query.order('created_at', ascending: false);
     return (data as List).map((m) => PedidoModel.fromMap(m)).toList();
   }
 
@@ -162,6 +166,25 @@ class PedidoService {
       return true;
     } else {
       print('Fracaso tras 3 intentos. Guardando en Offline Queue.');
+      return false;
+    }
+  }
+
+  /// Reasigna un pedido a otro repartidor
+  Future<bool> reasignarPedido(String pedidoId, String nuevoRepartidorId) async {
+    try {
+      await supabase
+          .from('pedidos')
+          .update({
+            'repartidor_id': nuevoRepartidorId,
+            'estado': 'asignado',
+          })
+          .eq('id', pedidoId);
+
+      _notificar(pedidoId: pedidoId, tipo: 'asignacion');
+      return true;
+    } catch (e) {
+      print('Fallo reasignando pedido: $e');
       return false;
     }
   }

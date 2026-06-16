@@ -25,3 +25,27 @@ final userRoleProvider = Provider<String>((ref) {
   final isAdmin = ref.watch(isAdminProvider);
   return isAdmin ? 'Administrador' : 'Repartidor';
 });
+
+final userNameProvider = FutureProvider<String>((ref) async {
+  final isAdmin = ref.watch(isAdminProvider);
+  final user = Supabase.instance.client.auth.currentUser;
+  final email = user?.email ?? '';
+  final defaultName = email.split('@').first;
+  
+  if (isAdmin) return 'Admin';
+  
+  // Si es repartidor, buscamos su nombre en la base de datos
+  if (user != null) {
+    try {
+      final res = await Supabase.instance.client
+          .from('repartidores')
+          .select('nombre')
+          .eq('user_id', user.id)
+          .maybeSingle();
+      if (res != null && res['nombre'] != null) {
+        return res['nombre'] as String;
+      }
+    } catch (_) {}
+  }
+  return defaultName;
+});

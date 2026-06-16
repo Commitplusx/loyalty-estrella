@@ -57,10 +57,13 @@ serve(async (req) => {
       tipo_canje: tipo
     }
 
-    // BUG FIX #5: Use supabase.functions.invoke instead of raw fetch for reliable auth
-    supabase.functions.invoke('notificar-whatsapp', {
-      body: payloadNotificacion
-    }).catch((err: any) => console.error("Error disparando notificar-whatsapp:", err))
+    // BUG FIX: Wrap in EdgeRuntime.waitUntil to prevent background task cancellation
+    // @ts-ignore
+    EdgeRuntime.waitUntil(
+      supabase.functions.invoke('notificar-whatsapp', {
+        body: payloadNotificacion
+      }).catch((err: any) => console.error("Error disparando notificar-whatsapp:", err))
+    )
 
     return new Response(
       JSON.stringify({ success: true, ...result }),

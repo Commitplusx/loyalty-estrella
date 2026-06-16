@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/pedido_model.dart';
 import '../services/pedido_service.dart';
+import '../core/user_role.dart';
 
 final _pedidoProvider = FutureProvider.autoDispose.family<PedidoModel?, String>(
   (ref, id) => ref.read(pedidoServiceProvider).getPedido(id),
@@ -141,12 +142,66 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
     }
   }
 
+  Future<void> _reasignarRepartidor() async {
+    final sb = Supabase.instance.client;
+    
+    setState(() => _loading = true);
+    // Solo traemos repartidores que ya tienen un user_id (cuenta en auth.users)
+    final data = await sb.from('repartidores').select('user_id, nombre').not('user_id', 'is', null).eq('activo', true);
+    setState(() => _loading = false);
+
+    if (!mounted) return;
+
+    final repartidorElegido = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reasignar Repartidor'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: data.length,
+            itemBuilder: (ctx, i) {
+              final rep = data[i];
+              return ListTile(
+                leading: const Icon(Icons.two_wheeler),
+                title: Text(rep['nombre'] ?? 'Sin Nombre'),
+                onTap: () => Navigator.pop(ctx, rep),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+        ],
+      ),
+    );
+
+    if (repartidorElegido != null) {
+      final repId = repartidorElegido['user_id'];
+      if (repId != null) {
+        setState(() => _loading = true);
+        final ok = await ref.read(pedidoServiceProvider).reasignarPedido(widget.pedido.id, repId.toString());
+        setState(() => _loading = false);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(ok ? '✅ Pedido reasignado y notificado al repartidor' : '❌ Error al reasignar'),
+            backgroundColor: ok ? const Color(0xFF11998E) : const Color(0xFFE11D48),
+          ));
+          if (ok) widget.onEstadoActualizado();
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final pedido = widget.pedido;
     final color = _estadoColor(pedido.estado);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final isAdmin = ref.watch(isAdminProvider);
 
     return ListView(
       padding: const EdgeInsets.all(20),
@@ -228,12 +283,22 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
           ),
           child: Column(
             children: [
-              if (pedido.restaurante != null && pedido.restaurante!.isNotEmpty)
+              if (pedido.tipoPedido == 'mandadito') ...[
+                _InfoCard(titulo: '📦 Tipo', valor: 'Mandadito', grande: true),
+                if (pedido.origen != null) _InfoCard(titulo: '🛫 Origen', valor: pedido.origen!),
+                if (pedido.destino != null) _InfoCard(titulo: '🛬 Destino', valor: pedido.destino!),
+                _InfoCard(
+                  titulo: '💳 Pago',
+                  valor: pedido.metodoPago == 'transferencia' ? 'Transferencia' : 'Efectivo',
+                ),
+                _InfoCard(titulo: '💵 Precio', valor: '\$${pedido.precioEntrega ?? 0}'),
+              ] else if (pedido.restaurante != null && pedido.restaurante!.isNotEmpty) ...[
                 _InfoCard(titulo: '🍽️ Restaurante', valor: pedido.restaurante!, grande: true),
+              ],
               _InfoCard(
-                titulo: '📦 Pedido',
+                titulo: '📦 Descripción',
                 valor: pedido.descripcion,
-                grande: pedido.restaurante == null,
+                grande: pedido.restaurante == null && pedido.tipoPedido != 'mandadito',
               ),
               if (pedido.clienteNombre != null && pedido.clienteNombre!.isNotEmpty)
                 _InfoCard(titulo: '👤 Cliente', valor: pedido.clienteNombre!),
@@ -311,6 +376,20 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
                   ),
                 ),
               ],
+            ),
+          ),
+
+        const SizedBox(height: 16),
+        
+        // Botón Reasignar (solo para administradores)
+        if (isAdmin && pedido.estado != 'entregado' && pedido.estado != 'cancelado')
+          OutlinedButton.icon(
+            onPressed: _loading ? null : _reasignarRepartidor,
+            icon: const Icon(Icons.sync_alt_rounded),
+            label: const Text('Reasignar Repartidor', style: TextStyle(fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
           ),
 
@@ -438,6 +517,7 @@ class _ProgressoEstados extends StatelessWidget {
 
 Color _estadoColor(String estado) {
   switch (estado) {
+    case 'pendiente': return const Color(0xFFEF4444);
     case 'asignado':  return const Color(0xFF60A5FA);
     case 'recibido':  return const Color(0xFFF59E0B);
     case 'en_camino': return const Color(0xFFFF6B35);
@@ -448,6 +528,7 @@ Color _estadoColor(String estado) {
 
 IconData _estadoIcon(String estado) {
   switch (estado) {
+    case 'pendiente': return Icons.warning_rounded;
     case 'asignado':  return Icons.assignment_rounded;
     case 'recibido':  return Icons.handshake_rounded;
     case 'en_camino': return Icons.delivery_dining_rounded;
@@ -458,6 +539,7 @@ IconData _estadoIcon(String estado) {
 
 String _estadoLabel(String estado) {
   switch (estado) {
+    case 'pendiente': return 'Pendiente';
     case 'asignado':  return 'Asignado';
     case 'recibido':  return 'Recibido';
     case 'en_camino': return 'En Camino';
@@ -468,6 +550,7 @@ String _estadoLabel(String estado) {
 
 String _estadoSubtitulo(String estado) {
   switch (estado) {
+    case 'pendiente': return 'Aún no se ha asignado a ningún repartidor.';
     case 'asignado':  return 'El pedido fue asignado. Confírmalo al recibirlo.';
     case 'recibido':  return 'Tienes el pedido. Sal a entregarlo cuando estés listo.';
     case 'en_camino': return 'Estás en camino. ¡El cliente ya fue notificado!';

@@ -43,7 +43,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           '/config',
           '/leaderboard',
           '/map',
-          '/pedidos',
         ];
         if (!isAdmin && adminOnlyPrefixes.any((p) => loc.startsWith(p))) {
           // Repartidores sí pueden ver el detalle de su pedido via deep link

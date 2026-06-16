@@ -14,6 +14,13 @@ class PedidoModel {
   final DateTime createdAt;
   final DateTime updatedAt;
   final String? repartidorNombre;
+  
+  // Nuevos campos para Mandaditos / Billetera
+  final String? tipoPedido;
+  final String? metodoPago;
+  final String? origen;
+  final String? destino;
+  final double? precioEntrega;
 
   const PedidoModel({
     required this.id,
@@ -29,6 +36,11 @@ class PedidoModel {
     required this.createdAt,
     required this.updatedAt,
     this.repartidorNombre,
+    this.tipoPedido,
+    this.metodoPago,
+    this.origen,
+    this.destino,
+    this.precioEntrega,
   });
 
   factory PedidoModel.fromMap(Map<String, dynamic> map) {
@@ -38,7 +50,7 @@ class PedidoModel {
       clienteNombre: map['cliente_nombre'] as String?,
       restaurante: map['restaurante'] as String?,
       repartidorId: map['repartidor_id'] as String?,
-      descripcion: map['descripcion'] as String,
+      descripcion: map['descripcion'] as String? ?? '',
       direccion: map['direccion'] as String?,
       lat: (map['lat'] as num?)?.toDouble(),
       lng: (map['lng'] as num?)?.toDouble(),
@@ -48,11 +60,17 @@ class PedidoModel {
       repartidorNombre: map['repartidores'] != null
           ? (map['repartidores'] as Map<String, dynamic>)['nombre'] as String?
           : null,
+      tipoPedido: map['tipo_pedido'] as String? ?? 'comida',
+      metodoPago: map['metodo_pago'] as String? ?? 'efectivo',
+      origen: map['origen'] as String?,
+      destino: map['destino'] as String?,
+      precioEntrega: (map['precio_entrega'] as num?)?.toDouble(),
     );
   }
 
   String get estadoLabel {
     switch (estado) {
+      case 'pendiente':  return 'Pendiente (Sin asignar)';
       case 'asignado':   return 'Asignado';
       case 'recibido':   return 'Recibido';
       case 'en_camino':  return 'En Camino';
@@ -61,7 +79,7 @@ class PedidoModel {
     }
   }
 
-  bool get isTerminado => estado == 'entregado';
+  bool get isTerminado => estado == 'entregado' || estado == 'cancelado';
 
   /// Siguiente estado en el flujo del repartidor
   String? get siguienteEstado {

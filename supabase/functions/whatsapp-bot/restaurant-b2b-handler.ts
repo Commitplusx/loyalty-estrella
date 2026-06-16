@@ -3,7 +3,7 @@ import { extract10Digits, generateCloudinaryVIPCard } from '../_shared/utils.ts'
 
 // Límites de seguridad para evitar abuso
 const MAX_PUNTOS_POR_ACCION = 10
-const MAX_REGALOS_POR_DIA = 5
+const MAX_REGALOS_POR_DIA = 2
 
 // ── Barra de Progreso Visual para clientes ──────────────────────────────────
 function buildProgressBar(ptsActuales: number, meta: number): string {
@@ -36,27 +36,50 @@ async function _verificarAcceso(supabase: any, restauranteId: string): Promise<b
   return data?.programa_lealtad_activo === true
 }
 
-// ── Menú Principal Interactivo ──────────────────────────────────────────────
-async function enviarMenuPrincipal(fromPhone: string, nombreRest: string) {
+// ── Menú Principal Interactivo (con contador dinámico de regalos disponibles) ─
+async function enviarMenuPrincipal(fromPhone: string, nombreRest: string, supabase?: any, restauranteId?: string) {
+  // Calcular cuántos regalos quedan hoy para mostrarlo en el botón
+  let regalosQuedan = MAX_REGALOS_POR_DIA
+  if (supabase && restauranteId) {
+    try {
+      const tz = 'America/Mexico_City'
+      const dateStr = new Date().toLocaleString('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
+      const [m, d, y] = dateStr.split('/')
+      const hoy = new Date(`${y}-${m}-${d}T00:00:00.000-06:00`).toISOString()
+      const { count } = await supabase.from('restaurante_loyalty_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('restaurante_id', restauranteId)
+        .eq('accion', 'regalar_envio')
+        .gte('created_at', hoy)
+      regalosQuedan = Math.max(0, MAX_REGALOS_POR_DIA - (count || 0))
+    } catch (_) { /* no bloquear el menú si falla */ }
+  }
+
+  const labelRegalar = regalosQuedan > 0
+    ? `🎁 Regalar Envío (quedan ${regalosQuedan} hoy)`
+    : `🎁 Regalar Envío (límite alcanzado ⏰)`
+
   await sendInteractiveList(
     fromPhone,
-    `🏪 *Portal de Aliados — Estrella Delivery*\nRestaurante: *${nombreRest}*\n\nSelecciona qué deseas hacer:`,
+    `🏪 *Portal de Aliados — Estrella Delivery*\nBienvenido: *${nombreRest}*\n\n💡 *Tip de Velocidad:* Para afiliar clientes o sumarles puntos rápidamente, no necesitas tocar los botones. ¡Solo mándame la foto de su código QR y listo! 📸\n\nSi necesitas otras opciones, elige aquí abajo:`,
     `Abrir Menú`,
     [
       {
-        title: 'Gestión de Clientes',
+        title: 'Gestión Rápida',
         rows: [
-          { id: 'REST_MENU_AFILIAR', title: '➕ Afiliar Cliente', description: 'Registrar nuevo VIP' },
+          { id: 'REST_MENU_AFILIAR', title: '➕ Afiliar + Puntos', description: 'Registrar cliente y sumar puntos' },
           { id: 'REST_MENU_PUNTOS', title: '⭐ Sumar Puntos', description: 'Premiar visita al local' },
-          { id: 'REST_MENU_CANJEAR', title: '🎟️ Canjear Puntos', description: 'Cobrar recompensa' },
-          { id: 'REST_MENU_INFO', title: '📊 Ver Perfil', description: 'Consultar datos de un cliente' },
-          { id: 'REST_MENU_REGALAR', title: '🎁 Regalar Envío', description: `Patrocinar envío gratis (Máx ${MAX_REGALOS_POR_DIA}/día)` }
+          { id: 'REST_MENU_CANJEAR', title: '🎟️ Canjear Puntos', description: 'Cobrar recompensa del cliente' },
+          { id: 'REST_MENU_INFO', title: '📊 Ver Perfil VIP', description: 'Consultar datos de un cliente' },
+          { id: 'REST_MENU_REGALAR', title: labelRegalar, description: `Absorbe Estrella Delivery` }
         ]
       },
       {
         title: 'Mi Negocio',
         rows: [
-          { id: 'REST_MENU_RESUMEN', title: '📈 Mi Resumen de Hoy', description: 'Ver actividad del día' }
+          { id: 'REST_MENU_RESUMEN', title: '📈 Mi Resumen de Hoy', description: 'Ver actividad del día' },
+          { id: 'REST_MENU_HISTORIAL', title: '📜 Ver Movimientos', description: 'Últimas 10 acciones' },
+          { id: 'REST_MENU_BROADCAST', title: '📢 Enviar Promo VIP', description: 'Mensaje masivo a tus clientes' }
         ]
       }
     ]
@@ -130,10 +153,11 @@ export async function handleRestaurantCommand(
         .eq('restaurante_id', restauranteId)
         .gte('created_at', hoy)
 
-      const afiliados  = logs?.filter((l: any) => l.accion === 'afiliar_cliente').length || 0
-      const ptsSumados = logs?.filter((l: any) => l.accion === 'sumar_puntos').reduce((s: number, l: any) => s + (l.valor || 0), 0) || 0
-      const regalados  = logs?.filter((l: any) => l.accion === 'regalar_envio').length || 0
+      const afiliados    = logs?.filter((l: any) => l.accion === 'afiliar_cliente').length || 0
+      const ptsSumados   = logs?.filter((l: any) => l.accion === 'sumar_puntos').reduce((s: number, l: any) => s + (l.valor || 0), 0) || 0
+      const regalados    = logs?.filter((l: any) => l.accion === 'regalar_envio').length || 0
       const visitasUnicas = new Set(logs?.filter((l: any) => l.accion === 'sumar_puntos').map((l: any) => l.cliente_tel)).size
+      const regalosQuedan = Math.max(0, MAX_REGALOS_POR_DIA - regalados)
 
       const fecha = new Date().toLocaleDateString('es-MX', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long' })
       await sendWA(fromPhone,
@@ -143,20 +167,55 @@ export async function handleRestaurantCommand(
         `➕ Nuevos afiliados: *${afiliados}*\n` +
         `⭐ Puntos sumados: *${ptsSumados}*\n` +
         `👀 Visitas únicas: *${visitasUnicas}*\n` +
-        `🎁 Envíos regalados: *${regalados}*\n` +
+        `🎁 Envíos regalados: *${regalados}/${MAX_REGALOS_POR_DIA}*` +
+        (regalosQuedan > 0
+          ? ` — te queda${regalosQuedan === 1 ? '' : 'n'} *${regalosQuedan}* para hoy 🎁`
+          : ` — *límite del día alcanzado* ⏰`) + `\n` +
         `───────────────────\n` +
         `_¡Sigue así! Cada visita cuenta._ 💪`
       )
       return new Response('OK', { status: 200 })
     }
 
+    if (buttonId === 'REST_MENU_HISTORIAL') {
+      const { data: logs } = await supabase.from('restaurante_loyalty_log')
+        .select('accion, valor, cliente_tel, created_at')
+        .eq('restaurante_id', restauranteId)
+        .order('created_at', { ascending: false })
+        .limit(10)
+
+      if (!logs || logs.length === 0) {
+        await sendWA(fromPhone, `📜 *Historial de Movimientos*\n\nAún no tienes movimientos registrados en tu local.`)
+        return new Response('OK', { status: 200 })
+      }
+
+      const tz = 'America/Mexico_City'
+      const lineas = logs.map((l: any) => {
+        const fecha = new Date(l.created_at).toLocaleString('es-MX', { timeZone: tz, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        const telOculto = l.cliente_tel.slice(0, 3) + '****' + l.cliente_tel.slice(-3)
+        let icono = '🔸'
+        let desc = ''
+        if (l.accion === 'sumar_puntos') { icono = '🟢'; desc = `+${l.valor} pts` }
+        else if (l.accion === 'canjear_recompensa') { icono = '🔴'; desc = `-${l.valor} pts` }
+        else if (l.accion === 'afiliar_cliente') { icono = '👤'; desc = `Nuevo` }
+        else if (l.accion === 'regalar_envio') { icono = '🎁'; desc = `Regalo` }
+        
+        return `${icono} \`${telOculto}\` — *${desc}*\n   📅 _${fecha}_`
+      }).join('\n\n')
+
+      await sendWA(fromPhone, `📜 *Últimos 10 Movimientos*\nRestaurante: *${nombreRest}*\n\n${lineas}`)
+      return new Response('OK', { status: 200 })
+    }
+
     let promptMsg = ''
     let newState = ''
-    if (buttonId === 'REST_MENU_AFILIAR') { promptMsg = 'Escribe el número a *10 dígitos* del cliente nuevo:\n_(También puedes enviar una foto de su Tarjeta VIP QR)_ 📸'; newState = 'AFILIAR_TEL' }
+    // AFILIAR ahora usa PUNTOS_TEL: registra al cliente si no existe y suma puntos en 1 solo paso
+    if (buttonId === 'REST_MENU_AFILIAR') { promptMsg = 'Escribe el número a *10 dígitos* del cliente:\n_Si es nuevo lo registramos al vuelo y le sumas puntos de inmediato._ 📱'; newState = 'PUNTOS_TEL' }
     else if (buttonId === 'REST_MENU_PUNTOS') { promptMsg = 'Escribe el número a *10 dígitos* del cliente:\n_(También puedes enviar una foto de su Tarjeta VIP QR)_ 📸'; newState = 'PUNTOS_TEL' }
     else if (buttonId === 'REST_MENU_CANJEAR') { promptMsg = 'Escribe el número a *10 dígitos* del cliente que va a cobrar su recompensa:'; newState = 'CANJEAR_TEL' }
     else if (buttonId === 'REST_MENU_REGALAR') { promptMsg = 'Escribe el número a *10 dígitos* del cliente a premiar:'; newState = 'REGALAR_TEL' }
     else if (buttonId === 'REST_MENU_INFO') { promptMsg = 'Escribe el número a *10 dígitos* del cliente a consultar:'; newState = 'INFO_TEL' }
+    else if (buttonId === 'REST_MENU_BROADCAST') { promptMsg = 'Escribe la promoción que deseas enviar a tus mejores clientes VIP (Top 20).\n\n⚠️ *Asegúrate de que sea clara y atractiva*.\n_Ejemplo: "Hoy en tu compra de pizza grande te regalamos unos palitroques. Muestra tu tarjeta digital."_'; newState = 'BROADCAST_TXT' }
 
     if (newState) {
       await supabase.from('bot_memory').upsert({
@@ -172,25 +231,51 @@ export async function handleRestaurantCommand(
   // Si cancelan el flujo actual
   if (textBody === 'cancelar' || textBody === '/cancelar' || textBody === 'salir') {
     await supabase.from('bot_memory').delete().eq('phone', `b2b_state_${from10}`)
-    await enviarMenuPrincipal(fromPhone, nombreRest)
+    await enviarMenuPrincipal(fromPhone, nombreRest, supabase, restauranteId)
     return new Response('OK', { status: 200 })
   }
 
   // 2. Procesamiento de Texto (Máquina de Estados o Comandos directos)
   if (msgType === 'text') {
-    const { data: memData } = await supabase.from('bot_memory').select('history').eq('phone', `b2b_state_${from10}`).maybeSingle()
+    const { data: memData } = await supabase.from('bot_memory').select('history, updated_at').eq('phone', `b2b_state_${from10}`).maybeSingle()
     const stateObj = memData?.history?.[0]
 
     if (stateObj) {
       const state = stateObj.state
       const userInput = (msg.text?.body as string).trim()
 
+      // 1. Timeout de Inactividad (15 mins)
+      const lastUpdate = new Date(memData.updated_at).getTime()
+      if (Date.now() - lastUpdate > 15 * 60 * 1000) {
+        await supabase.from('bot_memory').delete().eq('phone', `b2b_state_${from10}`)
+        await sendWA(fromPhone, `⏱️ _Tu sesión anterior expiró por inactividad._`)
+        await enviarMenuPrincipal(fromPhone, nombreRest, supabase, restauranteId)
+        return new Response('OK', { status: 200 })
+      }
+
+      // Función auxiliar para registrar errores de búsqueda (Rate Limit Antifraude)
+      const checkRateLimit = async () => {
+        const rlKey = `rl_err_${from10}`
+        const { data: rlData } = await supabase.from('bot_memory').select('history').eq('phone', rlKey).maybeSingle()
+        const errTimes = ((rlData?.history as number[]) || []).filter(t => t > Date.now() - 60 * 60 * 1000) // últimos 60 mins
+        if (errTimes.length >= 10) {
+          await supabase.from('bot_memory').delete().eq('phone', `b2b_state_${from10}`)
+          await sendWA(fromPhone, `⛔ *Bloqueo de seguridad*\n\nHas ingresado demasiados números inválidos o inexistentes.\nPor seguridad, tu acceso ha sido suspendido temporalmente.`)
+          const { notifyAdmin } = await import('./whatsapp.ts')
+          await notifyAdmin(`El restaurante *${nombreRest}* (${from10}) fue bloqueado por buscar más de 10 clientes inválidos en 1 hora.`)
+          return false
+        }
+        errTimes.push(Date.now())
+        await supabase.from('bot_memory').upsert({ phone: rlKey, history: errTimes, updated_at: new Date().toISOString() })
+        return true
+      }
+
       // AFILIAR FLUJO
       if (state === 'AFILIAR_TEL') {
         const cTel = extract10Digits(userInput)
         if (!cTel || cTel.length !== 10) { await sendWA(fromPhone, `⚠️ Número inválido. Escribe los 10 dígitos o "cancelar":`); return new Response('OK', { status: 200 }) }
         
-        const { data: exist } = await supabase.from('clientes').select('id, nombre, acepta_terminos').ilike('telefono', `%${cTel}%`).maybeSingle()
+        const { data: exist } = await supabase.from('clientes').select('id, nombre, acepta_terminos').eq('telefono', cTel).maybeSingle()
         if (exist) {
           if (!exist.acepta_terminos) {
             await sendWA(fromPhone, `ℹ️ El cliente *${exist.nombre}* ya está en el sistema pero no ha aceptado los términos. Le reenviaré la invitación VIP.`)
@@ -265,29 +350,54 @@ export async function handleRestaurantCommand(
       }
 
       // PUNTOS FLUJO
+      // Si el cliente no existe → registro rápido y suma de inmediato
+      // Si existe pero no aceptó términos → se suma igual (el restaurante lo avala)
       if (state === 'PUNTOS_TEL') {
         const cTel = extract10Digits(userInput)
         if (!cTel || cTel.length !== 10) { await sendWA(fromPhone, `⚠️ Número inválido. Escríbelo bien o "cancelar":`); return new Response('OK', { status: 200 }) }
         
-        const { data: c } = await supabase.from('clientes').select('id, nombre, acepta_terminos').ilike('telefono', `%${cTel}%`).maybeSingle()
+        let { data: c } = await supabase.from('clientes').select('id, nombre').eq('telefono', cTel).maybeSingle()
+        let esClienteNuevo = false
+
+        if (!c) {
+          // Registro rápido: el restaurante avala al cliente
+          esClienteNuevo = true
+          const qrCode = generateCloudinaryVIPCard(cTel, cTel, 0, 0, false)
+          const { error: insErr } = await supabase.from('clientes').insert({
+            telefono: cTel,
+            nombre: cTel, // nombre temporal, se actualiza cuando el cliente escriba
+            acepta_terminos: true,
+            puntos: 0,
+            qr_code: qrCode
+          })
+          if (!insErr) {
+            c = { id: null, nombre: cTel }
+          } else {
+            // Puede que ya existiera por race condition
+            const { data: reCheck } = await supabase.from('clientes').select('id, nombre').eq('telefono', cTel).maybeSingle()
+            c = reCheck
+          }
+          console.log(`[B2B_PUNTOS] Registro rápido de ${cTel} avalado por ${nombreRest}`)
+        }
+
         if (!c) {
           await supabase.from('bot_memory').delete().eq('phone', `b2b_state_${from10}`)
-          await sendWA(fromPhone, `❌ Cliente no encontrado. Afílalo primero tocando "➕ Afiliar Cliente".`)
-          await enviarMenuPrincipal(fromPhone, nombreRest)
-          return new Response('OK', { status: 200 })
-        }
-        if (!c.acepta_terminos) {
-          await supabase.from('bot_memory').delete().eq('phone', `b2b_state_${from10}`)
-          await sendWA(fromPhone, `❌ El cliente ${cTel} aún no acepta los términos y condiciones VIP. No puedes sumarle puntos.`)
-          await enviarMenuPrincipal(fromPhone, nombreRest)
+          await sendWA(fromPhone, `❌ Error interno al registrar al cliente. Intenta de nuevo.`)
+          const { notifyAdmin } = await import('./whatsapp.ts')
+          await notifyAdmin(`Error registrando cliente rápido en ${nombreRest}. Causa probable: falla en DB.`)
+          await enviarMenuPrincipal(fromPhone, nombreRest, supabase, restauranteId)
           return new Response('OK', { status: 200 })
         }
         
         stateObj.state = 'PUNTOS_CANT'
         stateObj.cTel = cTel
         stateObj.cNombre = c.nombre || cTel
+        stateObj.esClienteNuevo = esClienteNuevo
         await supabase.from('bot_memory').update({ history: [stateObj], updated_at: new Date().toISOString() }).eq('phone', `b2b_state_${from10}`)
-        await sendWA(fromPhone, `🔢 ¿Cuántos puntos deseas sumar a *${stateObj.cNombre}*?\n(Ejemplo: 1 o 2. Máximo 10)`)
+        await sendWA(fromPhone,
+          (esClienteNuevo ? `📋 _Cliente registrado automáticamente._\n\n` : '') +
+          `🔢 ¿Cuántos puntos deseas sumar a *${stateObj.cNombre}*?\n(Ejemplo: 1 o 2. Máximo ${MAX_PUNTOS_POR_ACCION})`
+        )
         return new Response('OK', { status: 200 })
       }
 
@@ -309,6 +419,8 @@ export async function handleRestaurantCommand(
         if (rpcError || !rpcResult?.ok) {
           console.error('[B2B PUNTOS] RPC falló:', rpcError?.message || rpcResult)
           await sendWA(fromPhone, `❌ Error al sumar puntos. Intenta de nuevo.`)
+          const { notifyAdmin } = await import('./whatsapp.ts')
+          await notifyAdmin(`Error sumando ${cant} pts en ${nombreRest} para ${cTel}. Error: ${rpcError?.message || 'RPC Failed'}`)
           return new Response('OK', { status: 200 })
         }
 
@@ -321,11 +433,20 @@ export async function handleRestaurantCommand(
 
         await sendWA(fromPhone, `✅ Has sumado *${cant} punto(s)* a ${cNombre}.\n📊 Puntos en tu local: *${newPts} pts*\n👀 Visitas totales: ${newVisitas}`)
         
-        // Usa plantilla para brincar la restricción de 24 horas de WhatsApp
-        const templateResult = await sendWATemplate(`52${cTel}`, 'estrella_puntos_acumulados', [cNombre, cant.toString(), newPts.toString()], undefined, cTel)
-        if (!templateResult.ok) {
-          // Si falla la plantilla, intenta texto libre con la barra de progreso (funciona si hay ventana de 24h abierta)
-          await sendWA(`52${cTel}`, `⭐ *¡Sumamos puntos en ${nombreRest}!*\n\n${progressBar}`)
+        // Notificación al cliente
+        if (stateObj.esClienteNuevo) {
+          // Plantilla de bienvenida (Inglés 'en' como indicó Meta)
+          const templateResult = await sendWATemplate(`52${cTel}`, 'bienvendo_cte', [cNombre, nombreRest, cant.toString()], undefined, undefined, 'en')
+          if (!templateResult.ok) {
+            await sendWA(`52${cTel}`, `¡Hola ${cNombre}! 👋\n\n*${nombreRest}* te registró en el programa de recompensas de *Estrella Delivery* 🌟\n\n⭐ *Tus puntos: ${cant}*\nCada que pides a domicilio sumas puntos para tu envío GRATIS. ¡Escríbenos para consultar beneficios! 🔥`)
+          }
+        } else {
+          // Usa plantilla de puntos normal para evitar restricción 24h
+          const templateResult = await sendWATemplate(`52${cTel}`, 'estrella_puntos_acumulados', [cNombre, cant.toString(), newPts.toString()], undefined, cTel)
+          if (!templateResult.ok) {
+            // Fallback texto libre con barra
+            await sendWA(`52${cTel}`, `⭐ *¡Sumamos puntos en ${nombreRest}!*\n\n${progressBar}`)
+          }
         }
         await enviarMenuPrincipal(fromPhone, nombreRest)
         return new Response('OK', { status: 200 })
@@ -336,11 +457,12 @@ export async function handleRestaurantCommand(
         const cTel = extract10Digits(userInput)
         if (!cTel || cTel.length !== 10) { await sendWA(fromPhone, `⚠️ Número inválido. Escríbelo bien o "cancelar":`); return new Response('OK', { status: 200 }) }
         
-        const { data: c } = await supabase.from('clientes').select('id, nombre, acepta_terminos').ilike('telefono', `%${cTel}%`).maybeSingle()
+        const { data: c } = await supabase.from('clientes').select('id, nombre, acepta_terminos').eq('telefono', cTel).maybeSingle()
         if (!c) {
+          if (!(await checkRateLimit())) return new Response('OK', { status: 200 })
           await supabase.from('bot_memory').delete().eq('phone', `b2b_state_${from10}`)
           await sendWA(fromPhone, `❌ Cliente no encontrado.`)
-          await enviarMenuPrincipal(fromPhone, nombreRest)
+          await enviarMenuPrincipal(fromPhone, nombreRest, supabase, restauranteId)
           return new Response('OK', { status: 200 })
         }
         
@@ -412,34 +534,53 @@ export async function handleRestaurantCommand(
           return new Response('OK', { status: 200 }) 
         }
 
-        const { data: c } = await supabase.from('clientes').select('nombre, reputacion').ilike('telefono', `%${cTel}%`).maybeSingle()
+        // Consultar cliente + puntos en este restaurante + envíos gratis disponibles
+        const [{ data: c }, { data: restPts }] = await Promise.all([
+          supabase.from('clientes').select('nombre, reputacion, envios_gratis_disponibles').eq('telefono', cTel).maybeSingle(),
+          supabase.from('restaurante_clientes_puntos').select('puntos, visitas').eq('restaurante_id', restauranteId).eq('cliente_tel', cTel).maybeSingle()
+        ])
+
         if (!c) { 
-          await sendWA(fromPhone, `❌ Cliente no encontrado.`); 
-          await enviarMenuPrincipal(fromPhone, nombreRest); 
+          if (!(await checkRateLimit())) return new Response('OK', { status: 200 })
+          await sendWA(fromPhone, `❌ Cliente no encontrado en el sistema.`); 
+          await enviarMenuPrincipal(fromPhone, nombreRest, supabase, restauranteId); 
           return new Response('OK', { status: 200 }) 
         }
 
-        // Consultar puntos en Estrella y puntos en este Restaurante
-        const { data: restPts } = await supabase.from('restaurante_clientes_puntos').select('puntos, visitas').eq('restaurante_id', restauranteId).eq('cliente_tel', cTel).maybeSingle()
+        const enviosGratis = c.envios_gratis_disponibles || 0
+        const lineaEnvios = enviosGratis > 0
+          ? `🎁 Envíos gratis disponibles: *${enviosGratis}* 🎉`
+          : `🎁 Envíos gratis: *Ninguno aún*`
 
-        const info = `📊 *Perfil de Cliente*\n👤 *${c.nombre || cTel}*\n🗣️ Reputación general: *${c.reputacion || 'Sin calificar'}*\n\n` +
-                     `🏪 *Lealtad en tu Local:*\n🎁 Puntos acumulados: *${restPts?.puntos || 0}*\n👀 Visitas totales: *${restPts?.visitas || 0}*`
+        const info =
+          `📊 *Perfil VIP — ${c.nombre || cTel}*\n` +
+          `📞 Tel: \`${cTel}\`\n` +
+          `🗣️ Reputación: *${c.reputacion || 'Sin calificar'}*\n` +
+          `───────────────────\n` +
+          `🏪 *Lealtad en tu Local:*\n` +
+          `⭐ Puntos aquí: *${restPts?.puntos || 0}*\n` +
+          `👀 Visitas: *${restPts?.visitas || 0}*\n` +
+          `───────────────────\n` +
+          `🛵 *Estrella Delivery:*\n` +
+          lineaEnvios
+
         await sendWA(fromPhone, info)
         await enviarMenuPrincipal(fromPhone, nombreRest)
         return new Response('OK', { status: 200 })
       }
 
       // REGALAR FLUJO (El restaurante patrocina un envío en Estrella Delivery)
+      // Límite: 2 envíos gratis al día, absorbidos por Estrella Delivery
       if (state === 'REGALAR_TEL') {
         const cTel = extract10Digits(userInput)
         await supabase.from('bot_memory').delete().eq('phone', `b2b_state_${from10}`)
         if (!cTel || cTel.length !== 10) { 
-          await sendWA(fromPhone, `⚠️ Número inválido.`); 
+          await sendWA(fromPhone, `⚠️ Número inválido. Escribe los 10 dígitos del celular del cliente.`); 
           await enviarMenuPrincipal(fromPhone, nombreRest); 
           return new Response('OK', { status: 200 }) 
         }
 
-        // Bug 1 Fix: Ajustar límite de zona horaria (UTC -> MX)
+        // Verificar límite diario del restaurante (zona horaria MX)
         const tz = 'America/Mexico_City';
         const dateStr = new Date().toLocaleString("en-US", { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
         const [month, day, year] = dateStr.split('/');
@@ -450,40 +591,138 @@ export async function handleRestaurantCommand(
           .eq('restaurante_id', restauranteId).eq('accion', 'regalar_envio').gte('created_at', startOfTodayMX)
         const regalosHoy = count || 0
         if (regalosHoy >= MAX_REGALOS_POR_DIA) {
-          await sendWA(fromPhone, `⚠️ Has alcanzado el límite de *${MAX_REGALOS_POR_DIA} envíos gratis* por hoy.`)
+          await sendWA(fromPhone,
+            `🚫 *Límite del día alcanzado*\n\n` +
+            `Ya usaste tus *${MAX_REGALOS_POR_DIA} envíos gratis* de hoy.\n` +
+            `Mañana se reinicia el contador. ⏰`
+          )
           await enviarMenuPrincipal(fromPhone, nombreRest)
           return new Response('OK', { status: 200 })
         }
 
-        const { data: c } = await supabase.from('clientes').select('nombre, acepta_terminos').ilike('telefono', `%${cTel}%`).maybeSingle()
-        if (!c) { 
-          await sendWA(fromPhone, `❌ Cliente no encontrado.`); 
-          await enviarMenuPrincipal(fromPhone, nombreRest); 
-          return new Response('OK', { status: 200 }) 
-        }
-        if (!c.acepta_terminos) {
-          await sendWA(fromPhone, `❌ El cliente ${cTel} aún no acepta los términos VIP. No puedes regalarle envíos.`)
-          await enviarMenuPrincipal(fromPhone, nombreRest)
-          return new Response('OK', { status: 200 })
+        // Buscar al cliente; si no existe, registrarlo al vuelo
+        let { data: c } = await supabase.from('clientes').select('nombre').eq('telefono', cTel).maybeSingle()
+        let nombreCliente = c?.nombre || cTel
+        let esNuevo = false
+
+        if (!c) {
+          // Registro rápido: el restaurante avala al cliente
+          esNuevo = true
+          const qrCode = generateCloudinaryVIPCard(cTel, cTel, 0, 0, false)
+          const { error: insErr } = await supabase.from('clientes').insert({
+            telefono: cTel,
+            nombre: cTel, // nombre temporal = teléfono, se actualiza cuando el cliente escriba
+            acepta_terminos: true, // el restaurante lo avala directamente
+            puntos: 0,
+            qr_code: qrCode
+          })
+          if (insErr) {
+            // Si ya existe (race condition), no es error, solo continuamos
+            const { data: reCheck } = await supabase.from('clientes').select('nombre').eq('telefono', cTel).maybeSingle()
+            nombreCliente = reCheck?.nombre || cTel
+          }
+          console.log(`[B2B_REGALAR] Registro rápido de cliente ${cTel} avalado por ${nombreRest}`)
         }
 
+        // Acreditar el envío gratis en la cuenta del cliente
         await supabase.rpc('increment_cliente_envios_gratis', { p_tel: cTel, p_amount: 1 })
-        await supabase.from('restaurante_loyalty_log').insert({ restaurante_id: restauranteId, cliente_tel: cTel, accion: 'regalar_envio', valor: 1, descripcion: `Regalo ${nombreRest}` })
+        await supabase.from('restaurante_loyalty_log').insert({
+          restaurante_id: restauranteId,
+          cliente_tel: cTel,
+          accion: 'regalar_envio',
+          valor: 1,
+          descripcion: `Regalo de ${nombreRest}${esNuevo ? ' (cliente nuevo)' : ''}`
+        })
 
-        await sendWA(fromPhone, `✅ Has regalado 1 envío gratis a *${c.nombre || cTel}*.\n(${regalosHoy + 1}/${MAX_REGALOS_POR_DIA} regalos hoy)`)
+        const quedan = MAX_REGALOS_POR_DIA - (regalosHoy + 1)
+        await sendWA(fromPhone,
+          `🎁 *¡Envío regalado!*\n\n` +
+          `✅ El cliente *${nombreCliente}* tiene 1 envío gratis acreditado.\n` +
+          (esNuevo ? `📋 _Lo registramos automáticamente en el sistema._\n` : '') +
+          `\n📊 Regalos de hoy: *${regalosHoy + 1}/${MAX_REGALOS_POR_DIA}*` +
+          (quedan > 0 ? ` (te queda${quedan === 1 ? '' : 'n'} *${quedan}* más hoy)` : ` — *límite del día alcanzado*`)
+        )
         
-        const notifyResult = await sendWA(`52${cTel}`, `🎁 *¡Sorpresa!*\n\n*${nombreRest}* te acaba de patrocinar un *Envío Gratis* como agradecimiento. 🎉\n¡Pídeles algo rico a través de Estrella Delivery! 🛵`)
+        // Notificar al cliente usando plantilla para evitar bloqueo de 24h
+        const notifyResult = await sendWATemplate(`52${cTel}`, 'estrella_regalo_envio', [nombreRest])
         if (!notifyResult.ok) {
-          await sendWA(fromPhone, `⚠️ El envío gratis se guardó en su cuenta, pero WhatsApp bloqueó el mensaje de notificación porque el cliente lleva más de 24 horas inactivo.`)
+          await sendWA(`52${cTel}`,
+            `🎁 *¡${nombreRest} te regaló un envío gratis!*\n\n` +
+            `Tu próximo envío con *Estrella Delivery* es *GRATIS* gracias a *${nombreRest}* 🌟\n\n` +
+            `¡Úsalo cuando quieras! Solo escríbenos aquí y te lo aplicamos automáticamente. 🛵💨`
+          )
         }
-        await enviarMenuPrincipal(fromPhone, nombreRest)
+
+        await enviarMenuPrincipal(fromPhone, nombreRest, supabase, restauranteId)
+        return new Response('OK', { status: 200 })
+      }
+
+      // BROADCAST FLUJO
+      if (state === 'BROADCAST_TXT') {
+        const promoText = userInput.slice(0, 250) // Limitar a 250 chars
+        await supabase.from('bot_memory').delete().eq('phone', `b2b_state_${from10}`)
+
+        if (promoText.length < 5) {
+          await sendWA(fromPhone, `⚠️ Promoción muy corta. Envío cancelado.`)
+          await enviarMenuPrincipal(fromPhone, nombreRest, supabase, restauranteId)
+          return new Response('OK', { status: 200 })
+        }
+
+        await sendWA(fromPhone, `⏳ *Procesando envío masivo...*\n\nBuscando a tus mejores clientes VIP (Top 20). Esto puede tomar unos segundos.`)
+
+        // Obtener el Top 20 de clientes del restaurante
+        const { data: topClients } = await supabase.from('restaurante_clientes_puntos')
+          .select('cliente_tel, puntos, visitas')
+          .eq('restaurante_id', restauranteId)
+          .order('puntos', { ascending: false })
+          .limit(20)
+
+        if (!topClients || topClients.length === 0) {
+          await sendWA(fromPhone, `❌ No tienes clientes registrados aún para enviar la promoción.`)
+          await enviarMenuPrincipal(fromPhone, nombreRest, supabase, restauranteId)
+          return new Response('OK', { status: 200 })
+        }
+
+        // Obtener nombres para la plantilla
+        const tels = topClients.map((c: any) => c.cliente_tel)
+        const { data: profiles } = await supabase.from('clientes').select('telefono, nombre').in('telefono', tels)
+        const profileMap = new Map((profiles || []).map((p: any) => [p.telefono, p.nombre]))
+
+        // Enviar plantillas en paralelo pero sin reventar el límite de rate
+        let sent = 0
+        const promises = topClients.map(async (c: any) => {
+          const tel = c.cliente_tel
+          const nombre = profileMap.get(tel) || tel
+          const templateResult = await sendWATemplate(`52${tel}`, 'estrella_promo_aliado', [nombre, nombreRest, promoText])
+          if (templateResult.ok) {
+            sent++
+            // Guardar el rastro de la promo por si el cliente responde
+            await supabase.from('bot_memory').upsert({
+              phone: `last_promo_${tel}`,
+              history: [{ restId: restauranteId, restName: nombreRest, promoText }],
+              updated_at: new Date().toISOString()
+            })
+          }
+          await new Promise(r => setTimeout(r, 100)) // peque delay
+        })
+
+        // Edge Functions de Supabase permiten que Promesas background continúen si no retornamos enseguida
+        await Promise.allSettled(promises)
+
+        await sendWA(fromPhone, `✅ *¡Promoción enviada con éxito!*\n\nSe entregó a *${sent} clientes VIP* de tu local.\n\n_Recuerda estar atento a tus pedidos. 🛵_`)
+        
+        // Log para tracking tuyo
+        const { notifyAdmin } = await import('./whatsapp.ts')
+        await notifyAdmin(`📢 *Broadcast B2B* enviado por ${nombreRest} a ${sent} clientes:\n"${promoText}"`)
+
+        await enviarMenuPrincipal(fromPhone, nombreRest, supabase, restauranteId)
         return new Response('OK', { status: 200 })
       }
     }
 
     // Si escriben algo sin estar en sesión
     if (textBody === 'hola' || textBody === 'menu' || textBody === '/menu') {
-      await enviarMenuPrincipal(fromPhone, nombreRest)
+      await enviarMenuPrincipal(fromPhone, nombreRest, supabase, restauranteId)
       return new Response('OK', { status: 200 })
     }
 
@@ -491,7 +730,7 @@ export async function handleRestaurantCommand(
     const numDigits = textBody.replace(/\D/g, '').length
     if (numDigits >= 10 && numDigits <= 15 && textBody.length <= 25) {
       const posibleTelefono = extract10Digits(textBody)
-      const { data: existeRapido } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${posibleTelefono}%`).maybeSingle()
+      const { data: existeRapido } = await supabase.from('clientes').select('id, nombre').eq('telefono', posibleTelefono).maybeSingle()
       
       let rows: any[] = []
       let tituloMensaje = ''
@@ -531,6 +770,67 @@ export async function handleRestaurantCommand(
 
   // 3. Fallback: Si no era un comando del portal B2B, dejamos que siga al flujo normal (AI/Pedidos)
   return null
+}
+
+// ── Botón Menú Restaurantes B2B (Solo admin, por si acaso) ───────────────────
+export async function handleAdminRestaurantMenu(supabase: any, fromPhone: string, from10: string, restIds: string[]) {
+  // logic ya movida a slash-commands
+}
+
+// ── Directorio para Clientes (Take App / Pedir) [DESACTIVADO] ──
+export async function enviarCatalogoRestaurantes(supabase: any, fromPhone: string) {
+  /*
+  const { extract10Digits } = await import('../_shared/utils.ts');
+  const tel10 = extract10Digits(fromPhone);
+
+  const [ { data: restaurantes, error }, { data: ultimoPedido } ] = await Promise.all([
+    supabase.from('restaurantes').select('id, nombre, descripcion_corta').eq('activo', true).limit(10),
+    supabase.from('pedidos').select('id, restaurante, descripcion').eq('cliente_tel', tel10).order('created_at', { ascending: false }).limit(1).maybeSingle()
+  ]);
+    
+  if (error || !restaurantes || restaurantes.length === 0) {
+    await sendWA(fromPhone, '😔 Lo sentimos, en este momento no tenemos restaurantes disponibles para pedir.')
+    return new Response('OK', { status: 200 })
+  }
+
+  const emojis = ['🌮', '🍔', '🍕', '🍣', '🥗', '🍗', '🍜', '🥪', '🍰', '🌭']
+  
+  const sections: any[] = [];
+  
+  if (ultimoPedido) {
+    const desc = ultimoPedido.descripcion.substring(0, 40) + (ultimoPedido.descripcion.length > 40 ? '...' : '');
+    sections.push({
+      title: 'Acción Rápida ⚡',
+      rows: [{
+        id: `REPETIR_PEDIDO_${ultimoPedido.id}`,
+        title: `🔄 Repetir Pedido`,
+        description: `De ${ultimoPedido.restaurante}: ${desc}`.substring(0, 72)
+      }]
+    });
+  }
+
+  sections.push({
+    title: 'Nuestros Favoritos ⭐',
+    rows: restaurantes.map((r: any, index: number) => {
+      const emoji = emojis[index % emojis.length]
+      return {
+        id: `CLIENT_REST_MENU_${r.id}`,
+        title: `${emoji} ${r.nombre}`,
+        description: r.descripcion_corta || 'Toca para ver el delicioso menú ✨'
+      }
+    })
+  });
+
+  await sendInteractiveList(
+    fromPhone,
+    '✨ *¡Es hora de comer rico!* 🤤\n\n¿De dónde tienes antojo hoy?\nToca el botón de abajo para explorar nuestras opciones. 🛵💨',
+    'Ver Opciones 🍽️',
+    sections
+  )
+  */
+  
+  await sendWA(fromPhone, '⚠️ La función de pedidos por WhatsApp está temporalmente desactivada. Este bot es exclusivo para nuestro programa de Lealtad y Recompensas ⭐.\n\nPara pedir un servicio, mándale mensaje directamente al número de Estrella: *963 153 9156* 📲 y ahí te atienden con gusto.')
+  return new Response('OK', { status: 200 })
 }
 
 // ── Handler para cuando el Restaurante envía una FOTO (escaner de QR) ────────────
@@ -599,7 +899,7 @@ export async function handleRestaurantPhoto(
     console.log(`[QR_SCAN] Teléfono detectado del QR: ${cTel}`)
 
     // 5. Verificar que el cliente existe
-    const { data: cliente } = await supabase.from('clientes').select('nombre, acepta_terminos').ilike('telefono', `%${cTel}%`).maybeSingle()
+    const { data: cliente } = await supabase.from('clientes').select('nombre, acepta_terminos').eq('telefono', cTel).maybeSingle()
     const nombreCliente = cliente?.nombre || cTel
 
     // 6. Mostrar menú rápido igual que si hubieran mandado el número

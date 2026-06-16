@@ -16,7 +16,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen>
     with SingleTickerProviderStateMixin {
-  final _emailCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   bool _loading = false;
   bool _obscure = true;
@@ -28,14 +28,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   @override
   void initState() {
     super.initState();
-    // Fade + slide-up on entry
     _animCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
     _slideAnim = Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero)
         .animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
     _animCtrl.forward();
 
-    // Transparent status bar for the full-bleed background
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
@@ -45,30 +43,187 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   @override
   void dispose() {
     _animCtrl.dispose();
-    _emailCtrl.dispose();
+    _phoneCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();
   }
 
+  String _cleanPhone(String p) => p.replaceAll(RegExp(r'\D'), '');
+
   Future<void> _login() async {
     setState(() { _loading = true; _error = null; });
     try {
-      String emailText = _emailCtrl.text.trim();
-      if (!emailText.contains('@')) {
-        emailText = '$emailText@repartidor.com';
+      final phone = _cleanPhone(_phoneCtrl.text);
+      if (phone.length < 10) throw Exception('Ingresa un teléfono válido de 10 dígitos.');
+      if (_passCtrl.text.isEmpty) throw Exception('Ingresa tu contraseña.');
+
+      // Al no saber si es admin o repartidor en el momento, intentamos primero admin.com y luego repartidor.com.
+      // O mucho mejor, dejamos que Supabase nos diga si está mal la clave. 
+      // Si usábamos correos, tenemos que intentar ambas o averiguar el dominio primero.
+      // Vamos a intentar con @repartidor.com y si falla por Invalid Credentials, intentamos con @admin.com.
+      
+      AuthResponse? res;
+      final pass = _passCtrl.text.trim();
+      final repFuture = Supabase.instance.client.auth.signInWithPassword(email: '$phone@repartidor.com', password: pass);
+      final adminFuture = Supabase.instance.client.auth.signInWithPassword(email: '$phone@admin.com', password: pass);
+      
+      AuthResponse? repRes;
+      AuthResponse? adminRes;
+      
+      await Future.wait([
+        repFuture.then((r) => repRes = r).catchError((_) => null),
+        adminFuture.then((r) => adminRes = r).catchError((_) => null),
+      ]);
+
+      res = repRes ?? adminRes;
+      if (res == null) {
+        throw const AuthException('Credenciales inválidas o usuario no encontrado.');
       }
-      await Supabase.instance.client.auth.signInWithPassword(
-        email: emailText,
-        password: _passCtrl.text.trim(),
-      );
+
       ref.invalidate(isAdminProvider);
       ref.invalidate(myRepartidorIdProvider);
       if (mounted) context.go('/dashboard');
-    } on AuthException catch (e) {
-      setState(() => _error = e.message);
+    } catch (e) {
+      if (e is AuthException) {
+        setState(() => _error = 'Credenciales inválidas o usuario no encontrado.');
+      } else {
+        setState(() => _error = e.toString().replaceAll('Exception: ', ''));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  // ── FLUJO OTP ──────────────────────────────────────────────────
+  Future<void> _iniciarFlujoOtp() async {
+    final phone = _cleanPhone(_phoneCtrl.text);
+    if (phone.length < 10) {
+      setState(() => _error = 'Escribe tu número a 10 dígitos arriba para pedir el código.');
+      return;
+    }
+
+    setState(() { _loading = true; _error = null; });
+    try {
+      final res = await Supabase.instance.client.functions.invoke(
+        'auth-otp',
+        body: {'action': 'request', 'telefono': phone},
+      );
+      // Supabase lanza una excepción si hay error HTTP, por lo que si llega aquí, fue exitoso.
+
+      if (!mounted) return;
+      // Modal OTP
+      _mostrarModalOtp(phone);
+    } catch (e) {
+      print('OTP Error: $e');
+      setState(() => _error = 'No se pudo generar código. Error interno: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _mostrarModalOtp(String phone) {
+    final codeCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('🔐 Código de Seguridad'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Te hemos enviado un código de 6 dígitos por WhatsApp. Ingrésalo aquí:'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: codeCtrl,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 24, letterSpacing: 8, fontWeight: FontWeight.bold),
+              decoration: const InputDecoration(counterText: ''),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () {
+              final codigo = codeCtrl.text.trim();
+              if (codigo.length == 6) {
+                Navigator.pop(ctx);
+                _mostrarModalNuevaPassword(phone, codigo);
+              }
+            },
+            child: const Text('Verificar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _mostrarModalNuevaPassword(String phone, String codigo) {
+    final passCtrl = TextEditingController();
+    bool localLoading = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          return AlertDialog(
+            title: const Text('🔑 Nueva Contraseña'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('El código es correcto. Crea una contraseña segura para tus futuros ingresos:'),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: passCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Nueva Contraseña'),
+                ),
+              ],
+            ),
+            actions: [
+              if (localLoading) const CircularProgressIndicator(),
+              if (!localLoading)
+                ElevatedButton(
+                  onPressed: () async {
+                    if (passCtrl.text.length < 6) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mínimo 6 caracteres')));
+                      return;
+                    }
+                    setModalState(() => localLoading = true);
+                    try {
+                      final res = await Supabase.instance.client.functions.invoke(
+                        'auth-otp',
+                        body: {
+                          'action': 'set-password',
+                          'telefono': phone,
+                          'codigo': codigo,
+                          'nuevaPassword': passCtrl.text
+                        },
+                      );
+                      
+                      // Auto login
+                      final email = res.data['email'];
+                      await Supabase.instance.client.auth.signInWithPassword(email: email, password: passCtrl.text);
+                      
+                      if (mounted) {
+                        Navigator.pop(ctx);
+                        context.go('/dashboard');
+                      }
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                      setModalState(() => localLoading = false);
+                    }
+                  },
+                  child: const Text('Guardar y Entrar'),
+                ),
+            ],
+          );
+        }
+      ),
+    );
   }
 
   @override
@@ -79,7 +234,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Stack(
         children: [
-          // ── Ambient background glow ─────────────────────────────────
           Positioned(
             top: -size.height * 0.15,
             left: -80,
@@ -90,7 +244,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             right: -120,
             child: _GlowCircle(color: Theme.of(context).colorScheme.secondary.withOpacity(0.10), size: 300),
           ),
-          // ── Main content ────────────────────────────────────────────
           SafeArea(
             child: FadeTransition(
               opacity: _fadeAnim,
@@ -102,11 +255,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // ── Logo Icon ──────────────────────────────────
                         _LogoIcon(),
-                        SizedBox(height: 28),
+                        const SizedBox(height: 28),
 
-                        // ── Brand Name ─────────────────────────────────
                         Text(
                           'Estrella Delivery',
                           style: TextStyle(
@@ -116,7 +267,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             letterSpacing: -0.8,
                           ),
                         ),
-                        SizedBox(height: 6),
+                        const SizedBox(height: 6),
                         Text(
                           'Panel Logístico',
                           style: TextStyle(
@@ -126,23 +277,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             letterSpacing: 0.5,
                           ),
                         ),
-                        SizedBox(height: 44),
+                        const SizedBox(height: 44),
 
-                        // ── Login Card (Glassmorphism) ──────────────────
                         _LoginCard(
-                          emailCtrl: _emailCtrl,
+                          phoneCtrl: _phoneCtrl,
                           passCtrl: _passCtrl,
                           obscure: _obscure,
                           loading: _loading,
                           error: _error,
                           onToggleObscure: () => setState(() => _obscure = !_obscure),
                           onLogin: _login,
+                          onOtpRequest: _iniciarFlujoOtp,
                         ),
-                        SizedBox(height: 40),
+                        const SizedBox(height: 40),
 
-                        // ── Footer ─────────────────────────────────────
                         Text(
-                          'Estrella Delivery © 2025',
+                          'Estrella Delivery © 2026',
                           style: TextStyle(
                             fontSize: 12,
                             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
@@ -161,7 +311,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 }
 
-// ── Ambient Glow Helper ────────────────────────────────────────────────────────
 class _GlowCircle extends StatelessWidget {
   final Color color;
   final double size;
@@ -181,7 +330,6 @@ class _GlowCircle extends StatelessWidget {
   );
 }
 
-// ── Star Logo ──────────────────────────────────────────────────────────────────
 class _LogoIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -205,29 +353,30 @@ class _LogoIcon extends StatelessWidget {
           ),
         ],
       ),
-      child: Icon(Icons.local_shipping_rounded, color: Colors.white, size: 52),
+      child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 52),
     );
   }
 }
 
-// ── Glassmorphism Login Card ───────────────────────────────────────────────────
 class _LoginCard extends StatelessWidget {
-  final TextEditingController emailCtrl;
+  final TextEditingController phoneCtrl;
   final TextEditingController passCtrl;
   final bool obscure;
   final bool loading;
   final String? error;
   final VoidCallback onToggleObscure;
   final VoidCallback onLogin;
+  final VoidCallback onOtpRequest;
 
   const _LoginCard({
-    required this.emailCtrl,
+    required this.phoneCtrl,
     required this.passCtrl,
     required this.obscure,
     required this.loading,
     required this.error,
     required this.onToggleObscure,
     required this.onLogin,
+    required this.onOtpRequest,
   });
 
   @override
@@ -249,19 +398,17 @@ class _LoginCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Email
           TextField(
-            controller: emailCtrl,
-            keyboardType: TextInputType.emailAddress,
+            controller: phoneCtrl,
+            keyboardType: TextInputType.phone,
             textInputAction: TextInputAction.next,
             style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
             decoration: const InputDecoration(
-              labelText: 'Correo electrónico',
-              prefixIcon: Icon(Icons.email_outlined),
+              labelText: 'Número de Teléfono',
+              prefixIcon: Icon(Icons.phone_iphone_rounded),
             ),
           ),
-          SizedBox(height: 16),
-          // Password
+          const SizedBox(height: 16),
           TextField(
             controller: passCtrl,
             obscureText: obscure,
@@ -270,7 +417,7 @@ class _LoginCard extends StatelessWidget {
             style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
             decoration: InputDecoration(
               labelText: 'Contraseña',
-              prefixIcon: Icon(Icons.lock_outline_rounded),
+              prefixIcon: const Icon(Icons.lock_outline_rounded),
               suffixIcon: IconButton(
                 icon: Icon(
                   obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
@@ -280,9 +427,8 @@ class _LoginCard extends StatelessWidget {
               ),
             ),
           ),
-          // Error banner
           if (error != null) ...[
-            SizedBox(height: 14),
+            const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
@@ -293,7 +439,7 @@ class _LoginCard extends StatelessWidget {
               child: Row(
                 children: [
                   Icon(Icons.error_outline_rounded, color: Theme.of(context).colorScheme.error, size: 18),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       error!,
@@ -304,16 +450,20 @@ class _LoginCard extends StatelessWidget {
               ),
             ),
           ],
-          SizedBox(height: 24),
-          // CTA Button with gradient
+          const SizedBox(height: 24),
           _GradientButton(onPressed: loading ? null : onLogin, loading: loading),
+          
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: loading ? null : onOtpRequest,
+            child: const Text('¿Sin contraseña? Generar PIN por WhatsApp'),
+          ),
         ],
       ),
     );
   }
 }
 
-// ── Gradient Button ────────────────────────────────────────────────────────────
 class _GradientButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool loading;
@@ -336,11 +486,11 @@ class _GradientButton extends StatelessWidget {
         ),
         child: Center(
           child: loading
-              ? SizedBox(
+              ? const SizedBox(
                   width: 22, height: 22,
                   child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                 )
-              : Text(
+              : const Text(
                   'Iniciar Sesión',
                   style: TextStyle(
                     color: Colors.white,

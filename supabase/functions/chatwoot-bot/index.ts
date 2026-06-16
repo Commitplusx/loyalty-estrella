@@ -6,7 +6,7 @@
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { extract10Digits, generateCloudinaryVIPCard } from '../_shared/utils.ts'
+import { extract10Digits, generateCloudinaryVIPCard, fetchWithTimeout } from '../_shared/utils.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -59,11 +59,11 @@ async function replyChat(accountId: number, convId: number, content: string, isP
   const url = `${CHATWOOT_BASE_URL}/api/v1/accounts/${accountId}/conversations/${convId}/messages`
   console.log(`[Chatwoot] Intentando POST a: ${url}`)
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'api_access_token': CHATWOOT_BOT_TOKEN, 'Content-Type': 'application/json' },
       body: JSON.stringify({ content, message_type: 'outgoing', private: isPrivate }),
-    })
+    }, 10000)
     if (!res.ok) console.error(`[Chatwoot] Error replyChat (${res.status}):`, await res.text())
   } catch (e) {
     console.error('[Chatwoot] Fatal replyChat:', e)
@@ -74,11 +74,11 @@ async function replyChat(accountId: number, convId: number, content: string, isP
 async function labelConversation(accountId: number, convId: number, labels: string[]): Promise<void> {
   const url = `${CHATWOOT_BASE_URL}/api/v1/accounts/${accountId}/conversations/${convId}/labels`
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'api_access_token': CHATWOOT_BOT_TOKEN, 'Content-Type': 'application/json' },
       body: JSON.stringify({ labels }),
-    })
+    }, 10000)
     if (!res.ok) console.error(`[Chatwoot] Error labelConv (${res.status}):`, await res.text())
   } catch (_) { /* silencioso */ }
 }
@@ -87,11 +87,11 @@ async function updateContactAttributes(accountId: number, contactId: number, att
   const url = `${CHATWOOT_BASE_URL}/api/v1/accounts/${accountId}/contacts/${contactId}`
   console.log(`[CW Sync] Enviando PUT a ${url} con:`, JSON.stringify(attributes))
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'PUT',
       headers: { 'api_access_token': CHATWOOT_API_TOKEN, 'Content-Type': 'application/json' },
       body: JSON.stringify({ custom_attributes: attributes }),
-    })
+    }, 10000)
     const resText = await res.text()
     if (!res.ok) {
       console.error(`[CW Sync] Error PUT Atributos (${res.status}):`, resText)
@@ -106,9 +106,9 @@ async function findContactIdByPhone(accountId: number, phone: string): Promise<n
   const url = `${CHATWOOT_BASE_URL}/api/v1/accounts/${accountId}/contacts/search?q=${p10}`
   console.log(`[CW Sync] Buscando contacto en API: ${url}`)
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { 'api_access_token': CHATWOOT_API_TOKEN },
-    })
+    }, 10000)
     const data = await res.json()
     const id = data.payload?.[0]?.id || null
     console.log(`[CW Sync] Resultado búsqueda API: ${id ? `ID ${id}` : 'No encontrado'}`)
@@ -128,7 +128,7 @@ async function syncProfileToAttributes(supabase: Supa, accountId: number, contac
 
   const { data: c, error } = await supabase.from('clientes')
     .select('puntos, es_vip, saldo_billetera, reputacion')
-    .ilike('telefono', `%${p10}%`).limit(1).maybeSingle()
+    .eq('telefono', p10).limit(1).maybeSingle()
 
   if (error) console.error(`[CW Sync] Error DB:`, error)
   if (!c) {
@@ -148,8 +148,8 @@ async function syncProfileToAttributes(supabase: Supa, accountId: number, contac
   // 3. Sincronizar Etiquetas de Rol
   let roleLabel = 'cliente'
   const [resRep, resRest] = await Promise.all([
-    supabase.from('repartidores').select('id').ilike('telefono', `%${p10}%`).limit(1).maybeSingle(),
-    supabase.from('restaurantes').select('id').ilike('telefono', `%${p10}%`).limit(1).maybeSingle()
+    supabase.from('repartidores').select('id').eq('telefono', p10).limit(1).maybeSingle(),
+    supabase.from('restaurantes').select('id').eq('telefono', p10).limit(1).maybeSingle()
   ])
   if (resRep.data) roleLabel = 'repartidor'
   else if (resRest.data) roleLabel = 'restaurante'
@@ -163,7 +163,7 @@ async function sendWA(to: string, text: string): Promise<void> {
   if (!WA_TOKEN || !WA_PHONE_ID) return
   const url = `https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`
   try {
-    await fetch(url, {
+    await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -219,7 +219,7 @@ async function crearPedido(supabase: Supa, datos: any): Promise<{ ok: boolean; p
     if (cache?.lng_frecuente) insert.lng = cache.lng_frecuente
     if (rep?.user_id) insert.repartidor_id = rep.user_id
 
-    const { data: row, error } = await supabase.from('pedidos').insert(insert).select('id').single()
+    const { data: row, error } = await supabase.from('pedidos').insert(insert).select('id').maybeSingle()
     if (error) throw error
 
     if (rep?.telefono) {
@@ -340,17 +340,13 @@ async function callAI(
 
   let res: Response
   try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 12000)
-    res = await fetch('https://api.deepseek.com/chat/completions', {
+    res = await fetchWithTimeout('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${DEEPSEEK_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: 'deepseek-chat', response_format: { type: 'json_object' }, messages, max_tokens: 2048, temperature: 0.0 }),
-      signal: controller.signal,
-    })
-    clearTimeout(timeout)
+    }, 20000)  // 20s timeout for AI processing
   } catch (e: any) {
-    return { error: e.name === 'AbortError' ? 'DeepSeek no respondió a tiempo.' : String(e) }
+    return { error: e.message?.includes('timeout') ? 'DeepSeek no respondió a tiempo.' : String(e) }
   }
 
   if (!res.ok) return { error: `DeepSeek HTTP ${res.status}` }
@@ -440,7 +436,7 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
     }
 
     case 'BUSCAR_CLIENTE': {
-      const { data: c } = await supabase.from('clientes').select('*').ilike('telefono', `%${d10(d.clienteTel)}%`).limit(1).maybeSingle()
+      const { data: c } = await supabase.from('clientes').select('*').eq('telefono', d10(d.clienteTel)).limit(1).maybeSingle()
       if (c) {
         const msg = `🔍 *CLIENTE ENCONTRADO*\n───────────────────\n\n👤 *${c.nombre || 'Sin nombre'}*\n📱 \`${c.telefono}\`\n⭐ Puntos: *${c.puntos}*\n🏆 VIP: ${c.es_vip ? '✅ Sí' : '❌ No'}\n🏅 Ranking: ${c.ranking_nivel || '-'}\n📝 Nota CRM: ${c.notas_crm || '_Sin notas_'}\n💳 Saldo: $${c.saldo_billetera || 0}\n📊 Rep: ${c.reputacion || '-'}`
         await replyChat(accountId, convId, msg)
@@ -466,7 +462,7 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
 
     case 'SUMAR_PUNTOS': {
       const tel10 = d10(d.clienteTel)
-      const { data: c } = await supabase.from('clientes').select('id, puntos, nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      const { data: c } = await supabase.from('clientes').select('id, puntos, nombre').eq('telefono', tel10).limit(1).maybeSingle()
       if (c) {
         const cant = Number(d.puntosASumar) || 1
         let lastRes: any = null
@@ -495,7 +491,7 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
     case 'AGREGAR_CLIENTE': {
       const tel10 = d10(d.clienteTel)
       const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
-      const { data: existente } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      const { data: existente } = await supabase.from('clientes').select('id, nombre').eq('telefono', tel10).limit(1).maybeSingle()
       if (existente) {
         await supabase.from('clientes').update({ nombre: d.clienteNombre || existente.nombre, qr_code: loyaltyUrl }).eq('id', existente.id)
         await replyChat(accountId, convId, `ℹ️ Cliente *${existente.nombre}* ya existía. Datos actualizados.\n🔗 ${loyaltyUrl}`)
@@ -515,7 +511,7 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
 
     case 'CANCELAR_PEDIDO': {
       const tel10 = d10(d.clienteTel)
-      const { data: peds } = await supabase.from('pedidos').select('id, descripcion').ilike('cliente_tel', `%${tel10}%`).in('estado', ['asignado', 'recibido']).order('created_at', { ascending: false })
+      const { data: peds } = await supabase.from('pedidos').select('id, descripcion').eq('cliente_tel', tel10).in('estado', ['asignado', 'recibido']).order('created_at', { ascending: false })
       if (peds?.length) {
         await supabase.from('pedidos').update({ estado: 'cancelado' }).in('id', peds.map((p: any) => p.id))
         await replyChat(accountId, convId, `❌ *Cancelado*\n${peds.length} pedido(s) de \`${tel10}\`\n📦 _${peds[0].descripcion?.slice(0, 60)}_`)
@@ -526,7 +522,7 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
     }
 
     case 'REASIGNAR_PEDIDO': {
-      const { data: peds } = await supabase.from('pedidos').select('id').ilike('cliente_tel', `%${d10(d.clienteTel)}%`).in('estado', ['asignado', 'recibido']).order('created_at', { ascending: false })
+      const { data: peds } = await supabase.from('pedidos').select('id').eq('cliente_tel', d10(d.clienteTel)).in('estado', ['asignado', 'recibido']).order('created_at', { ascending: false })
       const rep = await buscarRepartidor(supabase, d.repartidorAlias)
       if (peds?.length && rep) {
         await supabase.from('pedidos').update({ repartidor_id: rep.user_id }).in('id', peds.map((p: any) => p.id))
@@ -541,7 +537,7 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
     }
 
     case 'AGREGAR_NOTA_CLIENTE': {
-      const { data: cli } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${d10(d.clienteTel)}%`).limit(1).maybeSingle()
+      const { data: cli } = await supabase.from('clientes').select('id, nombre').eq('telefono', d10(d.clienteTel)).limit(1).maybeSingle()
       if (cli) {
         await supabase.from('clientes').update({ notas_crm: d.descripcion }).eq('id', cli.id)
         await replyChat(accountId, convId, `📝 *Nota guardada*\n\n👤 ${cli.nombre || d.clienteTel}\n_"${d.descripcion}"_`)
@@ -552,7 +548,7 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
     }
 
     case 'MARCAR_VIP': {
-      const { data: cli } = await supabase.from('clientes').select('id, nombre, es_vip').ilike('telefono', `%${d10(d.clienteTel)}%`).limit(1).maybeSingle()
+      const { data: cli } = await supabase.from('clientes').select('id, nombre, es_vip').eq('telefono', d10(d.clienteTel)).limit(1).maybeSingle()
       if (cli) {
         await supabase.from('clientes').update({ es_vip: !cli.es_vip }).eq('id', cli.id)
         await replyChat(accountId, convId, `⭐ *${cli.nombre || d.clienteTel}* → ${!cli.es_vip ? 'Ahora es VIP ✅' : 'Ya no es VIP ❌'}`)
@@ -560,7 +556,7 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
         // Si lo acaba de hacer VIP, le mandamos su nueva tarjeta por WhatsApp
         if (!cli.es_vip) {
           try {
-            const { data: cInfo } = await supabase.from('clientes').select('nombre, puntos, saldo_billetera, telefono').eq('id', cli.id).single()
+            const { data: cInfo } = await supabase.from('clientes').select('nombre, puntos, saldo_billetera, telefono').eq('id', cli.id).maybeSingle()
             if (cInfo) {
               const { sendWA } = await import('../whatsapp-bot/whatsapp.ts')
               const qrCode = generateCloudinaryVIPCard(cInfo.telefono, cInfo.nombre || 'Cliente VIP', cInfo.puntos, cInfo.saldo_billetera || 0, true)
@@ -577,7 +573,7 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
     }
 
     case 'VER_HISTORIAL_CLIENTE': {
-      const { data: hist } = await supabase.from('pedidos').select('descripcion, estado, created_at').ilike('cliente_tel', `%${d10(d.clienteTel)}%`).order('created_at', { ascending: false }).limit(7)
+      const { data: hist } = await supabase.from('pedidos').select('descripcion, estado, created_at').eq('cliente_tel', d10(d.clienteTel)).order('created_at', { ascending: false }).limit(7)
       if (hist?.length) {
         let msg = `📄 *HISTORIAL* \`${d.clienteTel}\`\n───────────────────\n\n`
         hist.forEach((h: any) => {
@@ -736,7 +732,7 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
 
     case 'CARGAR_SALDO': {
       const tel10 = d10(d.clienteTel)
-      const { data: cli } = await supabase.from('clientes').select('id, nombre, saldo_billetera').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      const { data: cli } = await supabase.from('clientes').select('id, nombre, saldo_billetera').eq('telefono', tel10).limit(1).maybeSingle()
       if (cli) {
         const ns = (parseFloat(cli.saldo_billetera) || 0) + (d.montoSaldo || 0)
         await supabase.from('clientes').update({ saldo_billetera: ns }).eq('id', cli.id)
@@ -769,7 +765,7 @@ async function executeAction(supabase: Supa, accountId: number, convId: number, 
       const tel10 = d10(d.clienteTel)
       const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
       const qrUrl = generateCloudinaryVIPCard(tel10, d.clienteNombre || existente.nombre, existente.puntos, existente.saldo_billetera || 0, existente.es_vip || false)
-      const { data: cli } = await supabase.from('clientes').select('nombre, puntos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      const { data: cli } = await supabase.from('clientes').select('nombre, puntos').eq('telefono', tel10).limit(1).maybeSingle()
       await replyChat(accountId, convId, `📱 *QR de Lealtad*\n\n👤 ${cli?.nombre || tel10}\n🌟 ${cli?.puntos || 0} pts\n🔗 ${loyaltyUrl}\n🖼️ QR: ${qrUrl}\n\n_Para enviar al cliente directamente, usa el bot de WhatsApp._`)
       break
     }

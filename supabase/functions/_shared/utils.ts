@@ -110,3 +110,150 @@ export async function logError(
   }
 }
 
+/**
+ * Fetch wrapper con timeout automático para prevenir cuelgues
+ * @param url - URL a fetchear
+ * @param options - Opciones fetch (method, headers, body, etc)
+ * @param timeoutMs - Timeout en milisegundos (default: 15000ms = 15s)
+ * @returns Response o throw error si timeout
+ */
+export async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = 15000
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(`Request timeout after ${timeoutMs}ms to ${url}`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Manejo robusto de idempotencia para mensajes de webhook
+ * Estados: "processing" → "completed" | "failed" (no marked)
+ * Previene procesamiento duplicado con stale lock cleanup (5 min)
+ * 
+ * @param supabase - Cliente Supabase
+ * @param messageId - ID único del mensaje (webhook)
+ * @returns { isDuplicate, shouldProcess } - Si es duplicado o debe procesarse
+ */
+export async function checkAndMarkProcessing(
+  supabase: any,
+  messageId: string
+): Promise<{ isDuplicate: boolean; shouldProcess: boolean }> {
+  const staleTimeMs = 5 * 60 * 1000; // 5 minutos
+  const nowMs = Date.now();
+  const statusKey = `msg_status:${messageId}`;
+
+  // Buscar estado actual
+  const { data: existing } = await supabase
+    .from('bot_memory')
+    .select('history, updated_at')
+    .eq('phone', statusKey)
+    .maybeSingle();
+
+  if (existing) {
+    const status = existing.history?.[0];
+    const updatedAtMs = new Date(existing.updated_at).getTime();
+    const ageMs = nowMs - updatedAtMs;
+
+    // Si está "completed" → es duplicado seguro
+    if (status?.state === 'completed') {
+      return { isDuplicate: true, shouldProcess: false };
+    }
+
+    // Si está "processing" y es reciente (< 5min) → es duplicado
+    if (status?.state === 'processing' && ageMs < staleTimeMs) {
+      return { isDuplicate: true, shouldProcess: false };
+    }
+
+    // Si está "processing" pero stale (> 5min) → permitir reprocesar
+    if (status?.state === 'processing' && ageMs >= staleTimeMs) {
+      // Limpiar stale lock
+      await supabase.from('bot_memory').delete().eq('phone', statusKey);
+      // Marcar como nuevo
+      await supabase.from('bot_memory').insert({
+        phone: statusKey,
+        history: [{ state: 'processing', startedAt: new Date().toISOString() }],
+        updated_at: new Date().toISOString(),
+      });
+      return { isDuplicate: false, shouldProcess: true };
+    }
+  } else {
+    // Primera vez: marcar como "processing"
+    try {
+      await supabase.from('bot_memory').insert({
+        phone: statusKey,
+        history: [{ state: 'processing', startedAt: new Date().toISOString() }],
+        updated_at: new Date().toISOString(),
+      });
+      return { isDuplicate: false, shouldProcess: true };
+    } catch (e: any) {
+      // Si falla insert (duplicate key), es un race condition
+      if (e.code === '23505' || e.message?.includes('duplicate key')) {
+        return { isDuplicate: true, shouldProcess: false };
+      }
+      throw e;
+    }
+  }
+
+  return { isDuplicate: false, shouldProcess: true };
+}
+
+/**
+ * Marca un mensaje como completamente procesado
+ * @param supabase - Cliente Supabase
+ * @param messageId - ID único del mensaje
+ */
+export async function markProcessingComplete(supabase: any, messageId: string): Promise<void> {
+  const statusKey = `msg_status:${messageId}`;
+  await supabase.from('bot_memory').upsert({
+    phone: statusKey,
+    history: [{ state: 'completed', completedAt: new Date().toISOString() }],
+    updated_at: new Date().toISOString(),
+  });
+}
+
+export function normalizarAbreviaturas(texto: string): string {
+  if (!texto) return "";
+  let norm = texto.toLowerCase();
+  norm = norm.replace(/\b1(?:ra|er)\b/g, "primera");
+  norm = norm.replace(/\b2(?:da|do)\b/g, "segunda");
+  norm = norm.replace(/\b3(?:ra|er)\b/g, "tercera");
+  norm = norm.replace(/\b4(?:ta|to)\b/g, "cuarta");
+  norm = norm.replace(/\b5(?:ta|to)\b/g, "quinta");
+  norm = norm.replace(/\b6(?:ta|to)\b/g, "sexta");
+  norm = norm.replace(/\b7(?:ma|mo)\b/g, "septima");
+  norm = norm.replace(/\b8(?:va|vo)\b/g, "octava");
+  norm = norm.replace(/\b9(?:na|no)\b/g, "novena");
+  norm = norm.replace(/\b10(?:ma|mo)\b/g, "decima");
+  norm = norm.replace(/\b11(?:va|vo)\b/g, "onceava");
+  norm = norm.replace(/\b12(?:va|vo)\b/g, "doceava");
+  norm = norm.replace(/\bav\b/g, "avenida");
+  norm = norm.replace(/\bnte\b/g, "norte");
+  norm = norm.replace(/\bsur\b/g, "sur"); // redundante pero bueno
+  norm = norm.replace(/\bote\b/g, "oriente");
+  norm = norm.replace(/\bpte\b/g, "poniente");
+  norm = norm.replace(/\bblvd\b/g, "bulevar");
+  norm = norm.replace(/\bfracc\b/g, "fraccionamiento");
+  norm = norm.replace(/\bcol\b/g, "colonia");
+  norm = norm.replace(/\bbarr\b/g, "barrio");
+  norm = norm.replace(/\bprol\b/g, "prolongacion");
+  norm = norm.replace(/\blib\b/g, "libramiento");
+  norm = norm.replace(/\bctra\b/g, "carretera");
+  norm = norm.replace(/\bcarr\b/g, "carretera");
+  return norm.trim();
+}

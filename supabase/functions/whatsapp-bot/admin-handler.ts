@@ -95,7 +95,7 @@ export async function handleAdminAssignRest(
       estado: 'asignado',
       lat: finalLat,
       lng: finalLng
-    }).select('id').single()
+    }).select('id').maybeSingle()
 
     if (pedErr || !nuevo) {
       resumen += `${idx + 1}️⃣ ❌ Error guardando: ${pedErr?.message}\n`; errores++
@@ -165,15 +165,15 @@ export async function executeAdminAction(
         break
       }
 
-      let msg = '📍 *RESTAURANTES ASOCIADOS*\n'
-      msg += '───────────────────\n\n'
+      let msg = '📊 *REPORTE DE RESTAURANTES B2B*\n'
+      msg += '═════════════════════════\n\n'
       locals.forEach((l: any, i: number) => {
-        msg += `${i + 1}️⃣ *${l.nombre.toUpperCase()}*\n`
-        msg += l.telefono ? `📞 \`52${extract10Digits(l.telefono)}\`\n` : '📞 _Sin teléfono_\n'
+        msg += `🏪 *${l.nombre.toUpperCase()}*\n`
+        msg += l.telefono ? `   📞 \`52${extract10Digits(l.telefono)}\`\n` : '   📞 _Sin teléfono_\n'
         msg += '\n'
       })
-      msg += '───────────────────\n'
-      msg += '_Para ver la ubicación de uno, escribe: "Mapa de [Nombre]"_'
+      msg += '═════════════════════════\n'
+      msg += '💡 _Tip: Para ver la ubicación de uno, escribe: "Mapa de [Nombre]"_'
       await sendWA(fromPhone, msg)
       break
     }
@@ -186,21 +186,22 @@ export async function executeAdminAction(
         break
       }
 
-      let msg = '🏆 *RANKING VIP (Top 10)*\n'
-      msg += '───────────────────\n\n'
+      let msg = '🏆 *RANKING TOP 10 VIP*\n'
+      msg += '═════════════════════════\n\n'
       vips.forEach((v: any, i: number) => {
         const icon = v.es_vip ? '⭐' : '👤'
-        msg += `${i + 1}️⃣ ${icon} *${v.nombre?.toUpperCase() || 'SIN NOMBRE'}*\n`
-        msg += `   🌟 ${v.puntos} pts | \`${extract10Digits(v.telefono)}\`\n\n`
+        const ranking = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `*#${i + 1}*`
+        msg += `${ranking} ${icon} *${v.nombre?.toUpperCase() || 'SIN NOMBRE'}*\n`
+        msg += `   🌟 ${v.puntos} pts | 📱 \`${extract10Digits(v.telefono)}\`\n\n`
       })
-      msg += '───────────────────\n'
-      msg += '_Para buscar a uno específico: "Resumen de [Teléfono]"_'
+      msg += '═════════════════════════\n'
+      msg += '💡 _Tip: Para buscar a alguien específico usa: "Resumen de [Teléfono]"_'
       await sendWA(fromPhone, msg)
       break
     }
     case 'SUMAR_PUNTOS': {
       const tel10 = extract10Digits(d.clienteTel)
-      const { data: c } = await supabase.from('clientes').select('id, puntos, acepta_terminos, nombre, rango, es_vip').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      const { data: c } = await supabase.from('clientes').select('id, puntos, acepta_terminos, nombre, rango, es_vip').eq('telefono', tel10).limit(1).maybeSingle()
 
       if (c) {
         if (c.acepta_terminos === false) {
@@ -282,13 +283,25 @@ export async function executeAdminAction(
           console.error(`[SUMAR_PUNTOS] Template error:`, ptsResult.error)
           await sendWA(fromPhone, `⚠️ Los puntos se sumaron correctamente, pero Meta rechazó el envío de la plantilla al cliente.\n\n*Error de Meta:*\n_${ptsResult.error}_`)
         }
-      } else { await sendWA(fromPhone, `🤖 Cliente no encontrado.`) }
+      } else {
+        // Cliente no encontrado: ofrecer registrarlo en loyalty
+        await sendWA(fromPhone,
+          `❌ El número *${tel10}* no está registrado en el sistema.\n\n¿Deseas registrarlo ahora?\n\n📝 Escribe su *nombre completo* para iniciar el registro, o escribe *cancelar* para salir.`
+        )
+        // Guardar estado de wizard para el siguiente paso
+        const adminFrom10 = extract10Digits(fromPhone)
+        await supabase.from('bot_memory').upsert({
+          phone: `admin_action_state_${adminFrom10}`,
+          history: [{ action: 'LOYALTY_STEP_NOMBRE', tel: tel10 }],
+          updated_at: new Date().toISOString()
+        })
+      }
       await limpiarMemoria(supabase, fromPhone)
       return new Response('OK', { status: 200 })
     }
     case 'ENVIAR_QR': {
       const tel10 = extract10Digits(d.clienteTel)
-      const { data: cli } = await supabase.from('clientes').select('nombre, puntos, acepta_terminos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      const { data: cli } = await supabase.from('clientes').select('nombre, puntos, acepta_terminos').eq('telefono', tel10).limit(1).maybeSingle()
 
       if (cli && cli.acepta_terminos === false) {
         await sendWATemplate(`52${tel10}`, 'estrella_terminos_condiciones', [cli.nombre || 'Cliente'])
@@ -317,7 +330,7 @@ export async function executeAdminAction(
     }
     case 'ENVIAR_TERMINOS': {
       const tel10 = extract10Digits(d.clienteTel)
-      const { data: cli } = await supabase.from('clientes').select('nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      const { data: cli } = await supabase.from('clientes').select('nombre').eq('telefono', tel10).limit(1).maybeSingle()
       if (!cli) {
         await sendWA(fromPhone, `⚠️ El cliente *${tel10}* no está registrado.\nRegístralo primero con "Agregar cliente" antes de enviar los términos, de lo contrario la aceptación se perdería.`)
         break
@@ -336,7 +349,7 @@ export async function executeAdminAction(
     }
     case 'BUSCAR_CLIENTE': {
       const tel10 = extract10Digits(d.clienteTel)
-      const { data: c } = await supabase.from('clientes').select('*').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      const { data: c } = await supabase.from('clientes').select('*').eq('telefono', tel10).limit(1).maybeSingle()
       if (c) {
         const repIcon = c.reputacion === 'excelente' ? '🌟' : c.reputacion === 'bueno' ? '👍' : c.reputacion === 'malo' ? '⚠️' : '➖'
         let msg = `🔍 *FICHA DE CLIENTE*\n───────────────────\n`
@@ -423,7 +436,7 @@ export async function executeAdminAction(
       // 1. Verificar si ya existe
       // URL canónica que identifica al cliente en la Web y se almacena en DB
       const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
-      const { data: existente } = await supabase.from('clientes').select('id, nombre, acepta_terminos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      const { data: existente } = await supabase.from('clientes').select('id, nombre, acepta_terminos').eq('telefono', tel10).limit(1).maybeSingle()
 
       let clientId = existente?.id
       let yaAceptoTerminos = existente?.acepta_terminos === true
@@ -444,7 +457,7 @@ export async function executeAdminAction(
           puntos: 0,
           acepta_terminos: false,
           qr_code: loyaltyUrl
-        }).select().single()
+        }).select().maybeSingle()
 
         if (error) {
           await sendWA(fromPhone, `❌ Error al crear cliente: ${error.message}`)
@@ -542,10 +555,10 @@ Al registrarte:
       break
     }
     case 'AGREGAR_NOTA_CLIENTE': {
-      const { data: cli } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${extract10Digits(d.clienteTel)}%`).limit(1).maybeSingle()
+      const { data: cli } = await supabase.from('clientes').select('id, nombre').eq('telefono', extract10Digits(d.clienteTel)).limit(1).maybeSingle()
       if (cli) {
         // Concatenar notas en vez de sobreescribir para mantener historial
-        const { data: cliNotas } = await supabase.from('clientes').select('notas_crm').eq('id', cli.id).single()
+        const { data: cliNotas } = await supabase.from('clientes').select('notas_crm').eq('id', cli.id).maybeSingle()
         const notaExistente = cliNotas?.notas_crm || ''
         const fecha = new Date().toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City' })
         const nuevaNota = notaExistente
@@ -558,7 +571,7 @@ Al registrarte:
     }
     case 'MARCAR_VIP': {
       const tel10Vip = extract10Digits(d.clienteTel)
-      const { data: cli } = await supabase.from('clientes').select('id, nombre, es_vip, telefono').ilike('telefono', `%${tel10Vip}%`).limit(1).maybeSingle()
+      const { data: cli } = await supabase.from('clientes').select('id, nombre, es_vip, telefono').eq('telefono', tel10Vip).limit(1).maybeSingle()
       if (cli) {
         const nuevoEstado = !cli.es_vip
         await supabase.from('clientes').update({
@@ -586,6 +599,74 @@ Al registrarte:
       await handleCalificarCliente(supabase, fromPhone, d.clienteTel, d.descripcion || '')
       break
     }
+    case 'GESTIONAR_COLONIAS': {
+      const coloniaNombre = d.colonia?.trim()
+      const nuevoPrecio = d.precioRuta ? Number(d.precioRuta) : null
+
+      if (!coloniaNombre) {
+        await sendWA(fromPhone, `⚠️ Faltan datos. Necesito el nombre de la colonia.`)
+        break
+      }
+
+      // Reemplazar vocales con comodín _ para ignorar acentos de forma casera en ILIKE
+      const safeNombre = coloniaNombre.replace(/[aeiouáéíóú]/gi, '_')
+
+      // Buscar colonia (insensible a mayúsculas/minúsculas y acentos básicos)
+      const { data: cols } = await supabase.from('colonias')
+        .select('id, nombre, precio')
+        .ilike('nombre', `%${safeNombre}%`)
+        .limit(3)
+
+      // Saber cuántas faltan
+      const { count: sinPrecio } = await supabase.from('colonias').select('*', { count: 'exact', head: true }).is('precio', null)
+      const faltanText = `\n\n📌 *Faltan ${sinPrecio} colonias por cotizar.*`
+
+      if (!cols || cols.length === 0) {
+        // La colonia no existe en absoluto
+        if (nuevoPrecio) {
+          const payload = `ADMIN_ADDCOL_${coloniaNombre.substring(0,40)}_${nuevoPrecio}`
+          await sendInteractiveButtons(fromPhone, `⚠️ No encontré *${coloniaNombre}* en el sistema.\n\n¿Quieres que la agregue con el precio de *$${nuevoPrecio}*?`, [
+            { id: payload.substring(0, 255), title: '✅ Sí, agregar' },
+            { id: 'ADMIN_IGNORAR', title: '❌ Cancelar' }
+          ])
+        } else {
+          await sendWA(fromPhone, `⚠️ No encontré *${coloniaNombre}* en el sistema.\n\nSi quieres agregarla, dime su precio. Ej: *"${coloniaNombre} 50"*`)
+        }
+        break
+      }
+
+      // Si hay más de una coincidencia, preguntarle cuál quiso decir
+      if (cols.length > 1) {
+        if (nuevoPrecio) {
+          const botones = cols.map((c: any) => ({
+            id: `ADMIN_SETCOL_${c.id}_${nuevoPrecio}`,
+            title: c.nombre.substring(0, 20)
+          }))
+          
+          const { sendInteractiveList } = await import('./whatsapp.ts')
+          await sendInteractiveList(
+            fromPhone,
+            `🤔 Encontré varias colonias que coinciden con *${coloniaNombre}*.\n\n¿A cuál le quieres poner *$${nuevoPrecio}*?`,
+            'Seleccionar colonia',
+            [{ title: 'Coincidencias', rows: botones.map((b: any) => ({ id: b.id, title: b.title, description: `Guardar $${nuevoPrecio}` })) }]
+          )
+        } else {
+          await sendWA(fromPhone, `🤔 Encontré varias colonias que coinciden con *${coloniaNombre}*:\n${cols.map((c: any) => `- ${c.nombre}`).join('\n')}\n\nPor favor sé un poco más específico.`)
+        }
+        break
+      }
+
+      // Si hay exactamente 1 coincidencia
+      const col = cols[0]
+      if (nuevoPrecio) {
+        await supabase.from('colonias').update({ precio: nuevoPrecio }).eq('id', col.id)
+        await sendWA(fromPhone, `✅ *Precio actualizado*\n\n📍 Colonia: *${col.nombre}*\n💰 Nuevo Precio: *$${nuevoPrecio}*${faltanText}`)
+      } else {
+        const precioText = col.precio ? `$${col.precio}` : `*SIN PRECIO ASIGNADO*`
+        await sendWA(fromPhone, `📍 *Colonia:* ${col.nombre}\n💰 *Precio actual:* ${precioText}\n\nPara actualizarlo dime: *"${col.nombre} 45"*${faltanText}`)
+      }
+      break
+    }
     case 'ACTUALIZAR_DIRECCION': {
       const { handleActualizarDireccion } = await import('./client-profile-handler.ts')
       await handleActualizarDireccion(supabase, fromPhone, d.clienteTel, d.descripcion || (d as any).direccion || '')
@@ -593,7 +674,7 @@ Al registrarte:
     }
     case 'VER_HISTORIAL_CLIENTE': {
       const { data: hist } = await supabase.from('pedidos').select('descripcion, estado, created_at')
-        .ilike('cliente_tel', `%${extract10Digits(d.clienteTel)}%`).order('created_at', { ascending: false }).limit(7)
+        .eq('cliente_tel', extract10Digits(d.clienteTel)).order('created_at', { ascending: false }).limit(7)
       let msg = `📄 *HISTORIAL*\n\n`
       hist?.forEach((h: any) => msg += `- [${h.estado}] ${h.descripcion?.slice(0, 40)}\n`)
       await sendWA(fromPhone, hist?.length ? msg : 'Sin pedidos.')
@@ -669,7 +750,7 @@ Al registrarte:
     case 'ELIMINAR_REPARTIDOR': {
       let q = supabase.from('repartidores').select('id, nombre').eq('activo', true)
       if (d?.repartidorAlias) q = q.or(`alias.ilike.%${d.repartidorAlias}%,nombre.ilike.%${d.repartidorAlias}%`) as any
-      else if (d?.clienteTel) q = q.ilike('telefono', `%${extract10Digits(d.clienteTel)}%`) as any
+      else if (d?.clienteTel) q = q.eq('telefono', extract10Digits(d.clienteTel)) as any
       const { data: rep } = await q.order('creado_en', { ascending: false }).limit(1).maybeSingle() as any
       if (rep) {
         await supabase.from('repartidores').update({ activo: false }).eq('id', rep.id)
@@ -692,7 +773,7 @@ Al registrarte:
       if (rpcErr || !rpcRes?.ok) {
         // Fallback: si el RPC no existe aún, usar el update directo con aviso
         console.warn('[CARGAR_SALDO] RPC atómico falló, usando fallback:', rpcErr?.message || rpcRes?.error)
-        const { data: cli } = await supabase.from('clientes').select('id, nombre, saldo_billetera').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+        const { data: cli } = await supabase.from('clientes').select('id, nombre, saldo_billetera').eq('telefono', tel10).limit(1).maybeSingle()
         if (cli) {
           const ns = (parseFloat(String(cli.saldo_billetera)) || 0) + monto
           await supabase.from('clientes').update({ saldo_billetera: ns }).eq('id', cli.id)
@@ -802,7 +883,7 @@ export async function handleCalificacion(supabase: Supa, fromPhone: string, butt
   }
 
   // Buscar cliente
-  const { data: cli } = await supabase.from('clientes').select('id, nombre, etiquetas, reputacion').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+  const { data: cli } = await supabase.from('clientes').select('id, nombre, etiquetas, reputacion').eq('telefono', tel10).limit(1).maybeSingle()
   const clienteId = cli?.id
   const clienteNombre = cli?.nombre || `Cliente ${tel10}`
   const etiquetasActuales: string[] = cli?.etiquetas || []
@@ -908,10 +989,10 @@ export async function handleTerminos(supabase: Supa, fromPhone: string, buttonId
   if (upId === 'ACEPTAR_TERMINOS' || upId === 'ACEPTAR') {
     // 1. Marcar en DB
     console.log(`✅ [T&C] Cliente ${tel10} HA ACEPTADO los términos.`)
-    await supabase.from('clientes').update({ acepta_terminos: true }).ilike('telefono', `%${tel10}%`)
+    await supabase.from('clientes').update({ acepta_terminos: true }).eq('telefono', tel10)
 
     // 2. Enviar QR y mensaje de Bienvenida incondicional
-    const { data: cli } = await supabase.from('clientes').select('nombre, puntos, saldo_billetera, es_vip').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+    const { data: cli } = await supabase.from('clientes').select('nombre, puntos, saldo_billetera, es_vip').eq('telefono', tel10).limit(1).maybeSingle()
     const nombreCli = cli?.nombre ? cli.nombre.split(' ')[0] : 'Cliente'
     const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${tel10}`
     const qrImageUrl = generateCloudinaryVIPCard(tel10, nombreCli, cli?.puntos || 0, cli?.saldo_billetera || 0, cli?.es_vip || false)
@@ -944,7 +1025,7 @@ Guárdala muy bien en tus favoritos. Con ella irás acumulando recompensas en ca
     if (pendingPts?.history?.[0]) {
       console.log(`🔄 [T&C] Ejecutando SUMA DE PUNTOS PENDIENTE para ${tel10}...`)
       const { puntos, admin } = pendingPts.history[0]
-      const { data: cli } = await supabase.from('clientes').select('id, nombre, puntos').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      const { data: cli } = await supabase.from('clientes').select('id, nombre, puntos').eq('telefono', tel10).limit(1).maybeSingle()
       if (cli) {
         const cant = Number(puntos) || 1
         let lastRes: any = null
@@ -983,7 +1064,7 @@ Guárdala muy bien en tus favoritos. Con ella irás acumulando recompensas en ca
     }
 
     // 4. Notificar al admin principal (siempre, aunque no haya pendientes)
-    const { data: cliAcep } = await supabase.from('clientes').select('nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+    const { data: cliAcep } = await supabase.from('clientes').select('nombre').eq('telefono', tel10).limit(1).maybeSingle()
     if (ADMIN_PHONE_MAIN) {
       await sendWA(ADMIN_PHONE_MAIN, `✅ *${cliAcep?.nombre || tel10}* (${tel10}) *aceptó* los términos y condiciones.`)
     }
@@ -1000,7 +1081,7 @@ Guárdala muy bien en tus favoritos. Con ella irás acumulando recompensas en ca
     await sendWA(fromPhone, "Lamentablemente, para poder usar el sistema de lealtad y beneficios de Estrella Delivery, es necesario aceptar los términos y condiciones. Si cambias de opinión, puedes volver a intentarlo más tarde. ¡Saludos! 👋")
     // Notificar al admin
     if (ADMIN_PHONE_MAIN) {
-      const { data: cliRec } = await supabase.from('clientes').select('nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      const { data: cliRec } = await supabase.from('clientes').select('nombre').eq('telefono', tel10).limit(1).maybeSingle()
       await sendWA(ADMIN_PHONE_MAIN, `❌ *${cliRec?.nombre || tel10}* (${tel10}) *rechazó* los términos y condiciones.`)
     }
   }

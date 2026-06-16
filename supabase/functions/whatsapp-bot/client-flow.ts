@@ -37,8 +37,17 @@ export async function handleClientFlow(
 
   // ── Buscar cliente en BD ──
   const { data: clienteDB } = await supabase.from('clientes')
-    .select('nombre, puntos, es_vip, reputacion, saldo_billetera, envios_totales, rango, acepta_terminos')
-    .ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
+    .select('nombre, puntos, es_vip, reputacion, saldo_billetera, envios_totales, rango, acepta_terminos, notas_crm')
+    .eq('telefono', from10).limit(1).maybeSingle()
+
+  let ubicacionesGuardadas: any[] = []
+  if (clienteDB?.acepta_terminos === true) {
+    const { data: ubiData } = await supabase.from('cliente_ubicaciones')
+      .select('tipo, colonia_nombre, lat, lng')
+      .eq('cliente_telefono', from10)
+      .not('tipo', 'in', '(origen,destino)')
+    if (ubiData) ubicacionesGuardadas = ubiData
+  }
 
   // ── Embudo Inicial: número desconocido ──
   if (!clienteDB) {
@@ -50,9 +59,9 @@ export async function handleClientFlow(
     if (!clientRegData?.history?.[0]) {
       await sendInteractiveButtons(
         fromPhone,
-        `🌟 *¡Hola! Bienvenido a Estrella Delivery.*\n\nPara brindarte el mejor servicio, indícanos: ¿Nos escribes para hacer pedidos o eres un Restaurante aliado?`,
+        `🌟 *¡Hola! Bienvenido a Estrella Delivery.*\n\nSomos la mejor plataforma para pedir comida de tus lugares favoritos y ganar recompensas 🍕🛵\n\nPara darte la atención que mereces, cuéntanos:\n*¿Quieres pedir comida o eres un restaurante aliado?*`,
         [
-          { id: 'REG_TIPO_CLIENTE',     title: '👤 Soy Cliente' },
+          { id: 'REG_TIPO_CLIENTE',     title: '🤤 Soy Cliente (Pedir)' },
           { id: 'REG_TIPO_RESTAURANTE', title: '🏪 Soy Restaurante' }
         ]
       )
@@ -74,7 +83,9 @@ export async function handleClientFlow(
     reputacion: clienteDB.reputacion     || 'sin_calificar',
     saldo:      clienteDB.saldo_billetera ?? 0,
     envios:     clienteDB.envios_totales  ?? 0,
-    rango:      clienteDB.rango          || 'bronce'
+    rango:      clienteDB.rango          || 'bronce',
+    notasCrm:   clienteDB.notas_crm      || '',
+    ubicaciones: ubicacionesGuardadas
   } : null
 
   // ── Estado de registro (máquina de estados) ──
@@ -90,18 +101,64 @@ export async function handleClientFlow(
     console.log('📋 RegState loaded:', JSON.stringify(regState))
   }
 
-  // ── Despacho asíncrono a whatsapp-ai (evita timeout de Meta) ──
+  // ── Interceptor para el Mesero Virtual (Comercio Conversacional) [DESACTIVADO] ──
+  /*
+  const { data: orderSession } = await supabase.from('bot_memory')
+    .select('history').eq('phone', `order_session_${from10}`).maybeSingle()
+    
   const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
-  fetch(`${SUPABASE_PROJECT_URL}/functions/v1/whatsapp-ai`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      fromPhone, from10,
-      texto: msg.text?.body as string ?? '',
-      isRepartidor: false, repartidorInfo: null,
-      isClient: true, clienteCtx, regState
-    })
-  }).catch(err => console.error('Error invocando whatsapp-ai:', err))
+
+  if (orderSession?.history?.[0]) {
+    const userText = (msg.text?.body as string ?? '').toLowerCase().trim()
+    const exitWords = ['menu', 'menú', 'restaurantes', 'volver', 'salir', 'cancelar']
+    
+    if (exitWords.includes(userText)) {
+      await supabase.from('bot_memory').delete().eq('phone', `order_session_${from10}`)
+      
+      if (userText === 'cancelar' || userText === 'salir') {
+        await sendWA(fromPhone, '✅ Tu sesión de pedido ha sido cancelada.')
+        return new Response('OK', { status: 200 })
+      } else {
+        // Redirigir inmediatamente al catálogo
+        const { enviarCatalogoRestaurantes } = await import('./restaurant-b2b-handler.ts')
+        await enviarCatalogoRestaurantes(supabase, fromPhone)
+        return new Response('OK', { status: 200 })
+      }
+    }
+
+    // Redirigir a whatsapp-ventas
+    // @ts-ignore
+    EdgeRuntime.waitUntil(
+      fetch(`${SUPABASE_PROJECT_URL}/functions/v1/whatsapp-ventas`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromPhone, from10,
+          texto: msg.text?.body as string ?? '',
+          sessionData: orderSession.history[0]
+        })
+      }).catch(err => console.error('Error enviando a whatsapp-ventas:', err))
+    )
+    return new Response('OK', { status: 200 })
+  }
+  */
+
+  const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
+
+  // ── Despacho asíncrono a whatsapp-ai (evita timeout de Meta) ──
+  // @ts-ignore
+  EdgeRuntime.waitUntil(
+    fetch(`${SUPABASE_PROJECT_URL}/functions/v1/whatsapp-ai`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fromPhone, from10,
+        texto: msg.text?.body as string ?? '',
+        isRepartidor: false, repartidorInfo: null,
+        isClient: true, clienteCtx, regState
+      })
+    }).catch(err => console.error('Error invocando whatsapp-ai:', err))
+  )
 
   return new Response('OK', { status: 200 })
 }

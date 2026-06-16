@@ -10,10 +10,15 @@ import '../services/pedido_service.dart';
 import '../services/repartidor_service.dart';
 import '../core/supabase_config.dart';
 import '../core/theme_provider.dart';
+import '../core/user_role.dart';
 
 // Provider de pedidos activos
 final pedidosActivosProvider = FutureProvider.autoDispose<List<PedidoModel>>(
-  (ref) => ref.read(pedidoServiceProvider).getPedidosActivos(),
+  (ref) {
+    final isAdmin = ref.watch(isAdminProvider);
+    final userId = isAdmin ? null : supabase.auth.currentUser?.id;
+    return ref.read(pedidoServiceProvider).getPedidosActivos(repartidorUserId: userId);
+  },
 );
 
 // Provider de repartidores (para el dropdown)
@@ -94,18 +99,16 @@ class PedidosScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 16.0, right: 8.0),
-          child: FloatingActionButton.extended(
-            onPressed: () => _mostrarNuevoPedido(context, ref),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Nuevo Pedido', style: TextStyle(fontWeight: FontWeight.bold)),
-            backgroundColor: primary,
-            foregroundColor: Colors.white,
-            elevation: 8,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          ),
+      floatingActionButton: !ref.watch(isAdminProvider) ? null : Padding(
+        padding: const EdgeInsets.only(bottom: 100.0, right: 8.0),
+        child: FloatingActionButton.extended(
+          onPressed: () => _mostrarNuevoPedido(context, ref),
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Nuevo Pedido', style: TextStyle(fontWeight: FontWeight.bold)),
+          backgroundColor: primary,
+          foregroundColor: Colors.white,
+          elevation: 8,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),
       ),
       body: pedidosAsync.when(
@@ -150,10 +153,11 @@ class PedidosScreen extends ConsumerWidget {
           }
 
           // Agrupar por estado para mostrar secciones
+          final pendientes = pedidos.where((p) => p.estado == 'pendiente').toList();
           final enCamino = pedidos.where((p) => p.estado == 'en_camino').toList();
           final recibidos = pedidos.where((p) => p.estado == 'recibido').toList();
           final asignados = pedidos.where((p) => p.estado == 'asignado').toList();
-          final otros = pedidos.where((p) => !['en_camino', 'recibido', 'asignado'].contains(p.estado)).toList();
+          final otros = pedidos.where((p) => !['pendiente', 'en_camino', 'recibido', 'asignado'].contains(p.estado)).toList();
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
@@ -200,6 +204,13 @@ class PedidosScreen extends ConsumerWidget {
                 ),
               ),
 
+              if (pendientes.isNotEmpty) ...[
+                _SectionHeader(title: '🚨 Pendientes (Sin Repartidor)', count: pendientes.length, color: const Color(0xFFEF4444), isDark: isDark),
+                const SizedBox(height: 8),
+                ...pendientes.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
+                const SizedBox(height: 20),
+              ],
+
               if (enCamino.isNotEmpty) ...[
                 _SectionHeader(title: '🚀 En Camino', count: enCamino.length, color: const Color(0xFFFF6B35), isDark: isDark),
                 const SizedBox(height: 8),
@@ -226,6 +237,8 @@ class PedidosScreen extends ConsumerWidget {
                 const SizedBox(height: 8),
                 ...otros.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
               ],
+              
+              const SizedBox(height: 100), // Espacio para el Bottom Nav Bar flotante
             ],
           );
         },
@@ -366,7 +379,10 @@ class _PedidoTile extends StatelessWidget {
                 ),
 
                 // Divisor
-                if (pedido.repartidorNombre != null || (pedido.direccion != null && pedido.direccion!.isNotEmpty) || (pedido.clienteTel != null && pedido.clienteTel!.isNotEmpty)) ...[
+                if (pedido.repartidorNombre != null || 
+                    (pedido.direccion != null && pedido.direccion!.isNotEmpty) || 
+                    (pedido.clienteTel.isNotEmpty) ||
+                    pedido.tipoPedido == 'mandadito') ...[
                   const SizedBox(height: 12),
                   Container(height: 1, color: onSurface.withValues(alpha: 0.06)),
                   const SizedBox(height: 10),
@@ -377,6 +393,27 @@ class _PedidoTile extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 6,
                   children: [
+                    if (pedido.tipoPedido == 'mandadito')
+                      _InfoChip(
+                        icon: Icons.inventory_2_rounded,
+                        label: 'Mandadito',
+                        color: const Color(0xFFD946EF),
+                        isDark: isDark,
+                      ),
+                    if (pedido.metodoPago == 'transferencia')
+                      _InfoChip(
+                        icon: Icons.account_balance_rounded,
+                        label: 'Transferencia',
+                        color: const Color(0xFF3B82F6),
+                        isDark: isDark,
+                      )
+                    else if (pedido.metodoPago == 'efectivo')
+                      _InfoChip(
+                        icon: Icons.payments_rounded,
+                        label: 'Efectivo',
+                        color: const Color(0xFF10B981),
+                        isDark: isDark,
+                      ),
                     if (pedido.repartidorNombre != null)
                       _InfoChip(
                         icon: Icons.delivery_dining_rounded,
@@ -384,21 +421,37 @@ class _PedidoTile extends StatelessWidget {
                         color: const Color(0xFF10B981),
                         isDark: isDark,
                       ),
-                    if (pedido.restaurante != null && pedido.restaurante!.isNotEmpty)
+                    if (pedido.tipoPedido == 'mandadito' && pedido.origen != null)
+                      _InfoChip(
+                        icon: Icons.my_location_rounded,
+                        label: 'De: ${pedido.origen!}',
+                        color: const Color(0xFFF59E0B),
+                        isDark: isDark,
+                        maxWidth: true,
+                      ),
+                    if (pedido.tipoPedido == 'mandadito' && pedido.destino != null)
+                      _InfoChip(
+                        icon: Icons.location_on_rounded,
+                        label: 'A: ${pedido.destino!}',
+                        color: const Color(0xFFE11D48),
+                        isDark: isDark,
+                        maxWidth: true,
+                      ),
+                    if (pedido.tipoPedido != 'mandadito' && pedido.restaurante != null && pedido.restaurante!.isNotEmpty)
                       _InfoChip(
                         icon: Icons.storefront_rounded,
                         label: pedido.restaurante!,
                         color: const Color(0xFFF59E0B),
                         isDark: isDark,
                       ),
-                    if (pedido.clienteTel != null && pedido.clienteTel!.isNotEmpty)
+                    if (pedido.clienteTel.isNotEmpty)
                       _InfoChip(
                         icon: Icons.phone_rounded,
-                        label: pedido.clienteTel!,
+                        label: pedido.clienteTel,
                         color: const Color(0xFF60A5FA),
                         isDark: isDark,
                       ),
-                    if (pedido.direccion != null && pedido.direccion!.isNotEmpty)
+                    if (pedido.tipoPedido != 'mandadito' && pedido.direccion != null && pedido.direccion!.isNotEmpty)
                       _InfoChip(
                         icon: Icons.location_on_rounded,
                         label: pedido.direccion!,
@@ -577,10 +630,11 @@ class _NuevoPedidoSheetState extends ConsumerState<_NuevoPedidoSheet> {
       padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 28),
       child: Form(
         key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             // Handle
             Center(
               child: Container(
@@ -734,7 +788,8 @@ class _NuevoPedidoSheetState extends ConsumerState<_NuevoPedidoSheet> {
                       elevation: 0,
                     ),
                   ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -771,10 +826,11 @@ String _timeAgo(DateTime? dt) {
 
 Color _estadoColor(String estado) {
   switch (estado) {
+    case 'pendiente': return const Color(0xFFEF4444);
     case 'asignado':  return const Color(0xFF60A5FA);
-    case 'recibido':  return const Color(0xFFF59E0B);
+    case 'recibido':  return const Color(0xFF10B981);
     case 'en_camino': return const Color(0xFFFF6B35);
-    case 'entregado': return const Color(0xFF11998E);
+    case 'entregado': return const Color(0xFF8B5CF6);
     default:          return Colors.grey;
   }
 }

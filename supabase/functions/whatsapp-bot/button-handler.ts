@@ -3,6 +3,7 @@ import { handleAdminInteractive } from './slash-commands-handler.ts'
 import { handleRepButtons } from './rep-handler.ts'
 import { handleCalificacion, handleTerminos, handleAdminCommands } from './admin-handler.ts'
 import { startRestaurantOnboarding } from './restaurant-onboarding.ts'
+import { iniciarFlujoMandadito, avanzarFlujoMandadito } from './mandadito-handler.ts'
 
 export async function handleButtonEvent(
   supabase: any,
@@ -32,12 +33,12 @@ export async function handleButtonEvent(
   if (userLabel === 'repartidor' && (buttonId.startsWith('REP_CMD_') || buttonId.startsWith('REP_SCORE_'))) {
     if (buttonId.startsWith('REP_SCORE_')) {
       // REP_SCORE_excelente_9631234567 → ejecutar directo
-      const { data: repRow } = await supabase.from('repartidores').select('id, nombre, alias').ilike('telefono', `%${from10}%`).maybeSingle()
+      const { data: repRow } = await supabase.from('repartidores').select('id, nombre, alias').eq('telefono', from10).maybeSingle()
       const repData = repRow ?? { nombre: 'Repartidor' }
       const parts = buttonId.replace('REP_SCORE_', '').split('_') // ['excelente', '9631234567']
       const rep = parts[0]
       const tel = parts[1]
-      const { data: c } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${tel}%`).maybeSingle()
+      const { data: c } = await supabase.from('clientes').select('id, nombre').eq('telefono', tel).maybeSingle()
       if (!c) { await sendWA(fromPhone, `❌ No encontré al cliente.`); return new Response('OK', { status: 200 }) }
       const repIcon: Record<string, string> = { excelente: '🌟', bueno: '👍', regular: '⚠️', malo: '❌' }
       await supabase.from('clientes').update({ reputacion: rep }).eq('id', c.id)
@@ -57,6 +58,692 @@ export async function handleButtonEvent(
     return new Response('OK', { status: 200 })
   }
 
+  // ── Admin: Menú Interactivo Modo Lluvia (cmd_lluvia_) ──
+  if (esAdmin && buttonId.startsWith('cmd_lluvia_')) {
+    const recargoText = buttonId.replace('cmd_lluvia_', '')
+    const recargo = parseInt(recargoText, 10)
+    
+    const { data: config } = await supabase.from('app_config').select('configuracion_precios').eq('id', 'default').single()
+    const currentConfig = config?.configuracion_precios || {}
+
+    if (recargo === 0) {
+      currentConfig.modo_lluvia = false
+      currentConfig.recargo_lluvia = 15
+      await supabase.from('app_config').update({ configuracion_precios: currentConfig }).eq('id', 'default')
+      await sendWA(fromPhone, '✅ *Modo Lluvia desactivado.*\nLos mandaditos vuelven a su precio normal.')
+    } else {
+      currentConfig.modo_lluvia = true
+      currentConfig.recargo_lluvia = recargo
+      await supabase.from('app_config').update({ configuracion_precios: currentConfig }).eq('id', 'default')
+      await sendWA(fromPhone, `✅ *Modo Lluvia activado.*\nSe cobrarán *$${recargo} extra* en todos los mandaditos.`)
+    }
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── Botones del Menú Principal del Cliente ──
+  if (buttonId === 'MENU_PEDIR_SERVICIO') {
+    // DESACTIVADO POR AHORA A PETICIÓN DEL ADMIN
+    // await iniciarFlujoMandadito(supabase, fromPhone, from10)
+    await sendWA(fromPhone, `🚧 *Servicio en mantenimiento*\nPor el momento los mandaditos automáticos están desactivados mientras aplicamos unas mejoras. Si necesitas un servicio urgente, por favor comunícate con un asesor. 🙏`)
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── Mandadito: cliente elige "Continuar" desde el guardián de sesión ──
+  if (buttonId === 'MAND_CONTINUAR_SESION') {
+    const { data: memData } = await supabase.from('bot_memory')
+      .select('history').eq('phone', `mandadito_state_${from10}`).maybeSingle()
+    const currentState = memData?.history?.[0]
+    if (currentState?.step === 1) {
+      await sendWA(fromPhone, `📍 ¿Desde dónde recogemos?\n_Escribe la colonia, el nombre del negocio o manda tu pin GPS._`)
+    } else if (currentState?.step === 2) {
+      await sendWA(fromPhone, `🏁 ¿Y a dónde lo llevamos?\n_Escribe la colonia, el nombre del lugar o manda tu pin GPS._`)
+    } else {
+      await iniciarFlujoMandadito(supabase, fromPhone, from10)
+    }
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── Mandadito: cliente elige su rol (Envío o Recibo) ──
+  if (buttonId === 'MAND_ROLE_ENVIO') {
+    await supabase.from('bot_memory').upsert({
+      phone: `mandadito_state_${from10}`,
+      history: [{ step: 1, role: 'envio' }],
+      updated_at: new Date().toISOString()
+    })
+    const { enviarSelectorUbicacion } = await import('./mandadito-handler.ts')
+    await enviarSelectorUbicacion(
+      supabase, fromPhone, from10,
+      `📍 ¡Perfecto! Por favor dime desde dónde enviamos el paquete:`,
+      1,
+      'envio'
+    )
+    return new Response('OK', { status: 200 })
+  }
+
+  if (buttonId === 'MAND_ROLE_RECIBO') {
+    await supabase.from('bot_memory').upsert({
+      phone: `mandadito_state_${from10}`,
+      history: [{ step: 1, role: 'recibo' }],
+      updated_at: new Date().toISOString()
+    })
+    const { enviarSelectorUbicacion } = await import('./mandadito-handler.ts')
+    await enviarSelectorUbicacion(
+      supabase, fromPhone, from10,
+      `📍 Entendido. ¿*En dónde recogemos* el paquete? (Especifica la colonia y calle, o el nombre del negocio)`,
+      1,
+      'recibo'
+    )
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── Mandadito: cliente elige dirección guardada de la lista ──
+  if (buttonId.startsWith('MAND_USAR_DIR_')) {
+    // Formato corregido: MAND_USAR_DIR_{paso}_{tipo}
+    // Bug 2 fix: Ya no embedemos la colonia en el ID. Buscamos por tipo en la BD.
+    const sinPrefijo = buttonId.replace('MAND_USAR_DIR_', '')
+    const parts = sinPrefijo.split('_')
+    const paso = parseInt(parts[0])
+    const tipo = parts.slice(1).join('_')  // soporte para tipos compuestos
+
+    // Bug 5 fix: validar paso para evitar comportamiento indefinido si el ID viene malformado
+    if (isNaN(paso) || (paso !== 1 && paso !== 2) || !tipo) {
+      console.warn(`[MAND_USAR_DIR] ID malformado: ${buttonId}`)
+      await sendWA(fromPhone, `⚠️ Ocurrió un error al leer la dirección. Por favor escribe el nombre de la colonia manualmente.`)
+      return new Response('OK', { status: 200 })
+    }
+
+    // Buscar la dirección más reciente de ese tipo en BD
+    const { data: ubiFav } = await supabase.from('cliente_ubicaciones')
+      .select('lat, lng, colonia_nombre')
+      .eq('cliente_telefono', from10)
+      .eq('tipo', tipo)
+      .order('ultima_vez', { ascending: false })
+      .maybeSingle()
+
+    if (!ubiFav) {
+      await sendWA(fromPhone, `⚠️ No encontré esa dirección guardada. Escribe el nombre de la colonia manualmente.`)
+      return new Response('OK', { status: 200 })
+    }
+
+    const ubicacion: any = ubiFav.lat && ubiFav.lng
+      ? { texto: ubiFav.colonia_nombre, lat: ubiFav.lat, lng: ubiFav.lng }
+      : { texto: ubiFav.colonia_nombre }
+
+    const { data: memData } = await supabase.from('bot_memory')
+      .select('history').eq('phone', `mandadito_state_${from10}`).maybeSingle()
+    const currentState = memData?.history?.[0]
+
+    if (paso === 1 && (!currentState || currentState.step === 1)) {
+      await avanzarFlujoMandadito(supabase, fromPhone, from10, { step: 1 }, ubicacion)
+    } else if (paso === 2 && currentState?.step === 2) {
+      await avanzarFlujoMandadito(supabase, fromPhone, from10, currentState, ubicacion)
+    } else {
+      // Estado desfasado, reiniciar
+      await iniciarFlujoMandadito(supabase, fromPhone, from10)
+    }
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── Mandadito: cliente quiere escribir manualmente ──
+  if (buttonId.startsWith('MAND_ESCRIBIR_')) {
+    const paso = parseInt(buttonId.replace('MAND_ESCRIBIR_', ''))
+    const txt = paso === 1
+      ? '✏️ Escribe el nombre de la colonia o barrio de *origen*, o manda tu *Ubicación GPS* 📍:'
+      : '✏️ Escribe el nombre de la colonia o barrio de *destino*, o manda tu *Ubicación GPS* 📍:'
+    await sendWA(fromPhone, txt)
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── Mandadito: confirmar cotización ──
+  if (buttonId.startsWith('CONFIR_MAND_EFECTIVO_') || buttonId.startsWith('CONFIR_MAND_TRANSF_')) {
+    const isEfectivo = buttonId.startsWith('CONFIR_MAND_EFECTIVO_')
+    const cotizTel = buttonId.replace(isEfectivo ? 'CONFIR_MAND_EFECTIVO_' : 'CONFIR_MAND_TRANSF_', '')
+    const { data: cotizMem } = await supabase.from('bot_memory')
+      .select('history').eq('phone', `mandadito_cotiz_${cotizTel}`).maybeSingle()
+    const cotiz = cotizMem?.history?.[0]
+
+    if (!cotiz) {
+      await sendWA(fromPhone, `⚠️ No encontré tu cotización. Por favor vuelve a solicitar el mandadito.`)
+      return new Response('OK', { status: 200 })
+    }
+
+    // Limpiar cotización guardada
+    await supabase.from('bot_memory').delete().eq('phone', `mandadito_cotiz_${cotizTel}`)
+
+    const metodoPagoStr = isEfectivo ? 'Efectivo 💵' : 'Transferencia 💳'
+
+    // Mensaje de confirmación al cliente
+    await sendWA(fromPhone,
+      `🎉 *¡Pedido confirmado!*\n\n` +
+      `🛵 Estamos asignando un repartidor cerca de ti…\n` +
+      `Te avisaremos en cuanto uno lo acepte. 📲\n\n` +
+      `📋 *Resumen de tu mandadito:*\n` +
+      `• Origen: ${cotiz.lblOrigen}\n` +
+      `• Destino: ${cotiz.lblDestino}\n` +
+      (cotiz.referencias ? `• Notas: _${cotiz.referencias}_\n` : '') +
+      `• Pago: ${metodoPagoStr}\n` +
+      `• Total: *$${cotiz.precio}*\n\n` +
+      (!isEfectivo ? `💳 _Al asignarse el repartidor, podrás enviarle el comprobante de transferencia a él directamente._\n\n` : '') +
+      `_¡Gracias por confiar en Estrella Delivery! ⭐_`
+    )
+
+    // ── Insertar pedido en la base de datos ──
+    // Obtenemos el nombre del cliente si está registrado
+    const { data: cliente } = await supabase.from('clientes')
+      .select('nombre, lat_frecuente, lng_frecuente')
+      .eq('telefono', cotizTel)
+      .maybeSingle()
+
+    // Usar la ubicación de origen o destino si no tiene frecuentes
+    let lat = cliente?.lat_frecuente ?? cotiz.origenLat ?? null;
+    let lng = cliente?.lng_frecuente ?? cotiz.origenLng ?? null;
+
+    const { data: nuevoPedido, error: pedErr } = await supabase.from('pedidos').insert({
+      cliente_tel: cotizTel,
+      cliente_nombre: cliente?.nombre || null,
+      descripcion: cotiz.referencias ? `[MANDADITO] ${cotiz.referencias}` : '[MANDADITO]',
+      direccion: cotiz.lblDestino,
+      estado: 'pendiente', // Usamos pendiente para que el admin lo asigne
+      origen: cotiz.lblOrigen,
+      destino: cotiz.lblDestino,
+      tipo_pedido: 'mandadito',
+      metodo_pago: isEfectivo ? 'efectivo' : 'transferencia',
+      precio_entrega: cotiz.precio,
+      lat: lat,
+      lng: lng
+    }).select('id').maybeSingle()
+
+    if (pedErr) {
+      console.error('[CONFIRMAR_MANDADITO] Error al insertar pedido:', pedErr)
+    }
+
+    // Notificar al admin
+    const ADMIN_PHONES_ENV = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHONE') ?? ''
+    const adminPhones = ADMIN_PHONES_ENV.split(',').map((p: string) => p.trim()).filter(Boolean)
+    for (const admin of adminPhones) {
+      await sendWA(`52${admin}`,
+        `🛵 *NUEVO MANDADITO CONFIRMADO*\n\n` +
+        `📱 Cliente: ${cotizTel}\n` +
+        `📍 Origen: ${cotiz.lblOrigen}\n` +
+        `🏁 Destino: ${cotiz.lblDestino}\n` +
+        (cotiz.referencias ? `📝 Notas: ${cotiz.referencias}\n` : '') +
+        `💵 Precio: $${cotiz.precio} (${isEfectivo ? 'Efectivo' : 'Transferencia'})\n\n` +
+        `_Abre la App de Admin (Flutter) para gestionarlo._`
+      )
+      await new Promise(r => setTimeout(r, 200))
+    }
+
+    // ── Flujo post-confirmación: guardar dirección del cliente ──
+    // Solo si el cliente aún no tiene direcciones tipo "casa" o "trabajo" guardadas
+    const { data: yaTieneDirs } = await supabase.from('cliente_ubicaciones')
+      .select('id').eq('cliente_telefono', from10).in('tipo', ['casa', 'trabajo']).limit(1)
+    if (!yaTieneDirs?.length) {
+      // Guardar en estado las dos direcciones para el flujo siguiente
+      await supabase.from('bot_memory').upsert({
+        phone: `mand_dir_save_${from10}`,
+        history: [{ lblOrigen: cotiz.lblOrigen, lblDestino: cotiz.lblDestino, origenId: cotiz.origenId, destinoId: cotiz.destinoId }],
+        updated_at: new Date().toISOString()
+      })
+      await new Promise(r => setTimeout(r, 800))
+      await sendInteractiveButtons(fromPhone,
+        `💡 *¿Tú envías o recibes en este mandadito?*\n\n_Preguntamos para guardar tu dirección y agilizar tus próximas entregas. ¡Solo una vez!_`,
+        [
+          { id: 'MAND_YO_ENVIO',  title: '📦 Yo envío' },
+          { id: 'MAND_YO_RECIBO', title: '📬 Yo recibo' }
+        ]
+      )
+    }
+
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── Mandadito post-confirm: ¿tú envías o recibes? ──
+  if (buttonId === 'MAND_YO_ENVIO' || buttonId === 'MAND_YO_RECIBO') {
+    const { data: dirMem } = await supabase.from('bot_memory')
+      .select('history').eq('phone', `mand_dir_save_${from10}`).maybeSingle()
+    const dirs = dirMem?.history?.[0]
+    if (!dirs) {
+      await sendWA(fromPhone, `⚠️ Parece que expiró la sesión. No hay problema, pide un nuevo mandadito cuando quieras.`)
+      return new Response('OK', { status: 200 })
+    }
+
+    // Si envía → su dirección es el ORIGEN. Si recibe → su dirección es el DESTINO.
+    const esMiDirOrigen = buttonId === 'MAND_YO_ENVIO'
+    const miDir = esMiDirOrigen ? dirs.lblOrigen : dirs.lblDestino
+    const otraDir = esMiDirOrigen ? dirs.lblDestino : dirs.lblOrigen
+
+    // Actualizar estado con cuál dirección es la del cliente
+    await supabase.from('bot_memory').upsert({
+      phone: `mand_dir_save_${from10}`,
+      history: [{ ...dirs, esMiDirOrigen }],
+      updated_at: new Date().toISOString()
+    })
+
+    // 🚨 WhatsApp limita títulos de botones a 20 caracteres
+    const capBtn = (s: string, max = 20) => s.length > max ? s.substring(0, max - 1) + '…' : s
+
+    await sendInteractiveButtons(fromPhone,
+      `📍 *¿Cuál de estas es tu dirección?*\n\n` +
+      `Tenemos dos puntos en tu mandadito:\n\n` +
+      `📦 *${dirs.lblOrigen}*\n` +
+      `📬 *${dirs.lblDestino}*\n\n` +
+      `_Al guardarla, la próxima vez la detectaremos automáticamente._`,
+      [
+        { id: 'MAND_GUARDAR_MIA',  title: capBtn(`✅ ${miDir}`) },
+        { id: 'MAND_GUARDAR_OTRA', title: capBtn(`❌ ${otraDir}`) }
+      ]
+    )
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── Mandadito post-confirm: confirmar cuál dirección guardar ──
+  if (buttonId === 'MAND_GUARDAR_MIA' || buttonId === 'MAND_GUARDAR_OTRA') {
+    const { data: dirMem } = await supabase.from('bot_memory')
+      .select('history').eq('phone', `mand_dir_save_${from10}`).maybeSingle()
+    const dirs = dirMem?.history?.[0]
+    if (!dirs) {
+      await sendWA(fromPhone, `⚠️ Sesión expirada. No hay problema, puedes pedir un nuevo mandadito cuando quieras.`)
+      return new Response('OK', { status: 200 })
+    }
+
+    // Bug fix: esMiDirOrigen puede ser undefined si el usuario saltó el paso anterior
+    // MAND_GUARDAR_MIA → guardar la que corresponde al rol (origen si envió, destino si recibió)
+    // MAND_GUARDAR_OTRA → guardar la contraria
+    const esMiDirOrigen = dirs.esMiDirOrigen ?? true // default: origen si no hay estado
+    const usarOrigen = buttonId === 'MAND_GUARDAR_MIA' ? esMiDirOrigen : !esMiDirOrigen
+
+    const dirLabel = usarOrigen ? dirs.lblOrigen : dirs.lblDestino
+    const dirId    = usarOrigen ? dirs.origenId  : dirs.destinoId
+
+    // Intentar recuperar GPS desde el historial de ubicaciones del cliente (tipo origen/destino)
+    let lat: number | null = null, lng: number | null = null
+    {
+      const { data: gpsDir } = await supabase.from('cliente_ubicaciones')
+        .select('lat, lng').eq('cliente_telefono', from10)
+        .eq('tipo', usarOrigen ? 'origen' : 'destino')
+        .not('lat', 'is', null).order('ultima_vez', { ascending: false }).limit(1).maybeSingle()
+      lat = gpsDir?.lat ?? null
+      lng = gpsDir?.lng ?? null
+    }
+
+    // Actualizar estado con la dirección final elegida + coords
+    await supabase.from('bot_memory').upsert({
+      phone: `mand_dir_save_${from10}`,
+      history: [{ ...dirs, dirFinalLabel: dirLabel, dirFinalId: dirId, dirFinalLat: lat, dirFinalLng: lng }],
+      updated_at: new Date().toISOString()
+    })
+
+    const capBtn = (s: string, max = 20) => s.length > max ? s.substring(0, max - 1) + '…' : s
+    await sendInteractiveButtons(fromPhone,
+      `🏠 *¿Es tu casa o trabajo?*\n\n_Dirección a guardar: *${dirLabel}*_`,
+      [
+        { id: 'MAND_TIPO_CASA',    title: capBtn('🏠 Es mi casa') },
+        { id: 'MAND_TIPO_TRABAJO', title: capBtn('🏢 Es mi trabajo') }
+      ]
+    )
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── Mandadito post-confirm: guardar tipo de dirección (casa / trabajo) ──
+  if (buttonId === 'MAND_TIPO_CASA' || buttonId === 'MAND_TIPO_TRABAJO') {
+    const tipo = buttonId === 'MAND_TIPO_CASA' ? 'casa' : 'trabajo'
+    const emoji = tipo === 'casa' ? '🏠' : '🏢'
+
+    const { data: dirMem } = await supabase.from('bot_memory')
+      .select('history').eq('phone', `mand_dir_save_${from10}`).maybeSingle()
+    const dirs = dirMem?.history?.[0]
+
+    // Siempre limpiar estado, incluso si no hay datos
+    await supabase.from('bot_memory').delete().eq('phone', `mand_dir_save_${from10}`)
+
+    if (!dirs?.dirFinalLabel) {
+      await sendWA(fromPhone, `⚠️ No pude guardar la dirección (sesión expirada). Pide otro mandadito para intentarlo de nuevo.`)
+      return new Response('OK', { status: 200 })
+    }
+
+    // GPS: preferir coords del paso anterior (ya buscadas), luego colonia_id, luego nombre
+    let lat: number | null = dirs.dirFinalLat ?? null
+    let lng: number | null = dirs.dirFinalLng ?? null
+
+    if ((!lat || !lng) && dirs.dirFinalId) {
+      const { data: col } = await supabase.from('colonias')
+        .select('lat, lng').eq('id', dirs.dirFinalId).maybeSingle()
+      lat = col?.lat ?? null
+      lng = col?.lng ?? null
+    }
+    if (!lat || !lng) {
+      const { data: histDir } = await supabase.from('cliente_ubicaciones')
+        .select('lat, lng').eq('cliente_telefono', from10)
+        .ilike('colonia_nombre', `%${dirs.dirFinalLabel.substring(0, 20)}%`)
+        .not('lat', 'is', null).limit(1).maybeSingle()
+      lat = histDir?.lat ?? null
+      lng = histDir?.lng ?? null
+    }
+
+    await supabase.from('cliente_ubicaciones').upsert({
+      cliente_telefono: from10,
+      tipo,
+      colonia_nombre: dirs.dirFinalLabel,
+      colonia_id: dirs.dirFinalId || null,
+      lat, lng,
+      ultima_vez: new Date().toISOString()
+    }, { onConflict: 'cliente_telefono,tipo,colonia_nombre' })
+
+    // Verificar si ya tiene cuenta de loyalty
+    const { data: cliente } = await supabase.from('clientes')
+      .select('id, puntos, acepta_terminos').eq('telefono', from10).maybeSingle()
+
+    if (cliente?.acepta_terminos) {
+      await sendWA(fromPhone,
+        `✅ *¡Dirección ${tipo === 'casa' ? 'de casa' : 'de trabajo'} guardada!* ${emoji}\n\n` +
+        `_La próxima vez que pidas un mandadito, te la sugeriremos automáticamente._\n\n` +
+        `⭐ Tienes *${cliente.puntos || 0}* puntos Estrella. ¡Sigue acumulando!`
+      )
+    } else {
+      await sendInteractiveButtons(fromPhone,
+        `✅ *¡Dirección guardada!* ${emoji}\n\n` +
+        `_Ya sabemos donde ${tipo === 'casa' ? 'entregarte' : 'recogerte'} próximas veces._\n\n` +
+        `🌟 *¡Únete al programa de lealtad Estrella!*\n` +
+        `Acumula puntos con cada mandadito y canjéalos por envíos gratis. ¿Te apuntas?`,
+        [
+          { id: 'BTN_ACEPTAR_TERMINOS', title: '⭐ Sí, quiero puntos' },
+          { id: 'MAND_SKIP_LOYALTY',    title: '❌ Ahora no' }
+        ]
+      )
+    }
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── Skip loyalty desde post-mandadito (ID único para no colisionar con otros handlers) ──
+  if (buttonId === 'MAND_SKIP_LOYALTY') {
+    await sendWA(fromPhone, `👍 ¡Entendido! Si cambias de opinión, escríbenos _"quiero puntos"_ y te inscribimos.`)
+    return new Response('OK', { status: 200 })
+  }
+
+
+
+
+
+  // ── Mandadito: cancelar (Bugs 3 y 4 fix: limpiar también mandadito_cotiz_) ──
+  if (buttonId === 'CANCELAR_MANDADITO') {
+    await Promise.all([
+      supabase.from('bot_memory').delete().eq('phone', `mandadito_state_${from10}`),
+      supabase.from('bot_memory').delete().eq('phone', `mandadito_cotiz_${from10}`)
+    ])
+    await sendInteractiveButtons(fromPhone,
+      `❌ *Cotización cancelada.* ¡Sin problema!\n\n¿En qué más puedo ayudarte?`,
+      [
+        { id: 'MENU_PEDIR_SERVICIO', title: '🛵 Nuevo mandadito' },
+        { id: 'MENU_VER_PUNTOS', title: '⭐ Ver mis puntos' }
+      ]
+    )
+    return new Response('OK', { status: 200 })
+  }
+
+  if (buttonId === 'MENU_VER_PUNTOS') {
+    const { data: cliente } = await supabase.from('clientes').select('puntos').eq('telefono', from10).maybeSingle()
+    if (cliente) {
+      await sendWA(fromPhone, `⭐ Tienes *${cliente.puntos || 0}* puntos Estrella.\n\nRecuerda que puedes canjearlos por recompensas geniales.`)
+    }
+    return new Response('OK', { status: 200 })
+
+  }
+  
+  if (buttonId === 'MENU_CANCELAR') {
+    await supabase.from('bot_memory').delete().eq('phone', `mandadito_state_${from10}`)
+    await sendWA(fromPhone, `✅ Operación cancelada. ¡Si necesitas algo, aquí estoy!`)
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── Admin: Guardar Colonia Interactiva ──
+  if (esAdmin && buttonId.startsWith('ADMIN_ADDCOL_')) {
+    const parts = buttonId.replace('ADMIN_ADDCOL_', '').split('_')
+    if (parts.length >= 2) {
+      const coloniaNombre = parts[0]
+      const precio = Number(parts[1])
+      
+      // Insertar colonia con precio
+      await supabase.from('colonias').insert({ nombre: coloniaNombre, precio: precio }).catch(() => null)
+      
+      const { count: sinPrecio } = await supabase.from('colonias').select('*', { count: 'exact', head: true }).is('precio', null)
+      
+      await sendWA(fromPhone, `✅ *Colonia Guardada*\n\n📍 Colonia: *${coloniaNombre}*\n💰 Precio: *$${precio}*\n\n📌 Faltan ${sinPrecio} colonias por cotizar.`)
+    }
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── Admin: Actualizar colonia tras múltiples coincidencias ──
+  if (esAdmin && buttonId.startsWith('ADMIN_SETCOL_')) {
+    const parts = buttonId.replace('ADMIN_SETCOL_', '').split('_')
+    if (parts.length >= 2) {
+      const colId = parts[0]
+      const precio = Number(parts[1])
+      
+      await supabase.from('colonias').update({ precio: precio }).eq('id', colId)
+      const { data: col } = await supabase.from('colonias').select('nombre').eq('id', colId).maybeSingle()
+      const { count: sinPrecio } = await supabase.from('colonias').select('*', { count: 'exact', head: true }).is('precio', null)
+      
+      await sendWA(fromPhone, `✅ *Precio actualizado*\n\n📍 Colonia: *${col?.nombre || 'Colonia'}*\n💰 Nuevo Precio: *$${precio}*\n\n📌 Faltan ${sinPrecio} colonias por cotizar.`)
+    }
+    return new Response('OK', { status: 200 })
+  }
+  
+  if (esAdmin && buttonId === 'ADMIN_IGNORAR') {
+    await sendWA(fromPhone, `❌ Operación cancelada.`)
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── Cliente: Menú de Restaurantes (AI Waiter) ──
+  if (buttonId.startsWith('CLIENT_REST_MENU_')) {
+    const restId = buttonId.replace('CLIENT_REST_MENU_', '')
+    const { data: rest } = await supabase.from('restaurantes').select('id, nombre, horarios').eq('id', restId).maybeSingle()
+    if (!rest) {
+      await sendWA(fromPhone, 'Restaurante no encontrado.')
+      return new Response('OK', { status: 200 })
+    }
+
+    // ── 🏪 VERIFICAR HORARIO ────────────────────────────────────────
+    if (rest.horarios) {
+      const ahora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Mexico_City' }))
+      const dias = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
+      const diaActual = dias[ahora.getDay()]
+      const horarioDia = rest.horarios[diaActual]
+
+      if (horarioDia && horarioDia.activo === false) {
+        await sendWA(fromPhone, `🔒 *${rest.nombre}* está cerrado hoy.\n\n¿Quieres ver el menú de todos modos o buscamos otra opción?`)
+        return new Response('OK', { status: 200 })
+      }
+
+      if (horarioDia?.abre && horarioDia?.cierra) {
+        const [hAbre, mAbre] = horarioDia.abre.split(':').map(Number)
+        const [hCierra, mCierra] = horarioDia.cierra.split(':').map(Number)
+        const minActual = ahora.getHours() * 60 + ahora.getMinutes()
+        const minAbre = hAbre * 60 + mAbre
+        const minCierra = hCierra * 60 + mCierra
+
+        if (minActual < minAbre || minActual > minCierra) {
+          await sendWA(fromPhone, `⏰ *${rest.nombre}* está cerrado en este momento.\n\n📌 Horario de hoy: *${horarioDia.abre} — ${horarioDia.cierra}*\n\n¿Quieres que te avisemos cuando abra? Escríbeme luego 😊`)
+          return new Response('OK', { status: 200 })
+        }
+      }
+    }
+
+    // ── OBTENER CATEGORÍAS ──
+    const [ { data: categorias }, { data: menuCombos } ] = await Promise.all([
+      supabase.from('menu_categorias').select('id, nombre, emoji').eq('restaurante_id', restId).order('orden'),
+      supabase.from('menu_combos').select('id').eq('restaurante_id', restId).eq('disponible', true).limit(1)
+    ])
+
+    let catRows: any[] = []
+    
+    if (menuCombos && menuCombos.length > 0) {
+      catRows.push({
+        id: `CLIENT_REST_CAT_combos_${restId}`,
+        title: `⭐ Combos y Promos`,
+        description: `Ver paquetes especiales`
+      })
+    }
+
+    if (categorias) {
+      categorias.forEach((c: any) => {
+        catRows.push({
+          id: `CLIENT_REST_CAT_item_${c.id}`,
+          title: `${c.emoji || '🍽️'} ${c.nombre}`,
+          description: `Toca para ver platillos`
+        })
+      })
+    }
+
+    if (catRows.length === 0) {
+      await sendWA(fromPhone, `😔 *${rest.nombre}* aún no ha subido productos a su menú en línea.`)
+      return new Response('OK', { status: 200 })
+    }
+
+    // Paginación si hay más de 10
+    let finalRows = catRows
+    if (catRows.length > 10) {
+      finalRows = catRows.slice(0, 9)
+      finalRows.push({
+        id: `CLIENT_REST_CATPAGE_1_${restId}`,
+        title: `Ver más categorías ➡️`,
+        description: `Página 2`
+      })
+    }
+
+    // Iniciar sesión vacía para el IA Waiter — con menú real para contexto
+    // Fetchar el menú real para que el IA Waiter sepa precios cuando el cliente agrega por botón
+    const [ { data: menuItemsAll }, { data: menuCombosAll } ] = await Promise.all([
+      supabase.from('menu_items').select('nombre, precio, descripcion').eq('restaurante_id', restId).eq('disponible', true),
+      supabase.from('menu_combos').select('nombre, precio, descripcion, incluye').eq('restaurante_id', restId).eq('disponible', true)
+    ])
+    let menuTextReal = ''
+    if (menuCombosAll?.length) {
+      menuTextReal += 'COMBOS:\n' + menuCombosAll.map((c: any) => `- ${c.nombre}: $${c.precio}${c.incluye?.length ? ' (incluye: ' + c.incluye.join(', ') + ')' : ''}`).join('\n') + '\n\n'
+    }
+    if (menuItemsAll?.length) {
+      menuTextReal += 'PLATILLOS:\n' + menuItemsAll.map((i: any) => `- ${i.nombre}: $${i.precio}`).join('\n')
+    }
+    if (!menuTextReal) menuTextReal = 'Sin productos disponibles aún.'
+
+    await supabase.from('bot_memory').upsert({
+      phone: `order_session_${from10}`,
+      history: [{
+        restauranteId: rest.id,
+        restauranteNombre: rest.nombre,
+        menuText: menuTextReal,
+        cart: [],
+        history: [],
+        ts: Date.now()
+      }],
+      updated_at: new Date().toISOString()
+    })
+
+    const { sendInteractiveList } = await import('./whatsapp.ts')
+    await sendInteractiveList(
+      fromPhone,
+      `👨‍🍳 *¡Bienvenido a ${rest.nombre}!*\n\nSelecciona la categoría que deseas ver:`,
+      `Ver Menú 📋`,
+      [{ title: 'Categorías', rows: finalRows }]
+    )
+    return new Response('OK', { status: 200 })
+  }
+
+  /* ── Cliente: Repetir Pedido [DESACTIVADO] ──
+  if (buttonId.startsWith('REPETIR_PEDIDO_')) {
+    const pedidoId = buttonId.replace('REPETIR_PEDIDO_', '')
+    const { data: pedido } = await supabase.from('pedidos').select('restaurante_id, restaurante, descripcion, items').eq('id', pedidoId).maybeSingle()
+    if (!pedido) {
+      await sendWA(fromPhone, '❌ No pudimos encontrar el pedido anterior.')
+      return new Response('OK', { status: 200 })
+    }
+
+    // Initialize session with the previous items so AI knows context
+    const { data: menuCombosAll, data: menuItemsAll } = await Promise.all([
+      supabase.from('menu_combos').select('nombre, precio, incluye').eq('restaurante_id', pedido.restaurante_id).eq('disponible', true).limit(50),
+      supabase.from('menu_items').select('nombre, precio').eq('restaurante_id', pedido.restaurante_id).eq('disponible', true).limit(100)
+    ]).then(res => ({ data: res[0].data, data2: res[1].data }))
+    
+    let menuTextReal = ''
+    if (menuCombosAll?.length) menuTextReal += 'COMBOS:\n' + menuCombosAll.map((c: any) => `- ${c.nombre}: $${c.precio}`).join('\n') + '\n\n'
+    if (menuItemsAll?.length) menuTextReal += 'PLATILLOS:\n' + menuItemsAll.map((i: any) => `- ${i.nombre}: $${i.precio}`).join('\n')
+    if (!menuTextReal) menuTextReal = 'Sin productos disponibles aún.'
+
+    // Set bot_memory so the AI waiter wakes up directly with a system prompt asking to repeat the order
+    await supabase.from('bot_memory').upsert({
+      phone: `order_session_${from10}`,
+      history: [{
+        restauranteId: pedido.restaurante_id,
+        restauranteNombre: pedido.restaurante,
+        menuText: menuTextReal,
+        cart: [],
+        history: [
+          { role: 'user', content: `Quiero pedir exactamente lo que pedí la vez pasada: ${pedido.descripcion}` }
+        ],
+        ts: Date.now()
+      }],
+      updated_at: new Date().toISOString()
+    })
+
+    // Trigger AI waiter manually to respond
+    const { handleClientMessage } = await import('./client-flow.ts')
+    await handleClientMessage(supabase, fromPhone, from10, `Quiero pedir exactamente lo que pedí la vez pasada: ${pedido.descripcion}`, 'text')
+    return new Response('OK', { status: 200 })
+  }
+  */
+
+  /* ── Cliente: Menú Drill-Down (Paginación de Categorías) [DESACTIVADO] ──
+  if (buttonId.startsWith('CLIENT_REST_CATPAGE_')) {
+    const parts = buttonId.replace('CLIENT_REST_CATPAGE_', '').split('_')
+    const page = parseInt(parts[0])
+    const restId = parts.slice(1).join('_')
+    const [ { data: categorias }, { data: menuCombos } ] = await Promise.all([
+      supabase.from('menu_categorias').select('id, nombre, emoji').eq('restaurante_id', restId).order('orden'),
+      supabase.from('menu_combos').select('id').eq('restaurante_id', restId).eq('disponible', true).limit(1)
+    ])
+    let catRows: any[] = []
+    if (menuCombos && menuCombos.length > 0) catRows.push({ id: `CLIENT_REST_CAT_combos_${restId}`, title: `⭐ Combos y Promos`, description: `Ver paquetes especiales` })
+    if (categorias) categorias.forEach((c: any) => { catRows.push({ id: `CLIENT_REST_CAT_item_${c.id}`, title: `${c.emoji || '🍽️'} ${c.nombre}`, description: `Toca para ver platillos` }) })
+    const startIndex = page * 9
+    let finalRows = catRows.slice(startIndex, startIndex + 9)
+    if (catRows.length > startIndex + 9) finalRows.push({ id: `CLIENT_REST_CATPAGE_${page + 1}_${restId}`, title: `Ver más categorías ➡️`, description: `Página ${page + 2}` })
+    finalRows.unshift({ id: page === 1 ? `CLIENT_REST_MENU_${restId}` : `CLIENT_REST_CATPAGE_${page - 1}_${restId}`, title: `⬅️ Regresar`, description: `Página anterior` })
+    const { sendInteractiveList } = await import('./whatsapp.ts')
+    await sendInteractiveList(fromPhone, `Página ${page + 1} de categorías:`, `Ver más 📋`, [{ title: 'Categorías', rows: finalRows.slice(0, 10) }])
+    return new Response('OK', { status: 200 })
+  }
+  */
+
+  /* ── Cliente: Menú Drill-Down (Ver Categoría) [DESACTIVADO] ──
+  if (buttonId.startsWith('CLIENT_REST_CAT_')) {
+    const parts = buttonId.replace('CLIENT_REST_CAT_', '').split('_')
+    const tipoCat = parts[0]
+    const catId = parts.slice(1).join('_')
+    let prodRows: any[] = []
+    let tituloMsg = ''
+    if (tipoCat === 'combos') {
+      const { data: combos } = await supabase.from('menu_combos').select('id, nombre, precio, descripcion').eq('restaurante_id', catId).eq('disponible', true)
+      tituloMsg = `⭐ *Combos y Promociones*\nSelecciona un combo para ver sus detalles:`
+      if (combos) prodRows = combos.map((c: any) => ({ id: `CLIENT_REST_PROD_combo_${c.id}`, title: c.nombre.substring(0, 24), description: `💰 $${c.precio} - ${c.descripcion ? c.descripcion.substring(0, 40) : 'Ver detalles'}` }))
+    } else {
+      const { data: items } = await supabase.from('menu_items').select('id, nombre, precio, descripcion').eq('categoria_id', catId).eq('disponible', true)
+      tituloMsg = `🍽️ *Platillos*\nSelecciona una opción para ver sus detalles:`
+      if (items) prodRows = items.map((i: any) => ({ id: `CLIENT_REST_PROD_item_${i.id}`, title: i.nombre.substring(0, 24), description: `💰 $${i.precio} - ${i.descripcion ? i.descripcion.substring(0, 40) : 'Ver detalles'}` }))
+    }
+    if (prodRows.length === 0) { await sendWA(fromPhone, `Esta categoría está vacía por el momento.`); return new Response('OK', { status: 200 }) }
+    let finalRows = prodRows
+    if (prodRows.length > 10) { finalRows = prodRows.slice(0, 9); finalRows.push({ id: `CLIENT_REST_PRODPAGE_1_${tipoCat}_${catId}`, title: `Ver más productos ➡️`, description: `Página 2` }) }
+    const { sendInteractiveList } = await import('./whatsapp.ts')
+    await sendInteractiveList(fromPhone, tituloMsg, `Elegir Opción`, [{ title: 'Productos', rows: finalRows }])
+    return new Response('OK', { status: 200 })
+  }
+  */
+
+  // ── Cliente: Menú Drill-Down - Paginación, Detalle y Carrito [DESACTIVADO] ──
+  // if (buttonId.startsWith('CLIENT_REST_PRODPAGE_')) { ... }
+  // if (buttonId.startsWith('CLIENT_REST_PROD_')) { ... }
+  // if (buttonId === 'CLIENT_CATALOGO_VOLVER') { ... }
+  // if (buttonId.startsWith('CLIENT_REST_ADD_')) { ... }
+
   // ── Registro: confirmación SI/NO ──
   if (buttonId.toUpperCase().startsWith('REG_CONFIRM_')) {
     const esSi = buttonId.toUpperCase().startsWith('REG_CONFIRM_SI_')
@@ -65,25 +752,31 @@ export async function handleButtonEvent(
       .select('history').eq('phone', `reg_state_${from10}`).maybeSingle()
     const regState = regData?.history?.[0] ?? { tel: from10, step: 3 }
 
-    fetch(`${SUPABASE_PROJECT_URL}/functions/v1/whatsapp-ai`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fromPhone, from10, texto: esSi ? 'sí' : 'no',
-        isRepartidor: false, repartidorInfo: null, isClient: true, clienteCtx: null, regState })
-    }).catch(err => console.error('Error REG_CONFIRM:', err))
+    // @ts-ignore
+    EdgeRuntime.waitUntil(
+      fetch(`${SUPABASE_PROJECT_URL}/functions/v1/whatsapp-ai`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fromPhone, from10, texto: esSi ? 'sí' : 'no',
+          isRepartidor: false, repartidorInfo: null, isClient: true, clienteCtx: null, regState })
+      }).catch(err => console.error('Error REG_CONFIRM:', err))
+    )
     return new Response('OK', { status: 200 })
   }
 
   // ── Embudo inicial: elección de tipo de usuario ──
   if (buttonId === 'REG_TIPO_CLIENTE') {
     const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
-    fetch(`${SUPABASE_PROJECT_URL}/functions/v1/whatsapp-ai`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fromPhone, from10, texto: 'hola',
-        isRepartidor: false, repartidorInfo: null, isClient: false, clienteCtx: null,
-        regState: { tel: from10, step: 0 } })
-    }).catch(err => console.error('Error REG_TIPO_CLIENTE:', err))
+    // @ts-ignore
+    EdgeRuntime.waitUntil(
+      fetch(`${SUPABASE_PROJECT_URL}/functions/v1/whatsapp-ai`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fromPhone, from10, texto: 'hola',
+          isRepartidor: false, repartidorInfo: null, isClient: false, clienteCtx: null,
+          regState: { tel: from10, step: 0 } })
+      }).catch(err => console.error('Error REG_TIPO_CLIENTE:', err))
+    )
     return new Response('OK', { status: 200 })
   }
 
@@ -114,12 +807,17 @@ export async function handleButtonEvent(
       const rndHex   = Array.from(rndBytes).map((b: number) => b.toString(16).padStart(2, '0')).join('').toUpperCase()
       const qrCode   = `QR-${clientTel}-${rndHex}`
 
+      // Generar código de referido único para el nuevo cliente
+      const refBytes = crypto.getRandomValues(new Uint8Array(3))
+      const refHex = Array.from(refBytes).map((b: number) => b.toString(16).padStart(2, '0')).join('').toUpperCase()
+      const codigoReferido = `ESTRELLA-${refHex}`
+
       const { error: insertErr } = await supabase.from('clientes').upsert({
         telefono: clientTel, nombre: regInfo.nombre,
         direccion: regInfo.colonia ? `${regInfo.colonia}, ${regInfo.direccion || ''}`.trim() : (regInfo.direccion || null),
         lat_frecuente: regInfo.lat || null, lng_frecuente: regInfo.lng || null,
         puntos: 0, es_vip: false, acepta_terminos: false,
-        qr_code: qrCode, created_at: new Date().toISOString()
+        qr_code: qrCode, codigo_referido: codigoReferido, created_at: new Date().toISOString()
       }, { onConflict: 'telefono' })
 
       if (insertErr) {
@@ -135,7 +833,9 @@ export async function handleButtonEvent(
           { id: 'ACEPTAR_TERMINOS', title: '✅ Aceptar' },
           { id: 'RECHAZAR_TERMINOS', title: '❌ Rechazar' }
         ])
-        await sendWA(fromPhone, `✅ *Cliente Registrado: ${regInfo.nombre}* (${clientTel})\n\n📋 T&C enviados. ⏳ Cuando acepte, recibirá su QR automáticamente.`)
+        // Enviar código de referido al cliente recién aprobado
+        await sendWA(`52${clientTel}`, `🎁 *Tu código de referido personal es:*\n\n*${codigoReferido}*\n\n¡Compártelo con amigos y ambos ganan *1 punto extra* ⭐ cuando se registren!`)
+        await sendWA(fromPhone, `✅ *Cliente Registrado: ${regInfo.nombre}* (${clientTel})\n\n📋 T&C enviados. Código de referido: *${codigoReferido}* ⏳`)
       }
       return new Response('OK', { status: 200 })
     } else {
@@ -165,9 +865,12 @@ export async function handleButtonEvent(
         return new Response('OK', { status: 200 })
       }
 
+      // Guardar todo: telefono, nombre, foto, ubicacion y que esté activo
       const { error } = await supabase.from('restaurantes').insert({
         telefono: restTel,
         nombre: restInfo.nombreRest,
+        direccion: restInfo.ubicacion,
+        foto_fachada_url: restInfo.fotoUrl,
         programa_lealtad_activo: true,
         activo: true
       })
@@ -181,10 +884,10 @@ export async function handleButtonEvent(
       await supabase.from('bot_memory').delete().eq('phone', `pending_rest_${restTel}`)
       
       await sendWA(fromPhone, `✅ Restaurante *${restInfo.nombreRest}* aprobado y registrado en el sistema.`)
-      await sendWA(`52${restTel}`, `🎉 *¡Felicidades, ${restInfo.responsable}!*\n\nTu restaurante ha sido aprobado por la administración. Ya eres parte oficial de Estrella Delivery.\n\nEnvía la palabra *Hola* o *Menú* para abrir tu Portal de Aliados B2B.`)
+      await sendWA(`52${restTel}`, `🎉 *¡Felicidades, ${restInfo.responsable || 'aliado'}!*\n\nTu restaurante ha sido aprobado por la administración. Ya eres parte oficial de Estrella Delivery.\n\nEnvía la palabra *Hola* o *Menú* para abrir tu Portal de Aliados B2B.`)
       
-      // Enviar documento (Sube tu PDF a Supabase Storage y pon el link aquí)
-      const pdfUrl = "https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/restaurantes/pdf-restaurantes/pdf-restaurante.pdf" 
+      // Enviar documento leyendo URL de variable de entorno (con fallback al actual si no existe)
+      const pdfUrl = Deno.env.get('PDF_BIENVENIDA_URL') || "https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/restaurantes/pdf-restaurantes/pdf-restaurante.pdf" 
       await sendWADocument(`52${restTel}`, pdfUrl, "Guia_Restaurantes.pdf", "📖 Te enviamos esta pequeña guía en PDF para que sepas cómo sacarle el máximo provecho a tu Portal de Aliados.")
 
       return new Response('OK', { status: 200 })

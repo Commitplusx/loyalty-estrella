@@ -94,14 +94,6 @@ class ConfigScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           _ToolTile(
-            icon: Icons.local_fire_department_rounded,
-            iconColor: Colors.orange,
-            title: 'Configurar Zona Feliz',
-            subtitle: 'Precios dinámicos y zonas por restaurante',
-            onTap: () => context.push('/config/zonas'),
-          ),
-          const SizedBox(height: 8),
-          _ToolTile(
             icon: Icons.map_rounded,
             iconColor: const Color(0xFF6366F1),
             title: 'Zonas de Entrega',
@@ -127,26 +119,6 @@ class ConfigScreen extends ConsumerWidget {
 
           const SizedBox(height: 20),
 
-          // ── MARKETING ────────────────────────────────────────────────────
-          _SectionHeader(label: 'Marketing & Comunicación'),
-          _ToolTile(
-            icon: Icons.local_offer_rounded,
-            iconColor: const Color(0xFFFF6B35),
-            title: 'Promociones App',
-            subtitle: 'Activa o desactiva Hora Feliz y promos',
-            onTap: () => _mostrarPromos(context, ref),
-          ),
-          const SizedBox(height: 8),
-          _ToolTile(
-            icon: Icons.bolt_rounded,
-            iconColor: const Color(0xFFE11D48),
-            title: 'Avisos Flash',
-            subtitle: 'Manda alertas instantáneas a la app del cliente',
-            onTap: () => _mostrarAvisos(context, ref),
-          ),
-
-          const SizedBox(height: 20),
-
           // ── SESIÓN ───────────────────────────────────────────────────────
           _SectionHeader(label: 'Sesión'),
           _ToolTile(
@@ -154,9 +126,9 @@ class ConfigScreen extends ConsumerWidget {
             iconColor: Colors.redAccent,
             title: 'Cerrar Sesión',
             subtitle: supabase.auth.currentUser?.email ?? '',
-            onTap: () async {
-              await supabase.auth.signOut();
-              if (context.mounted) context.go('/login');
+            onTap: () {
+              context.go('/login');
+              supabase.auth.signOut();
             },
           ),
           const SizedBox(height: 32),

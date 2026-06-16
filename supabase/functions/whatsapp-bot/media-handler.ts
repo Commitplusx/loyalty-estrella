@@ -123,7 +123,7 @@ export async function handleAdminPhoto(
   // ── 4. Buscar cliente si no lo tenemos de la sesión ───────────────────────
   if (!clienteId) {
     const { data: c } = await supabase.from('clientes')
-      .select('id, nombre').ilike('telefono', `%${tel10}%`).limit(1).maybeSingle()
+      .select('id, nombre').eq('telefono', tel10).limit(1).maybeSingle()
 
     if (!c) {
       // Registro silencioso automático
@@ -136,7 +136,7 @@ export async function handleAdminPhoto(
         puntos: 0,
         acepta_terminos: false,
         qr_code: loyaltyUrl
-      }).select('id, nombre').single()
+      }).select('id, nombre').maybeSingle()
 
       if (nuevo) {
         clienteId = nuevo.id

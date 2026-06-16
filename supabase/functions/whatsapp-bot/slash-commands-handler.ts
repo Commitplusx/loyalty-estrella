@@ -30,28 +30,70 @@ export async function handleSlashCommands(
     return new Response('OK', { status: 200 })
   }
 
+  // ── /reset — Reinicia la sesión actual del usuario (sin afectar Loyalty) ──
+  if (slashText === '/reset' || slashText === '/reiniciar') {
+    // Borra todas las claves de estado que contengan su número (mandadito_state, capture_mode, etc)
+    await supabase.from('bot_memory').delete().like('phone', `%${from10}%`)
+    await sendWA(fromPhone, `🧹 *Sesión reiniciada.*\nHe borrado mi memoria a corto plazo sobre lo que estábamos haciendo. ¡Empecemos de cero!\n_(Tus datos, perfil y puntos de Loyalty están intactos)_.`)
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── /reset_cache — Borra la caché de Maps (solo admins) ───────────────────
+  if (slashText === '/reset_cache' || slashText === '/limpiar_cache') {
+    if (!esAdmin) return null
+    await supabase.from('bot_memory').delete().like('phone', `mandadito_txt_%`)
+    await sendWA(fromPhone, `🧠 *Caché de inteligencia artificial y Maps borrada masivamente.*\nTodo texto nuevo se procesará desde cero.`)
+    return new Response('OK', { status: 200 })
+  }
+
   // ── /fin — Cerrar sesión de captura activa ────────────────────────────────
-  if (slashText === '/fin' || slashText === '/listo') {
-    const { data: sesion } = await supabase.from('bot_memory')
-      .select('history').eq('phone', `capture_mode_${from10}`).maybeSingle()
-    if (sesion?.history?.[0]) {
-      const { clienteNombre, clienteTel } = sesion.history[0]
+  if (slashText === '/fin' || slashText === '/listo' || slashText === '/salir') {
+    // Cerrar captura (fachada)
+    const { data: capSesion } = await supabase.from('bot_memory').select('history').eq('phone', `capture_mode_${from10}`).maybeSingle()
+    if (capSesion?.history?.[0]) {
+      const { clienteNombre, clienteTel } = capSesion.history[0]
       await supabase.from('bot_memory').delete().eq('phone', `capture_mode_${from10}`)
-      await sendWA(fromPhone,
-        `✅ *SESIÓN CERRADA*\n───────────────────\n\n` +
-        `📋 *Cliente:* ${clienteNombre || clienteTel}\n\n` +
-        `_Todo el contenido enviado ha sido guardado exitosamente._ 👍`
-      )
-    } else {
-      await sendWA(fromPhone, `ℹ️ No hay ninguna sesión de captura activa.`)
+      await sendWA(fromPhone, `✅ *SESIÓN CERRADA*\n───────────────────\n\n📋 *Cliente:* ${clienteNombre || clienteTel}\n\n_Todo el contenido enviado ha sido guardado exitosamente._ 👍`)
+      return new Response('OK', { status: 200 })
     }
+    
+    // Cerrar mapeo
+    const { data: mapSesion } = await supabase.from('bot_memory').select('history').eq('phone', `mapear_mode_${from10}`).maybeSingle()
+    if (mapSesion?.history?.[0]) {
+      await supabase.from('bot_memory').delete().eq('phone', `mapear_mode_${from10}`)
+      await sendWA(fromPhone, `✅ *Modo Mapeo Finalizado.*`)
+      return new Response('OK', { status: 200 })
+    }
+    
+    await sendWA(fromPhone, `ℹ️ No hay ninguna sesión activa.`)
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── /mapear — Iniciar sesión de mapeo de precios ────────────────────────
+  if (slashText === '/mapear') {
+    if (!esAdmin) return null
+    const { data: col } = await supabase.from('colonias').select('id, nombre').is('precio', null).limit(1).maybeSingle()
+    const { count: faltan } = await supabase.from('colonias').select('*', { count: 'exact', head: true }).is('precio', null)
+    
+    if (!col) {
+      await sendWA(fromPhone, `🎉 ¡Excelente! No hay colonias pendientes por mapear. Todas tienen precio.`)
+      return new Response('OK', { status: 200 })
+    }
+
+    await supabase.from('bot_memory').upsert({
+      phone: `mapear_mode_${from10}`,
+      history: [{ coloniaId: col.id, coloniaNombre: col.nombre }],
+      updated_at: new Date().toISOString()
+    })
+
+    await sendWA(fromPhone, `📍 *MODO MAPEO INICIADO*\n_Faltan ${faltan} colonias._\n\nPara salir escribe */salir*.\n\n¿Cuánto cuesta el envío para:\n🏙️ *${col.nombre}*?`)
     return new Response('OK', { status: 200 })
   }
 
   // ── /mis_pedidos — Ver pedidos activos de un repartidor ────────────────────
   if (slashText === '/mis_pedidos') {
     const { data: repData } = await supabase.from('repartidores')
-      .select('id, user_id, nombre').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
+      .select('id, user_id, nombre').eq('telefono', from10).limit(1).maybeSingle()
     if (repData) {
       // Buscar por user_id O por id (fallback para repartidores sin Auth)
       const repIdFilter = repData.user_id
@@ -87,7 +129,7 @@ export async function handleSlashCommands(
   // ── /libre — Notificar disponibilidad ──────────────────────────────────────
   if (slashText === '/libre') {
     const { data: rep } = await supabase.from('repartidores')
-      .select('nombre').ilike('telefono', `%${from10}%`).limit(1).maybeSingle()
+      .select('nombre').eq('telefono', from10).limit(1).maybeSingle()
     const repNombre = rep?.nombre || 'Repartidor'
 
     const ADMIN_PHONES_ENV = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHONE') ?? ''
@@ -130,25 +172,30 @@ export async function handleSlashCommands(
     const listTitle = esAdmin ? '⚙️ *MENÚ DE ADMINISTRADOR*' : '⚙️ *MENÚ DE OPCIONES*'
     await sendInteractiveList(
       fromPhone,
-      `${listTitle}\n───────────────────\nSelecciona la acción rápida que deseas realizar:`,
+      `${listTitle}\n───────────────────\nBienvenido a tu panel de control.\nSelecciona la acción rápida que deseas realizar:`,
       `Elegir Acción`,
       [
         {
-          title: 'Gestión de Clientes',
+          title: 'Loyalty VIP',
           rows: [
-            { id: 'ACT_MENU_NOREGO', title: 'Registro Silencioso', description: 'Crea cliente sin notificar (Sesión)' },
-            { id: 'ACT_MENU_LOYALTY', title: 'Registro Loyalty', description: 'Crea y envía invitación T&C (Sesión)' },
-            { id: 'ACT_MENU_INFO', title: 'Ver Ficha / Perfil', description: 'Consultar puntos, reputación, notas' },
-            { id: 'ACT_MENU_QR', title: 'Enviar Tarjeta VIP', description: 'Manda el QR de lealtad por WA' },
-            { id: 'ACT_MENU_SCORE', title: 'Calificar Reputación', description: 'Asignar Excelente, Bueno, Malo' },
-            { id: 'ACT_MENU_SUMAR', title: 'Sumar Puntos', description: 'Añadir puntos manualmente' },
-            ...(esAdmin ? [{ id: 'ACT_MENU_REGALAR', title: 'Regalar Envío', description: 'Patrocinar un envío gratis' }] : [])
+            { id: 'ACT_MENU_LOYALTY', title: '📱 Registro Loyalty', description: 'Crea y envía invitación T&C (Sesión)' },
+            { id: 'ACT_MENU_QR', title: '🎟️ Enviar Tarjeta VIP', description: 'Manda el QR de lealtad por WA' },
+            { id: 'ACT_MENU_SUMAR', title: '⭐ Sumar Puntos', description: 'Añadir puntos manualmente' }
+          ]
+        },
+        {
+          title: 'Gestión CRM',
+          rows: [
+            { id: 'ACT_MENU_INFO', title: '📊 Ver Ficha del Cliente', description: 'Puntos, reputación, notas' },
+            { id: 'ACT_MENU_SCORE', title: '🏆 Calificar Cliente', description: 'Asignar Excelente, Bueno, Malo' },
+            { id: 'ACT_MENU_NOREGO', title: '👻 Registro Silencioso', description: 'Crea cliente sin notificar' }
           ]
         },
         ...(esAdmin ? [{
-          title: 'Restaurantes B2B',
+          title: 'Operaciones Especiales',
           rows: [
-            { id: 'ACT_MENU_REST', title: '🏪 Ver Clientes Restaurante', description: 'Consulta clientes afiliados y sus puntos' }
+            { id: 'ACT_MENU_REGALAR', title: '🎁 Regalar Envío', description: 'Patrocinar un envío gratis' },
+            { id: 'ACT_MENU_REST', title: '🏪 Ver Clientes Restaurante', description: 'Consulta clientes B2B' }
           ]
         }] : [])
       ]
@@ -162,33 +209,67 @@ export async function handleSlashCommands(
   //          manda texto → se guarda como nota_crm
   //          manda /fin  → cierra la sesión
 
-  // ── /aprobar_rest — Aprobar solicitud B2B de un restaurante ──────────────────────
-  // Uso: /aprobar_rest 9631234567 Tacos el Gordo
-  if (slashText.startsWith('/aprobar_rest ')) {
-    const parts = slashText.split(' ')
-    const restTel = parts[1]
-    const restNombre = parts.slice(2).join(' ').trim()
-
+  // ── /rest_accept — Aprobar solicitud B2B por texto (fallback de botones) ─────────
+  if (slashText.startsWith('/rest_accept_') && esAdmin) {
+    const restTel = slashText.replace('/rest_accept_', '').trim()
+    
     if (!restTel || restTel.length !== 10) {
-      await sendWA(fromPhone, `⚠️ Formato incorrecto. Uso: /aprobar_rest 9631234567 Nombre`)
+      await sendWA(fromPhone, `⚠️ Formato incorrecto. El teléfono debe ser de 10 dígitos.`)
       return new Response('OK', { status: 200 })
     }
 
+    const { data: pendingRest } = await supabase.from('bot_memory')
+      .select('history').eq('phone', `pending_rest_${restTel}`).maybeSingle()
+    const restInfo = pendingRest?.history?.[0]
+
+    if (!restInfo) {
+      await sendWA(fromPhone, `⚠️ No encontré la solicitud para ${restTel}. Es posible que ya fue procesada.`)
+      return new Response('OK', { status: 200 })
+    }
+
+    // Insertar con todos los datos
     const { error } = await supabase.from('restaurantes').insert({
       telefono: restTel,
-      nombre: restNombre,
+      nombre: restInfo.nombreRest,
+      direccion: restInfo.ubicacion,
+      foto_fachada_url: restInfo.fotoUrl,
       programa_lealtad_activo: true,
       activo: true
     })
 
     if (error) {
-      if (error.code === '23505') await sendWA(fromPhone, `⚠️ El restaurante con teléfono ${restTel} ya existe en el sistema.`)
+      if (error.code === '23505') await sendWA(fromPhone, `⚠️ El restaurante con teléfono ${restTel} ya existe.`)
       else await sendWA(fromPhone, `❌ Error al guardar el restaurante: ${error.message}`)
       return new Response('OK', { status: 200 })
     }
 
-    await sendWA(fromPhone, `✅ Restaurante *${restNombre}* aprobado y registrado en el sistema.`)
-    await sendWA(`52${restTel}`, `🎉 *¡Felicidades!*\n\nTu restaurante ha sido aprobado por la administración. Ya eres parte oficial de Estrella Delivery.\n\nEnvía la palabra *Hola* o *Menú* para abrir tu Portal de Aliados B2B.`)
+    await supabase.from('bot_memory').delete().eq('phone', `pending_rest_${restTel}`)
+    
+    await sendWA(fromPhone, `✅ Restaurante *${restInfo.nombreRest}* aprobado y registrado (vía comando de texto).`)
+    await sendWA(`52${restTel}`, `🎉 *¡Felicidades, ${restInfo.responsable || 'aliado'}!*\n\nTu restaurante ha sido aprobado por la administración. Ya eres parte oficial de Estrella Delivery.\n\nEnvía la palabra *Hola* o *Menú* para abrir tu Portal de Aliados B2B.`)
+    
+    const pdfUrl = Deno.env.get('PDF_BIENVENIDA_URL') || "https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/restaurantes/pdf-restaurantes/pdf-restaurante.pdf"
+    await sendWADocument(`52${restTel}`, pdfUrl, "Guia_Restaurantes.pdf", "📖 Te enviamos esta pequeña guía en PDF para que sepas cómo sacarle el máximo provecho a tu Portal de Aliados.")
+
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── /rest_reject — Rechazar solicitud B2B por texto (fallback de botones) ─────────
+  if (slashText.startsWith('/rest_reject_') && esAdmin) {
+    const restTel = slashText.replace('/rest_reject_', '').trim()
+    
+    if (!restTel || restTel.length !== 10) {
+      await sendWA(fromPhone, `⚠️ Formato incorrecto. El teléfono debe ser de 10 dígitos.`)
+      return new Response('OK', { status: 200 })
+    }
+
+    const { data: pendingRest } = await supabase.from('bot_memory')
+      .select('history').eq('phone', `pending_rest_${restTel}`).maybeSingle()
+    const restInfo = pendingRest?.history?.[0]
+
+    await supabase.from('bot_memory').delete().eq('phone', `pending_rest_${restTel}`)
+    await sendWA(`52${restTel}`, `Lo sentimos 🙏 Tu solicitud de afiliación no pudo ser aprobada.\nSi crees que es un error, contáctanos directamente.`)
+    await sendWA(fromPhone, `❌ Solicitud del restaurante *${restInfo?.nombreRest || restTel}* rechazada (vía comando de texto).`)
     return new Response('OK', { status: 200 })
   }
 
@@ -238,7 +319,7 @@ export async function handleSlashCommands(
     }
     let { data: cliente } = await supabase.from('clientes')
       .select('id, nombre, foto_fachada_url, notas_crm, acepta_terminos')
-      .ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
+      .eq('telefono', cTel).limit(1).maybeSingle()
 
     let clienteId = cliente?.id
     let clienteNombre = cliente?.nombre
@@ -257,7 +338,7 @@ export async function handleSlashCommands(
           puntos: 0,
           acepta_terminos: false,
           qr_code: loyaltyUrl
-        }).select('id, nombre').single()
+        }).select('id, nombre').maybeSingle()
 
         if (nuevo) {
           clienteId = nuevo.id
@@ -277,7 +358,7 @@ export async function handleSlashCommands(
           puntos: 0,
           acepta_terminos: false,
           qr_code: loyaltyUrl
-        }).select('id, nombre').single()
+        }).select('id, nombre').maybeSingle()
 
         if (nuevo) {
           clienteId = nuevo.id
@@ -340,7 +421,7 @@ export async function handleSlashCommands(
       return new Response('OK', { status: 200 })
     }
     const { data: c } = await supabase.from('clientes')
-      .select('id, nombre, notas_crm').ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
+      .select('id, nombre, notas_crm').eq('telefono', cTel).limit(1).maybeSingle()
     if (!c) {
       await sendWA(fromPhone, `❌ Cliente ${cTel} no encontrado.`)
       return new Response('OK', { status: 200 })
@@ -357,139 +438,9 @@ export async function handleSlashCommands(
     return new Response('OK', { status: 200 })
   }
 
-  // ── /score — Calificar cliente directamente sin IA ──────────────────────────────
-  // Uso: /score 9631234567 excelente o simplemente /score 9631234567 para menú
-  if (slashText.startsWith('/score ')) {
-    const rest = slashText.slice(7).trim()
-    const match = rest.match(/^(\d[\d\s\-]{8,}\d)(?:\s+(.+))?$/)
-    const cTel = match ? extract10Digits(match[1]) : null
-    const califStr = match && match[2] ? match[2].trim().toLowerCase() : null
 
-    if (!cTel || cTel.length !== 10) {
-      await sendWA(fromPhone, `⚠️ Formato: */score 9631234567 [excelente, bueno...]* o solo */score 9631234567* para ver opciones.`)
-      return new Response('OK', { status: 200 })
-    }
 
-    if (!califStr) {
-      await sendInteractiveList(
-        fromPhone,
-        `⭐ *Calificar Cliente* — \`${cTel}\`\nPor favor selecciona la reputación que le asignarás:`,
-        `Elegir Reputación`,
-        [{
-          title: 'Reputaciones',
-          rows: [
-            { id: `RATE_EXC_${cTel}`, title: '⭐ Excelente' },
-            { id: `RATE_BUE_${cTel}`, title: '👍 Bueno' },
-            { id: `RATE_REG_${cTel}`, title: '⚠️ Regular' },
-            { id: `RATE_MAL_${cTel}`, title: '❌ Malo' },
-            { id: `VETAR_${cTel}`, title: '🚫 Vetado' }
-          ]
-        }]
-      )
-      return new Response('OK', { status: 200 })
-    }
 
-    const { data: cli } = await supabase.from('clientes')
-      .select('id, nombre, reputacion').ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
-    if (!cli) {
-      await sendWA(fromPhone, `❌ Cliente ${cTel} no encontrado.`)
-      return new Response('OK', { status: 200 })
-    }
-
-    // Mapear el texto a una de las opciones válidas
-    let rep: 'excelente' | 'bueno' | 'regular' | 'malo' | 'vetado' = 'bueno'
-    if (califStr.includes('excelente') || califStr.includes('bien') || califStr.includes('genial') || califStr.includes('top')) rep = 'excelente'
-    else if (califStr.includes('bueno') || califStr.includes('buena')) rep = 'bueno'
-    else if (califStr.includes('regular') || califStr.includes('media') || califStr.includes('medio')) rep = 'regular'
-    else if (califStr.includes('malo') || califStr.includes('mala') || califStr.includes('mal')) rep = 'malo'
-    else if (califStr.includes('vetado') || califStr.includes('bloquear')) rep = 'vetado'
-
-    const REP_ICON = { excelente: '🌟', bueno: '👍', regular: '⚠️', malo: '❌', vetado: '🚫' }
-
-    await supabase.from('clientes').update({ reputacion: rep }).eq('id', cli.id)
-    await sendWA(fromPhone, `✅ *REPUTACIÓN ACTUALIZADA*\n───────────────────\n\n${REP_ICON[rep]} *${cli.nombre || cTel}* → *${rep.toUpperCase()}*`)
-
-    return new Response('OK', { status: 200 })
-  }
-
-  // ── /info — Ver perfil de cliente directamente sin IA ──────────────────────
-  // Uso: /info 9631234567
-  if (slashText.startsWith('/info ')) {
-    const cTel = extract10Digits(slashText.slice(6).trim())
-    if (!cTel || cTel.length !== 10) {
-      await sendWA(fromPhone, `⚠️ Formato: */info 9631234567*`)
-      return new Response('OK', { status: 200 })
-    }
-
-    const { data: c } = await supabase.from('clientes').select('*').ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
-    if (c) {
-      const repIcon = c.reputacion === 'excelente' ? '🌟' : c.reputacion === 'bueno' ? '👍' : c.reputacion === 'malo' ? '❌' : c.reputacion === 'regular' ? '⚠️' : '➖'
-      let msg = `🔍 *FICHA DE CLIENTE*\n───────────────────\n`
-      msg += `👤 *${c.nombre || 'Sin nombre'}*\n`
-      msg += `📱 ${c.telefono}\n`
-      msg += `⭐ Puntos: *${c.puntos}* | Rango: *${c.rango || 'bronce'}*\n`
-
-      const enviosGratisPorPuntos = Math.floor((c.puntos || 0) / 5)
-      const enviosGratisExtra = c.envios_gratis_disponibles || 0
-      const totalGratis = enviosGratisPorPuntos + enviosGratisExtra
-
-      if (totalGratis > 0) {
-        msg += `🎁 *¡TIENE ${totalGratis} ENVÍO(S) GRATIS DISPONIBLE(S)!* 🎁\n`
-      } else {
-        msg += `🛵 Entregas: ${c.envios_totales || 0} | Envíos gratis extra: 0\n`
-      }
-
-      msg += `${c.es_vip ? '👑 *VIP*\n' : ''}`
-      msg += `${repIcon} Reputación: *${c.reputacion || 'sin calificar'}*\n`
-      msg += `💰 Billetera: *$${c.saldo_billetera || 0}*\n`
-      if (c.direccion) msg += `🏠 Dirección: ${c.direccion}\n`
-      if (c.lat_frecuente && c.lng_frecuente) {
-        msg += `📍 GPS: https://maps.google.com/?q=${c.lat_frecuente},${c.lng_frecuente}\n`
-      }
-      if (c.cupon_activo) msg += `🎟️ Cupón: ${c.cupon_activo}\n`
-      if (c.notas_crm) msg += `📝 ${c.notas_crm.slice(0, 200)}\n`
-      msg += `📋 T&C: ${c.acepta_terminos ? '✅ Aceptados' : '❌ Pendientes'}`
-
-      // ── Loyalty en restaurantes ──
-      const { data: restPts } = await supabase
-        .from('restaurante_clientes_puntos')
-        .select('puntos, visitas, restaurante_id')
-        .eq('cliente_tel', cTel)
-
-      if (restPts && restPts.length > 0) {
-        const restIds = restPts.map((r: any) => r.restaurante_id)
-        const { data: restNames } = await supabase
-          .from('restaurantes').select('id, nombre').in('id', restIds)
-        const nameMap: Record<string, string> = {}
-        restNames?.forEach((r: any) => { nameMap[r.id] = r.nombre })
-
-        msg += `\n\n🏪 *Lealtad en Restaurantes:*\n`
-        restPts.forEach((r: any) => {
-          const nombre = nameMap[r.restaurante_id] || 'Restaurante'
-          msg += `  • *${nombre}*: ⭐ ${r.puntos} pts | 👁️ ${r.visitas} visitas\n`
-        })
-      }
-
-      await sendWA(fromPhone, msg)
-
-      // Enviar foto si existe
-      if (c.foto_fachada_url) {
-        const { enviarFotoCliente } = await import('./media-handler.ts')
-        await enviarFotoCliente(fromPhone, c.foto_fachada_url, c.nombre || cTel)
-      }
-
-      // Guardar contexto último cliente
-      const admin10 = extract10Digits(fromPhone)
-      await supabase.from('bot_memory').upsert({
-        phone: `admin_last_client_${admin10}`,
-        history: [{ clienteTel: cTel, nombre: c.nombre }],
-        updated_at: new Date().toISOString()
-      })
-    } else {
-      await sendWA(fromPhone, `🔍 Cliente ${cTel} no encontrado.`)
-    }
-    return new Response('OK', { status: 200 })
-  }
 
   // ── /rest_clientes — Ver clientes afiliados a un restaurante ──────────────────────
   // Uso: /rest_clientes 9631234567
@@ -503,7 +454,7 @@ export async function handleSlashCommands(
 
     const { data: rest, error: restErr } = await supabase.from('restaurantes')
       .select('id, nombre, activo')
-      .ilike('telefono', `%${cTel}%`)
+      .eq('telefono', cTel)
       .limit(1)
       .maybeSingle()
 
@@ -571,99 +522,9 @@ export async function handleSlashCommands(
     return new Response('OK', { status: 200 })
   }
 
-  // ── /qr — Enviar tarjeta QR al cliente directamente sin IA ──────────────────────
-  // Uso: /qr 9631234567
-  if (slashText.startsWith('/qr ')) {
-    const cTel = extract10Digits(slashText.slice(4).trim())
-    if (!cTel || cTel.length !== 10) {
-      await sendWA(fromPhone, `⚠️ Formato: */qr 9631234567*`)
-      return new Response('OK', { status: 200 })
-    }
 
-    const { data: cli } = await supabase.from('clientes')
-      .select('nombre, puntos, acepta_terminos').ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
 
-    if (!cli) {
-      await sendWA(fromPhone, `🔍 Cliente ${cTel} no encontrado. Regístralo primero con /fachada.`)
-      return new Response('OK', { status: 200 })
-    }
 
-    if (cli.acepta_terminos === false) {
-      const { sendWATemplate } = await import('./whatsapp.ts')
-      await sendWATemplate(`52${cTel}`, 'estrella_terminos_condiciones', [cli.nombre || 'Cliente'])
-      await sendWA(fromPhone, `⏳ El cliente *${cTel}* aún no acepta los términos.\nLe he enviado la solicitud. El QR se enviará automáticamente cuando acepte.`)
-
-      await supabase.from('bot_memory').upsert({
-        phone: `pending_qr_${cTel}`,
-        history: [{ admin: fromPhone }],
-        updated_at: new Date().toISOString()
-      })
-      return new Response('OK', { status: 200 })
-    }
-
-    const nombreCli = cli.nombre ? cli.nombre.split(' ')[0] : 'Cliente'
-    const qrImageUrl = generateCloudinaryVIPCard(cTel, nombreCli, cli.puntos || 0, 0, false)
-    const { sendVIPCardSmart } = await import('./whatsapp.ts')
-
-    const result = await sendVIPCardSmart(`52${cTel}`, qrImageUrl, cli.nombre || 'Cliente', cli.puntos || 0, cTel)
-
-    if (result && result.ok === false) {
-      await sendWA(fromPhone, `❌ Hubo un error al enviar la plantilla: ${result.error}`)
-    } else {
-      await sendWA(fromPhone, `✅ ¡Tarjeta QR enviada exitosamente a ${cli.nombre || cTel}!`)
-      // Espejo en Chatwoot para que los agentes vean la imagen
-      syncBotImageByPhone(`52${cTel}`, qrImageUrl, `🎟️ Tarjeta QR enviada a ${cli.nombre || cTel}`).catch(console.error)
-    }
-
-    return new Response('OK', { status: 200 })
-  }
-
-  // ── /modo ─────────────────────────────────────────────────────────────────
-  // Fuerza el rol activo de un número sin tocar la BD (para testing)
-  // Uso (el admin lo escribe): /modo 9631234567 cliente
-  //                            /modo 9631234567 restaurante
-  //                            /modo 9631234567 auto  ← quita el override
-  if (slashText.startsWith('/modo ')) {
-    const args = slashText.slice(6).trim().split(/\s+/)
-    const cTel = extract10Digits(args[0])
-    const nuevoModo = (args[1] || '').toLowerCase()
-
-    if (!cTel || cTel.length !== 10 || !['cliente', 'restaurante', 'repartidor', 'auto'].includes(nuevoModo)) {
-      await sendWA(fromPhone,
-        `⚠️ Uso: */modo 9631234567 [modo]*\n\n` +
-        `Modos disponibles:\n` +
-        `👤 *cliente* — fuerza modo cliente\n` +
-        `🏪 *restaurante* — fuerza modo restaurante\n` +
-        `🛵 *repartidor* — fuerza modo repartidor\n` +
-        `🔄 *auto* — quitar override, vuelve al rol normal`
-      )
-      return new Response('OK', { status: 200 })
-    }
-
-    const memKey = `modo_activo_${cTel}`
-    if (nuevoModo === 'auto') {
-      await supabase.from('bot_memory').delete().eq('phone', memKey)
-      await sendWA(fromPhone,
-        `🔄 *MODO AUTOMÁTICO RESTABLECIDO*\n───────────────────\n\n` +
-        `👤 *Número:* \`${cTel}\`\n\n` +
-        `_El bot ahora usará el rol original registrado en la base de datos._`
-      )
-    } else {
-      await supabase.from('bot_memory').upsert({
-        phone: memKey,
-        history: [{ modo: nuevoModo, forzado_por: from10, at: new Date().toISOString() }],
-        updated_at: new Date().toISOString()
-      })
-      await sendWA(fromPhone,
-        `✅ *MODO FORZADO APLICADO*\n───────────────────\n\n` +
-        `👤 *Número:* \`${cTel}\`\n` +
-        `🔧 *Rol Forzado:* ${nuevoModo.toUpperCase()}\n\n` +
-        `_El bot atenderá este número como ${nuevoModo} temporalmente._\n\n` +
-        `Para revertir: */modo ${cTel} auto*`
-      )
-    }
-    return new Response('OK', { status: 200 })
-  }
 
   if (slashText.startsWith('/usar ')) {
     const codigo = slashText.replace('/usar ', '').trim().toUpperCase()
@@ -751,7 +612,7 @@ export async function handleSlashCommands(
           await sendWA(`52${cTel}`, `👑 *¡Felicidades!* 👑\n\nHas sido promovido a *Cliente VIP* ⭐ de Estrella Delivery.\n\nA partir de ahora acumularás *saldo real* en tu billetera. 💰`)
 
           // Enviar la nueva tarjeta digital con el diseño VIP
-          const { data: c } = await supabase.from('clientes').select('nombre, puntos, saldo_billetera').eq('telefono', cTel).single()
+          const { data: c } = await supabase.from('clientes').select('nombre, puntos, saldo_billetera').eq('telefono', cTel).maybeSingle()
           if (c) {
             const qrCode = generateCloudinaryVIPCard(cTel, c.nombre || 'Cliente VIP', c.puntos, c.saldo_billetera || 0, true)
             const { sendWAImage } = await import('./whatsapp.ts')
@@ -778,7 +639,7 @@ export async function handleSlashCommands(
     }
     const { data: c } = await supabase.from('clientes')
       .select('nombre, telefono, puntos, es_vip, rango, saldo_billetera, envios_totales, envios_gratis_disponibles, cupon_activo, notas_crm')
-      .ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
+      .eq('telefono', cTel).limit(1).maybeSingle()
     if (c) {
       const cuponTxt = c.cupon_activo ? `\n🎟️ *Cupón Activo:* \`${c.cupon_activo}\`` : ''
       const notasTxt = c.notas_crm ? `\n\n📝 *Notas CRM:*\n_${c.notas_crm.slice(0, 200)}_` : ''
@@ -802,73 +663,7 @@ export async function handleSlashCommands(
     return new Response('OK', { status: 200 })
   }
 
-  if (slashText.startsWith('/saldo ')) {
-    if (!esAdmin) {
-      await sendWA(fromPhone, `🚫 No tienes permiso para recargar saldo.`);
-      return new Response('OK', { status: 200 })
-    }
-    // Formato: /saldo 9631234567 150.50
-    const args = slashText.slice(7).trim().split(/\s+/)
-    const cTel = args[0]?.replace(/\D/g, '').slice(-10)
-    const monto = parseFloat(args[1] || '0')
-    if (!cTel || cTel.length !== 10 || isNaN(monto) || monto <= 0) {
-      await sendWA(fromPhone, `⚠️ Formato: */saldo 9631234567 150.50*`)
-      return new Response('OK', { status: 200 })
-    }
-    if (monto > 10000) {
-      await sendWA(fromPhone, `⚠️ El máximo permitido por carga es *$10,000*. Contacta al desarrollador si necesitas más.`)
-      return new Response('OK', { status: 200 })
-    }
 
-    // Incremento ATÓMICO: evita race condition si dos admins cargan saldo al mismo tiempo (BUG-C5)
-    const { data: rpcRes, error: rpcErr } = await supabase.rpc('increment_cliente_saldo', {
-      p_tel: cTel,
-      p_monto: monto
-    })
-
-    if (rpcErr || !rpcRes?.ok) {
-      if (rpcRes?.error === 'NO_VIP') {
-        await sendWA(fromPhone, `⚠️ *ACCIÓN DENEGADA*\n───────────────────\n\nEl cliente aún no es usuario VIP. No cuenta con una billetera activa para recibir saldo.`)
-        return new Response('OK', { status: 200 })
-      }
-      // Fallback si el RPC no existe todavía — carga no atómica con aviso
-      console.warn('[/saldo] RPC atómico falló, usando fallback:', rpcErr?.message || rpcRes?.error)
-      const { data: c } = await supabase.from('clientes').select('id, nombre, saldo_billetera, es_vip').ilike('telefono', `%${cTel}%`).limit(1).maybeSingle()
-      if (c) {
-        if (!c.es_vip) {
-          await sendWA(fromPhone, `⚠️ *ACCIÓN DENEGADA*\n───────────────────\n\nEl cliente aún no es usuario VIP. No cuenta con una billetera activa para recibir saldo.`)
-          return new Response('OK', { status: 200 })
-        }
-        const nuevoSaldo = (c.saldo_billetera || 0) + monto
-        await supabase.from('clientes').update({ saldo_billetera: nuevoSaldo }).eq('id', c.id)
-        await supabase.from('registros_puntos').insert({
-          cliente_id: c.id, tipo: 'acumulacion', puntos: 0, monto_saldo: monto,
-          descripcion: `Carga manual de saldo por admin (${from10})`, created_by: null
-        })
-        await sendWA(fromPhone,
-          `✅ *SALDO RECARGADO*\n───────────────────\n\n` +
-          `👤 *Cliente:* ${c.nombre || cTel}\n` +
-          `➕ *Monto Recargado:* $${monto}\n\n` +
-          `💰 *Saldo Anterior:* $${c.saldo_billetera || 0}\n` +
-          `💳 *Nuevo Saldo:* *$${nuevoSaldo}*`
-        )
-        try { await sendWA(`52${cTel}`, `💰 ¡Hola ${c.nombre || 'Cliente'}! Se han cargado *$${monto}* a tu Billetera VIP.\n💳 Saldo actual: *$${nuevoSaldo}*\n\n¡Gracias por ser parte de Estrella Delivery! ⭐️`) } catch (_) { console.error('Error WA Billetera'); }
-      } else { await sendWA(fromPhone, `❌ Cliente no encontrado.`) }
-    } else {
-      await supabase.from('registros_puntos').insert({
-        cliente_id: rpcRes.cliente_id, tipo: 'acumulacion', puntos: 0, monto_saldo: monto,
-        descripcion: `Carga manual de saldo por admin (${from10})`, created_by: null
-      })
-      await sendWA(fromPhone,
-        `✅ *SALDO RECARGADO*\n───────────────────\n\n` +
-        `👤 *Cliente:* ${rpcRes.nombre || cTel}\n` +
-        `➕ *Monto Recargado:* $${monto}\n` +
-        `💳 *Nuevo Saldo:* *$${rpcRes.nuevo_saldo}*`
-      )
-      try { await sendWA(`52${cTel}`, `💰 ¡Hola ${rpcRes.nombre || 'Cliente'}! Se han cargado *$${monto}* a tu Billetera VIP.\n💳 Saldo actual: *$${rpcRes.nuevo_saldo}*\n\n¡Gracias por ser parte de Estrella Delivery! ⭐️`) } catch (_) { console.error('Error WA Billetera nuevo'); }
-    }
-    return new Response('OK', { status: 200 })
-  }
 
   // ── /rol ─────────────────────────────────────────────────────────────────
   // Formato: /rol 9631234567 restaurante [Nombre Opcional]
@@ -898,9 +693,9 @@ export async function handleSlashCommands(
 
     // Leer estado actual del número en las 3 tablas en paralelo
     const [{ data: cli }, { data: rest }, { data: rep }] = await Promise.all([
-      supabase.from('clientes').select('id, nombre').ilike('telefono', `%${cTel}%`).maybeSingle(),
-      supabase.from('restaurantes').select('id, nombre').ilike('telefono', `%${cTel}%`).maybeSingle(),
-      supabase.from('repartidores').select('id, nombre').ilike('telefono', `%${cTel}%`).maybeSingle(),
+      supabase.from('clientes').select('id, nombre').eq('telefono', cTel).maybeSingle(),
+      supabase.from('restaurantes').select('id, nombre').eq('telefono', cTel).maybeSingle(),
+      supabase.from('repartidores').select('id, nombre').eq('telefono', cTel).maybeSingle(),
     ])
 
     const nombreDetectado = cli?.nombre || rest?.nombre || rep?.nombre || extra || `Usuario ${cTel}`
@@ -983,7 +778,7 @@ export async function handleSlashCommands(
     }
 
     let tabla = rolAQuitar === 'cliente' ? 'clientes' : /*rolAQuitar === 'restaurante' ? 'restaurantes' :*/ 'repartidores'
-    const { data: existe } = await supabase.from(tabla).select('id, nombre').ilike('telefono', `%${cTel}%`).maybeSingle()
+    const { data: existe } = await supabase.from(tabla).select('id, nombre').eq('telefono', cTel).maybeSingle()
 
     if (!existe) {
       await sendWA(fromPhone,

@@ -8,8 +8,11 @@ import 'router.dart';
 
 import 'services/sync_service.dart';
 
+import 'package:intl/date_symbol_data_local.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('es');
 
   // Evitar que Google Fonts intente descargar fuentes en runtime (crash en release)
   GoogleFonts.config.allowRuntimeFetching = false;

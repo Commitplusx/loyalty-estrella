@@ -53,7 +53,7 @@ export async function handleCalificarCliente(
 
   const { data: cli } = await supabase.from('clientes')
     .select('id, nombre')
-    .ilike('telefono', `%${tel10}%`)
+    .eq('telefono', tel10)
     .limit(1).maybeSingle()
 
   if (!cli) { await sendWA(fromPhone, `🔍 No encontré al cliente ${tel10}.`); return }
@@ -85,7 +85,7 @@ export async function handleActualizarDireccion(
 
   const { data: cli } = await supabase.from('clientes')
     .select('id, nombre')
-    .ilike('telefono', `%${tel10}%`)
+    .eq('telefono', tel10)
     .limit(1).maybeSingle()
 
   let cliId = cli?.id
@@ -100,7 +100,7 @@ export async function handleActualizarDireccion(
       puntos: 0,
       acepta_terminos: false,
       qr_code: loyaltyUrl
-    }).select('id, nombre').single()
+    }).select('id, nombre').maybeSingle()
     
     if (nuevo) {
       cliId = nuevo.id

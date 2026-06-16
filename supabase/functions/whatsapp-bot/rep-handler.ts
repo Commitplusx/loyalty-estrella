@@ -154,6 +154,45 @@ export async function handleRepButtons(
       }
       return true
     }
+
+    if (tipo === 'ACEPTAR') {
+      const pedidoId = rest.slice(1).join('_')
+      // Actualizar estado a 'recibido' y obtener datos
+      const { data: pedido } = await supabase.from('pedidos')
+        .update({ estado: 'recibido' })
+        .eq('id', pedidoId)
+        .select('*')
+        .maybeSingle()
+
+      if (pedido) {
+        // Armar el mensaje detallado para el repartidor
+        let msg = `✅ *¡Servicio Aceptado!*\n\n`
+        msg += `📦 *Detalle:* ${pedido.descripcion || 'Sin descripción'}\n`
+        
+        if (pedido.restaurante) msg += `🍽️ *Restaurante:* ${pedido.restaurante}\n`
+        if (pedido.origen) msg += `🛫 *Origen:* ${pedido.origen}\n`
+        
+        if (pedido.cliente_nombre) msg += `👤 *Cliente:* ${pedido.cliente_nombre}\n`
+        if (pedido.cliente_tel) {
+          const tel10 = extract10Digits(pedido.cliente_tel)
+          if (tel10) msg += `📞 *Teléfono:* wa.me/52${tel10}\n`
+        }
+
+        if (pedido.direccion) msg += `🛬 *Destino:* ${pedido.direccion}\n`
+        if (pedido.lat && pedido.lng) msg += `📍 *Mapa Destino:* https://maps.google.com/?q=${pedido.lat},${pedido.lng}\n`
+
+        await sendWA(fromPhone, msg)
+
+        // Disparar función para avisar al cliente
+        supabase.functions.invoke('notificar-whatsapp', {
+          body: { pedido_id: pedido.id, tipo: 'recibido' }
+        }).catch(err => console.error("Error al notificar al cliente que fue recibido:", err))
+
+      } else {
+        await sendWA(fromPhone, `⚠️ El pedido ya no existe o ya fue asignado a alguien más.`)
+      }
+      return true
+    }
   } catch (err) {
     console.error('[REP HANDLER] Button Error:', err)
     await sendWA(fromPhone, `⚠️ Ocurrió un error. Intenta de nuevo o usa /sos.`)
@@ -177,7 +216,7 @@ async function ejecutarComando(
     if (!tel || tel.length !== 10) { await sendWA(fromPhone, `⚠️ Número inválido. Intenta de nuevo con 10 dígitos.`); return }
     const { data: c } = await supabase.from('clientes')
       .select('nombre, puntos, reputacion, saldo_billetera, es_vip, rango, direccion, acepta_terminos')
-      .ilike('telefono', `%${tel}%`).maybeSingle()
+      .eq('telefono', tel).maybeSingle()
     if (!c) { await sendWA(fromPhone, `❌ No encontré al cliente *${tel}*.`); return }
     const repIcon: Record<string, string> = { excelente: '🌟', bueno: '👍', regular: '⚠️', malo: '❌', vetado: '🚫' }
     const icon = repIcon[c.reputacion] || '❓'
@@ -201,7 +240,7 @@ async function ejecutarComando(
     const tel = extract10Digits(valor)
     if (!tel || tel.length !== 10) { await sendWA(fromPhone, `⚠️ Número inválido.`); return }
     const { data: c } = await supabase.from('clientes')
-      .select('nombre, puntos, saldo_billetera, es_vip').ilike('telefono', `%${tel}%`).maybeSingle()
+      .select('nombre, puntos, saldo_billetera, es_vip').eq('telefono', tel).maybeSingle()
     if (!c) { await sendWA(fromPhone, `❌ Cliente *${tel}* no encontrado.`); return }
     const qrUrl = generateCloudinaryVIPCard(tel, c.nombre || 'Cliente', c.puntos || 0, c.saldo_billetera || 0, c.es_vip || false)
     const result = await sendVIPCardSmart(`52${tel}`, qrUrl, c.nombre || 'Cliente', c.puntos || 0, tel)
@@ -218,7 +257,7 @@ async function ejecutarComando(
   if (cmd === 'SCORE_TEL') {
     const tel = extract10Digits(valor)
     if (!tel || tel.length !== 10) { await sendWA(fromPhone, `⚠️ Número inválido.`); return }
-    const { data: c } = await supabase.from('clientes').select('id, nombre, reputacion').ilike('telefono', `%${tel}%`).maybeSingle()
+    const { data: c } = await supabase.from('clientes').select('id, nombre, reputacion').eq('telefono', tel).maybeSingle()
     if (!c) { await sendWA(fromPhone, `❌ Cliente *${tel}* no encontrado.`); return }
     // Guardar teléfono en estado y pedir calificación
     await setRepState(supabase, from10, { cmd: 'SCORE_REP', tel, nombre: c.nombre })
@@ -246,7 +285,7 @@ async function ejecutarComando(
     const parts = cmd.split('_') // ['SCORE', 'excelente', '9631234567']
     const rep = parts[1] as string
     const tel = parts[2] as string
-    const { data: c } = await supabase.from('clientes').select('id, nombre').ilike('telefono', `%${tel}%`).maybeSingle()
+    const { data: c } = await supabase.from('clientes').select('id, nombre').eq('telefono', tel).maybeSingle()
     if (!c) { await sendWA(fromPhone, `❌ No encontré al cliente.`); return }
     const repMap: Record<string, string> = { excelente: '🌟', bueno: '👍', regular: '⚠️', malo: '❌' }
     await supabase.from('clientes').update({ reputacion: rep }).eq('id', c.id)
@@ -260,7 +299,7 @@ async function ejecutarComando(
   if (cmd === 'DIRECCION_TEL') {
     const tel = extract10Digits(valor)
     if (!tel || tel.length !== 10) { await sendWA(fromPhone, `⚠️ Número inválido.`); return }
-    const { data: c } = await supabase.from('clientes').select('nombre, direccion').ilike('telefono', `%${tel}%`).maybeSingle()
+    const { data: c } = await supabase.from('clientes').select('nombre, direccion').eq('telefono', tel).maybeSingle()
     if (!c) { await sendWA(fromPhone, `❌ Cliente *${tel}* no encontrado.`); return }
     await setRepState(supabase, from10, { cmd: 'DIRECCION_NUEVA', tel, nombre: c.nombre })
     await sendWA(fromPhone, `🏠 *${c.nombre || tel}*\nDirección actual: _${c.direccion || 'Sin registrar'}_\n\nEscribe la *nueva dirección completa*:`)
@@ -284,7 +323,7 @@ async function ejecutarComando(
   if (cmd === 'NOREGISTRADO_TEL') {
     const tel = extract10Digits(valor)
     if (!tel || tel.length !== 10) { await sendWA(fromPhone, `⚠️ Número inválido.`); return }
-    const { data: existe } = await supabase.from('clientes').select('id').ilike('telefono', `%${tel}%`).maybeSingle()
+    const { data: existe } = await supabase.from('clientes').select('id').eq('telefono', tel).maybeSingle()
     if (existe) { await sendWA(fromPhone, `ℹ️ El cliente *${tel}* ya está registrado en el sistema.`); return }
     await setRepState(supabase, from10, { cmd: 'NOREGISTRADO_NOMBRE', tel })
     await sendWA(fromPhone, `🌟 Registro express para *${tel}*\n\nEscribe el *nombre completo* del cliente:`)
@@ -315,7 +354,7 @@ async function ejecutarComando(
   if (cmd === 'LOYALTY') {
     const tel = extract10Digits(valor)
     if (!tel || tel.length !== 10) { await sendWA(fromPhone, `⚠️ Número inválido.`); return }
-    const { data: existe } = await supabase.from('clientes').select('id, nombre, acepta_terminos').ilike('telefono', `%${tel}%`).maybeSingle()
+    const { data: existe } = await supabase.from('clientes').select('id, nombre, acepta_terminos').eq('telefono', tel).maybeSingle()
     if (existe && existe.acepta_terminos) {
       await sendWA(fromPhone, `ℹ️ *${existe.nombre}* (${tel}) ya está registrado y aceptó los Términos. No necesita registro nuevo.`)
       return
@@ -350,7 +389,7 @@ async function ejecutarComando(
 
     // Crear o actualizar cliente
     if (state.yaExiste) {
-      await supabase.from('clientes').update({ nombre, direccion: colonia, qr_code: loyaltyUrl }).ilike('telefono', `%${tel}%`)
+      await supabase.from('clientes').update({ nombre, direccion: colonia, qr_code: loyaltyUrl }).eq('telefono', tel)
     } else {
       const { error } = await supabase.from('clientes').insert({
         telefono: tel, nombre, direccion: colonia, puntos: 0, acepta_terminos: false, qr_code: loyaltyUrl
@@ -471,7 +510,7 @@ export async function handleRepMessage(
   if (numDigits >= 10 && numDigits <= 15 && trimCmd.length <= 25) {
     const posibleTel = extract10Digits(trimCmd)
     if (posibleTel && posibleTel.length === 10) {
-      const { data: existe } = await supabase.from('clientes').select('id, nombre, reputacion, puntos').ilike('telefono', `%${posibleTel}%`).maybeSingle()
+      const { data: existe } = await supabase.from('clientes').select('id, nombre, reputacion, puntos').eq('telefono', posibleTel).maybeSingle()
       if (existe) {
         const repIcon: Record<string, string> = { excelente: '🌟', bueno: '👍', regular: '⚠️', malo: '❌', vetado: '🚫' }
         await sendInteractiveList(
@@ -534,11 +573,11 @@ export async function handleRepMessage(
 
   // Notificación operativa post-ejecución al admin
   if (action === 'SUMAR_PUNTOS' && d.clienteTel && ADMIN_PHONE_MAIN && from10 !== extract10Digits(ADMIN_PHONE_MAIN)) {
-    const { data: c } = await supabase.from('clientes').select('nombre').ilike('telefono', `%${d.clienteTel}%`).limit(1).maybeSingle()
+    const { data: c } = await supabase.from('clientes').select('nombre').eq('telefono', d.clienteTel).limit(1).maybeSingle()
     const cant = Number(d.puntosASumar) || 1
     await sendWA(ADMIN_PHONE_MAIN, `🌟 [OP] *${isRep.nombre}* sumó ${cant} pts a ${c?.nombre || d.clienteTel}.`)
   } else if (action === 'CARGAR_SALDO' && d.clienteTel && ADMIN_PHONE_MAIN && from10 !== extract10Digits(ADMIN_PHONE_MAIN)) {
-    const { data: c } = await supabase.from('clientes').select('nombre').ilike('telefono', `%${d.clienteTel}%`).limit(1).maybeSingle()
+    const { data: c } = await supabase.from('clientes').select('nombre').eq('telefono', d.clienteTel).limit(1).maybeSingle()
     const monto = parseFloat(String(d.montoSaldo)) || 0
     await sendWA(ADMIN_PHONE_MAIN, `💲 [OP] *${isRep.nombre}* cargó $${monto} de saldo a ${c?.nombre || d.clienteTel}.`)
   } else if (action === 'RESPONDER') {

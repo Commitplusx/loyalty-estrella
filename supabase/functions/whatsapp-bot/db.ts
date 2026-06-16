@@ -96,7 +96,7 @@ export async function crearPedidoDesdeBot(
       .from('pedidos')
       .insert(insertData)
       .select('id')
-      .single()
+      .maybeSingle()
 
     if (error) throw error
 

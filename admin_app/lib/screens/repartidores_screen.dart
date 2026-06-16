@@ -104,12 +104,15 @@ class _RepartidoresScreenState extends ConsumerState<RepartidoresScreen> with Si
                 }),
               ],
             ),
-            floatingActionButton: FloatingActionButton.extended(
-              heroTag: 'add_srv_me',
-              backgroundColor: const Color(0xFF11998E),
-              onPressed: () => _agregarServicioPropio(context, myId),
-              icon: const Icon(Icons.add_task_rounded, color: Colors.white),
-              label: const Text('Anotar Entrega', style: TextStyle(color: Colors.white)),
+            floatingActionButton: Padding(
+              padding: const EdgeInsets.only(bottom: 90.0, right: 8.0),
+              child: FloatingActionButton.extended(
+                heroTag: 'add_srv_me',
+                backgroundColor: const Color(0xFF11998E),
+                onPressed: () => _agregarServicioPropio(context, myId),
+                icon: const Icon(Icons.add_task_rounded, color: Colors.white),
+                label: const Text('Anotar Entrega', style: TextStyle(color: Colors.white)),
+              ),
             ),
             body: Column(
               children: [
@@ -261,14 +264,17 @@ class _RepartidoresScreenState extends ConsumerState<RepartidoresScreen> with Si
       animation: _tabs,
       builder: (context, _) {
         if (_tabs.index == 0) {
-          return FloatingActionButton.extended(
-            heroTag: 'add_rep',
-            backgroundColor: const Color(0xFFFF6B35),
-            elevation: 8,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            onPressed: () => _agregarRepartidor(context),
-            icon: const Icon(Icons.person_add_rounded, color: Colors.white),
-            label: const Text('Nuevo Repartidor', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 90.0, right: 8.0),
+            child: FloatingActionButton.extended(
+              heroTag: 'add_rep',
+              backgroundColor: const Color(0xFFFF6B35),
+              elevation: 8,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              onPressed: () => _agregarRepartidor(context),
+              icon: const Icon(Icons.person_add_rounded, color: Colors.white),
+              label: const Text('Nuevo Repartidor', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
           );
         }
         return const SizedBox();
@@ -540,10 +546,7 @@ class _RepartidoresTab extends ConsumerWidget {
                               radius: 28,
                               child: isAdminProfile 
                                 ? const Icon(Icons.business_center_rounded, color: Colors.blueGrey, size: 28)
-                                : Text(
-                                    (r['alias'] ?? r['nombre'] ?? '?').substring(0, 1).toUpperCase(),
-                                    style: const TextStyle(color: Color(0xFFFF6B35), fontWeight: FontWeight.bold, fontSize: 22),
-                                  ),
+                                : const Icon(Icons.two_wheeler_rounded, color: Color(0xFFFF6B35), size: 28),
                             ),
                             const SizedBox(width: 16),
                             Expanded(

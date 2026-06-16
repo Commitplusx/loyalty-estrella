@@ -84,11 +84,14 @@ class GastosScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _agregarGasto(context, ref, isAdmin),
-        icon: Icon(Icons.add_rounded, color: Colors.white),
-        backgroundColor: const Color(0xFFE11D48),
-        label: Text(isAdmin ? 'Registrar Gasto' : 'Subir Ticket', style: const TextStyle(color: Colors.white)),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 90.0, right: 8.0),
+        child: FloatingActionButton.extended(
+          onPressed: () => _agregarGasto(context, ref, isAdmin),
+          icon: Icon(Icons.add_rounded, color: Colors.white),
+          backgroundColor: const Color(0xFFE11D48),
+          label: Text(isAdmin ? 'Registrar Gasto' : 'Subir Ticket', style: const TextStyle(color: Colors.white)),
+        ),
       ),
       body: gastosAsync.when(
         loading: () => Center(child: CircularProgressIndicator(color: Color(0xFFFF6B35))),
@@ -140,7 +143,7 @@ class GastosScreen extends ConsumerWidget {
               ),
               Expanded(
                 child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
                   itemCount: gastos.length,
                   separatorBuilder: (_, __) => SizedBox(height: 12),
                   itemBuilder: (ctx, i) {

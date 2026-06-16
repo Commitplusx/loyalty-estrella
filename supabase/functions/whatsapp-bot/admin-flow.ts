@@ -22,6 +22,20 @@ export async function handleAdminFlow(
   }
   */
 
+  if (msgType === 'location') {
+    const { data: mapSesion } = await supabase.from('bot_memory').select('history').eq('phone', `mapear_mode_${from10}`).maybeSingle()
+    if (mapSesion?.history?.[0]) {
+      const { coloniaId, coloniaNombre } = mapSesion.history[0]
+      const lat = msg.location.latitude
+      const lng = msg.location.longitude
+      
+      await supabase.from('colonias').update({ lat, lng }).eq('id', coloniaId)
+      await sendWA(fromPhone, `📍 *Coordenadas actualizadas*\nLa nueva ubicación de *${coloniaNombre}* fue guardada con éxito.\n\n¿Cuánto cuesta el envío para esta colonia? (o escribe /siguiente)`)
+      return new Response('OK', { status: 200 })
+    }
+    return null
+  }
+
   if (msgType !== 'text') return null
 
   const texto      = msg.text.body as string
@@ -63,6 +77,110 @@ export async function handleAdminFlow(
       const notaNueva  = notaActual ? `${notaActual}\n[${fecha}] 💬 ${texto}` : `[${fecha}] 💬 ${texto}`
       await supabase.from('clientes').update({ notas_crm: notaNueva }).eq('id', sesionData.clienteId)
       await sendInteractiveButton(fromPhone, `📝 Nota guardada para *${sesionData.clienteNombre}*:\n_${texto}_`, 'ACT_CERRAR_SESION', 'Cerrar Sesión')
+      return new Response('OK', { status: 200 })
+    }
+  }
+
+  // ── Sesión de Mapeo Activa (/mapear) ──
+  if (!texto.startsWith('/') || texto.toLowerCase() === '/siguiente') {
+    const { data: mapSesion } = await supabase.from('bot_memory').select('history').eq('phone', `mapear_mode_${from10}`).maybeSingle()
+    if (mapSesion?.history?.[0]) {
+      const { coloniaId, coloniaNombre, skipped = [] } = mapSesion.history[0]
+      const lowerT = texto.toLowerCase().trim()
+      const safeT = lowerT.replace(/[áéíóú]/g, (m: string) => (({ 'á':'a', 'é':'e', 'í':'i', 'ó':'o', 'ú':'u' } as Record<string, string>)[m] || m))
+
+      if (safeT === '/siguiente' || safeT === 'siguiente' || safeT === 'omitir') {
+        // Saltamos esta colonia
+        skipped.push(coloniaId)
+      } else if (safeT.includes('donde') || safeT.includes('ubicacion') || safeT.includes('coordenadas') || safeT.includes('mapa')) {
+        const { data: c } = await supabase.from('colonias').select('lat, lng').eq('id', coloniaId).maybeSingle()
+        if (c && c.lat && c.lng) {
+          const { sendWALocation } = await import('./whatsapp.ts')
+          await sendWALocation(fromPhone, c.lat, c.lng, coloniaNombre, "Ubicación registrada")
+          await sendWA(fromPhone, `📍 Te envié la ubicación de *${coloniaNombre}*.\n\n¿Cuánto cuesta el envío? (o escribe /siguiente)`)
+        } else {
+          await sendWA(fromPhone, `😔 No tengo las coordenadas de *${coloniaNombre}* guardadas todavía.\n\n¿Cuánto cuesta el envío? (o escribe /siguiente)`)
+        }
+        return new Response('OK', { status: 200 })
+      } else if (lowerT.startsWith('renombrar a ') || lowerT.startsWith('renombrar ') || lowerT.startsWith('cambiar a ')) {
+        const nuevoNombre = texto.replace(/^renombrar a |^renombrar |^cambiar a /i, '').trim()
+        await supabase.from('colonias').update({ nombre: nuevoNombre }).eq('id', coloniaId)
+        await supabase.from('bot_memory').update({ history: [{ coloniaId, coloniaNombre: nuevoNombre, skipped }] }).eq('phone', `mapear_mode_${from10}`)
+        await sendWA(fromPhone, `✅ Nombre corregido a: *${nuevoNombre}*.\n\n¿Cuánto cuesta el envío para esta colonia? (o escribe /siguiente)`)
+        return new Response('OK', { status: 200 })
+      } else if (/(-?\d+\.\d{4,})\s*,\s*(-?\d+\.\d{4,})/.test(texto)) {
+        const match = texto.match(/(-?\d+\.\d{4,})\s*,\s*(-?\d+\.\d{4,})/)
+        const lat = Number(match![1])
+        const lng = Number(match![2])
+        await supabase.from('colonias').update({ lat, lng }).eq('id', coloniaId)
+        await sendWA(fromPhone, `📍 *Coordenadas de texto guardadas*\nSe guardó la ubicación exacta.\n\n¿Cuánto cuesta el envío para esta colonia? (o escribe /siguiente)`)
+        return new Response('OK', { status: 200 })
+      } else if (texto.includes('maps.app.goo.gl') || texto.includes('goo.gl/maps') || texto.includes('google.com/maps') || texto.includes('maps.google')) {
+        const urlMatch = texto.match(/https?:\/\/[^\s]+/)
+        if (urlMatch) {
+          try {
+            await sendWA(fromPhone, `⏳ Analizando enlace de Google Maps...`)
+            const response = await fetch(urlMatch[0], { redirect: 'follow' })
+            const finalUrl = response.url
+            let lat, lng;
+            const atMatch = finalUrl.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
+            if (atMatch) { lat = Number(atMatch[1]); lng = Number(atMatch[2]); }
+            else {
+              const dMatch = finalUrl.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)
+              if (dMatch) { lat = Number(dMatch[1]); lng = Number(dMatch[2]); }
+              else {
+                const placeMatch = finalUrl.match(/\/place\/(-?\d+\.\d+),(-?\d+\.\d+)/)
+                if (placeMatch) { lat = Number(placeMatch[1]); lng = Number(placeMatch[2]); }
+              }
+            }
+            if (lat && lng) {
+              await supabase.from('colonias').update({ lat, lng }).eq('id', coloniaId)
+              await sendWA(fromPhone, `📍 *Ubicación de enlace guardada*\nSe extrajeron las coordenadas.\n\n¿Cuánto cuesta el envío para esta colonia? (o escribe /siguiente)`)
+              return new Response('OK', { status: 200 })
+            } else {
+              await sendWA(fromPhone, `😔 No pude extraer las coordenadas de ese link. Por favor usa la función "Ubicación" nativa de WhatsApp o pega las coordenadas exactas.`)
+              return new Response('OK', { status: 200 })
+            }
+          } catch (e) {
+            await sendWA(fromPhone, `😔 Error al abrir el link de Google Maps. Intenta enviarme un punto de Ubicación por WhatsApp.`)
+            return new Response('OK', { status: 200 })
+          }
+        }
+      } else {
+        const precio = Number(texto)
+        if (isNaN(precio)) {
+          await sendWA(fromPhone, `⚠️ Necesito un número válido para el precio de *${coloniaNombre}*.\n(Ej: 45) o escribe /siguiente para saltarla.`)
+          return new Response('OK', { status: 200 })
+        }
+        // Guardar el precio
+        await supabase.from('colonias').update({ precio: precio }).eq('id', coloniaId)
+      }
+
+      // Buscar la siguiente colonia sin precio, excluyendo las saltadas
+      let query = supabase.from('colonias').select('id, nombre').is('precio', null)
+      if (skipped.length > 0) {
+        query = query.not('id', 'in', `(${skipped.join(',')})`)
+      }
+      
+      const { data: nextCol } = await query.limit(1).maybeSingle()
+      
+      if (!nextCol) {
+        await supabase.from('bot_memory').delete().eq('phone', `mapear_mode_${from10}`)
+        if (skipped.length > 0) {
+          await sendWA(fromPhone, `🎉 Terminaste la lista, pero te saltaste ${skipped.length} colonias que siguen sin precio. Puedes volver a escribir /mapear más tarde.`)
+        } else {
+          await sendWA(fromPhone, `🎉 ¡FELICIDADES! Has terminado de mapear todas las colonias del sistema.`)
+        }
+        return new Response('OK', { status: 200 })
+      }
+
+      const { count: faltan } = await supabase.from('colonias').select('*', { count: 'exact', head: true }).is('precio', null)
+      
+      // Actualizar sesión
+      await supabase.from('bot_memory').update({ history: [{ coloniaId: nextCol.id, coloniaNombre: nextCol.nombre, skipped }] }).eq('phone', `mapear_mode_${from10}`)
+
+      const msgHeader = (lowerT === '/siguiente' || lowerT === 'siguiente') ? '⏭️ Colonia saltada.' : `✅ Precio de *${coloniaNombre}* guardado.`
+      await sendWA(fromPhone, `${msgHeader}\n_Faltan ${faltan - skipped.length} colonias._\n\nSiguiente:\n🏙️ *${nextCol.nombre}*\n¿Cuánto cuesta?`)
       return new Response('OK', { status: 200 })
     }
   }
@@ -134,7 +252,7 @@ export async function handleAdminFlow(
         if (slashCmd) {
           // REGALAR desde el menú admin antiguo: usa la misma lógica
           if (pendingAction === 'ACT_MENU_REGALAR') {
-            const { data: c } = await supabase.from('clientes').select('nombre').ilike('telefono', `%${telMatch}%`).maybeSingle()
+            const { data: c } = await supabase.from('clientes').select('nombre').eq('telefono', telMatch).maybeSingle()
             if (!c) { await sendWA(fromPhone, `❌ Cliente no encontrado.`); return new Response('OK', { status: 200 }) }
             const { error } = await supabase.rpc('increment_cliente_envios_gratis', { p_tel: telMatch, p_amount: 1 })
             if (error) { await sendWA(fromPhone, `❌ Error al regalar envío: ${error.message}`); return new Response('OK', { status: 200 }) }

@@ -28,7 +28,7 @@ serve(async (req: Request) => {
       .from('clientes')
       .select('*')
       .eq('telefono', telefono)
-      .single();
+      .maybeSingle();
 
     if (!cliente) {
       return new Response('Cliente no encontrado', { status: 404 });

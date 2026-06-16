@@ -332,13 +332,13 @@ class _ClienteDetail extends StatelessWidget {
 
         SizedBox(height: 16),
 
-        // CRM Notas Box — respeta tema
+        // AI / Bot Instructions Box
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.15),
+            color: const Color(0xFF8B5CF6).withOpacity(0.1), // Purple hue for AI
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE11D48).withValues(alpha: 0.3)),
+            border: Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.3)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -348,9 +348,9 @@ class _ClienteDetail extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.notes_rounded, color: Color(0xFFE11D48), size: 20),
+                      Icon(Icons.auto_awesome_rounded, color: const Color(0xFF8B5CF6), size: 20),
                       SizedBox(width: 8),
-                      Text('Notas CRM', style: TextStyle(color: Color(0xFFE11D48), fontWeight: FontWeight.bold)),
+                      Text('Instrucciones para el Bot', style: TextStyle(color: const Color(0xFF8B5CF6), fontWeight: FontWeight.bold)),
                     ],
                   ),
                   InkWell(
@@ -369,7 +369,7 @@ class _ClienteDetail extends StatelessWidget {
               SizedBox(height: 12),
               Text(
                 (cliente.notasCrm?.isEmpty ?? true)
-                    ? 'Sin notas. Toca el botón para agregar instrucciones especiales.'
+                    ? 'Sin reglas. Toca el botón para inyectar comportamiento personalizado a la IA para este cliente.'
                     : cliente.notasCrm!,
                 style: TextStyle(
                   color: (cliente.notasCrm?.isEmpty ?? true)
@@ -653,15 +653,23 @@ class _ClienteDetail extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Theme.of(context).cardColor,
-        title: Text('Editar Notas (CRM)', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
+        title: Row(
+          children: [
+            Icon(Icons.auto_awesome_rounded, color: const Color(0xFF8B5CF6)),
+            SizedBox(width: 8),
+            Text('Programar Bot', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
+          ],
+        ),
         content: TextField(
           controller: ctrl,
           maxLines: 4,
           style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
           decoration: InputDecoration(
-            labelText: 'Notas / Instrucciones',
-            hintText: 'Ej: Puerta verde, perro bravo...',
+            labelText: 'Instrucciones para la IA',
+            hintText: 'Ej: "Este cliente es foráneo, siempre se recoge en la terminal de ADO. No le preguntes la dirección, asume que es ahí."',
             hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38)),
+            helperText: 'El bot leerá esto antes de contestarle al cliente.',
+            helperMaxLines: 2,
           ),
         ),
         actions: [
@@ -669,10 +677,10 @@ class _ClienteDetail extends StatelessWidget {
             onPressed: () => Navigator.pop(ctx),
             child: Text('Cancelar', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
           ),
-          ElevatedButton(
+            ElevatedButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE11D48)),
-            child: Text('Guardar'),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6)),
+            child: Text('Inyectar al Bot', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),

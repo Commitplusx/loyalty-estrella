@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { conversacionDeepSeek } from '../whatsapp-bot/ai.ts'
 import { sendWA, sendWALocation, sendInteractiveButtons } from '../whatsapp-bot/whatsapp.ts'
 import { guardarMemoria } from '../whatsapp-bot/db.ts'
+import * as h3 from 'npm:h3-js@4.1.0'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -12,6 +13,23 @@ const sendWAMulti = async (to: string, texto: string) => {
   for (let i = 0; i < partes.length; i++) {
     if (i > 0) await new Promise(r => setTimeout(r, 600))
     await sendWA(to, partes[i])
+  }
+}
+
+const sendWAWithMainMenu = async (to: string, texto: string) => {
+  const partes = texto.split('|||').map(p => p.trim()).filter(Boolean)
+  for (let i = 0; i < partes.length; i++) {
+    if (i > 0) await new Promise(r => setTimeout(r, 600))
+    
+    // Si es el último mensaje, lo enviamos con los botones del menú principal
+    if (i === partes.length - 1) {
+      await sendInteractiveButtons(to, partes[i], [
+        { id: 'MENU_VER_PUNTOS', title: '⭐ Ver mis puntos' },
+        { id: 'MENU_CANCELAR', title: '❌ Cancelar / Salir' }
+      ])
+    } else {
+      await sendWA(to, partes[i])
+    }
   }
 }
 
@@ -96,7 +114,7 @@ async function handleRegistrationFlow(
     }
     // Guard: ¿ya está registrado en clientes como VIP completo?
     const { data: yaCliente } = await supabase.from('clientes')
-      .select('nombre, acepta_terminos').ilike('telefono', `%${from10}%`).maybeSingle()
+      .select('nombre, acepta_terminos').eq('telefono', from10).maybeSingle()
     if (yaCliente && yaCliente.acepta_terminos === true) {
       await sendWA(fromPhone,
         `✅ *${yaCliente.nombre}*, ya estás registrado en Estrella Delivery.\n🔗 https://www.app-estrella.shop/loyalty/`
@@ -156,7 +174,17 @@ async function handleRegistrationFlow(
       await sendWA(fromPhone, `🏠 Por favor dime tu *colonia* (ej: La Esperanza, Centro...)`)
       return true
     }
-    await save({ colonia: msg, step: 3 })
+
+    const { normalizarAbreviaturas } = await import('../_shared/utils.ts')
+    const textoNorm = normalizarAbreviaturas(msg)
+    const { data: colMatch } = await supabase.rpc('search_colonia_smart', { p_nombre: textoNorm })
+    
+    let coloniaGuardar = msg
+    if (colMatch && colMatch.length > 0 && colMatch[0].score > 0.4) {
+      coloniaGuardar = colMatch[0].nombre
+    }
+
+    await save({ colonia: coloniaGuardar, step: 3 })
     await sendWAMulti(fromPhone,
       `¡Gracias! Ya casi 😊` +
       `|||📍 ¿Cuál es tu *dirección*? Escríbela o comparte tu *📌 ubicación* desde WhatsApp (botón 📎 → Ubicación).`
@@ -314,7 +342,7 @@ serve(async (req: Request) => {
     )
 
     if (resAI?.errorObj) {
-      await sendWA(fromPhone, `⚠️ Tuvimos un problema. Reintenta en unos minutos.`)
+      await sendWA(fromPhone, `⚠️ Tuvimos un problema con la Inteligencia Artificial. Detalle:\n\n*${resAI.errorObj}*\n\nReintenta en unos minutos.`)
       return new Response('OK', { status: 200 })
     }
 
@@ -326,6 +354,28 @@ serve(async (req: Request) => {
 
     const accion = resAI.respuesta.accion
     const d = resAI.respuesta.datosAExtraer as any
+    const sentimiento = (resAI.respuesta as any).sentimiento || 'neutro'
+
+    // ── 😤 VIGÍA EMOCIONAL (SOS WATCHDOG) ────────────────────────────────
+    if (sentimiento === 'molesto' || sentimiento === 'furioso') {
+      const ADMIN_PHONES_ENV_A = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHONE') ?? ''
+      const adminPhones = ADMIN_PHONES_ENV_A.split(',').map((p: string) => p.replace(/\D/g, '').slice(-10)).filter(Boolean)
+      const nivel = sentimiento === 'furioso' ? '🔴 FURIOSO' : '🟠 MOLESTO'
+      const vipTag = clienteCtx?.es_vip ? '🌟 *CLIENTE VIP* 🌟' : '👤 Cliente Standard'
+      const alertaMsg = [
+        `🚨 *VIGÍA EMOCIONAL: ALERTA SOS* 🚨`,
+        ``,
+        `El sistema detectó un cliente ${nivel}:`,
+        `Rango: ${vipTag}`,
+        `Cliente: wa.me/${fromPhone} (${clienteCtx?.nombre || 'Desconocido'})`,
+        `Mensaje: "${texto.substring(0, 200)}"`,
+        ``,
+        `_Atiende rápido antes de que escale._`
+      ].join('\n')
+      for (const adminPhone of adminPhones) {
+        sendWA(`52${adminPhone}`, alertaMsg).catch(() => {})
+      }
+    }
 
     if (accion === 'REGISTRAR_RESTAURANTE') {
       const nombreRest = d?.nombre_restaurante?.trim()
@@ -342,7 +392,7 @@ serve(async (req: Request) => {
         return new Response('OK', { status: 200 })
       }
       const ADMIN_PHONES_ENV = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHONE') ?? ''
-      const admin10 = ADMIN_PHONES_ENV.split(',')[0]?.trim() || ''
+      const admin10 = ADMIN_PHONES_ENV.split(',')[0]?.replace(/\D/g, '').slice(-10) || ''
       const functionUrl = `${SUPABASE_URL}/functions/v1/admin-approval`
       const secret = Deno.env.get('ADMIN_APPROVAL_SECRET') || ''
       if (admin10) {
@@ -352,11 +402,187 @@ serve(async (req: Request) => {
       }
       await sendWA(fromPhone, `🎉 Solicitud enviada. Te confirmamos pronto. ✉️`)
       await supabase.from('bot_memory').delete().eq('phone', from10)
+    } else if (accion === 'VER_RESTAURANTES_CLIENTE') {
+      const { enviarCatalogoRestaurantes } = await import('../whatsapp-bot/restaurant-b2b-handler.ts')
+      await enviarCatalogoRestaurantes(supabase, fromPhone)
+    } else if (accion === 'APLICAR_REFERIDO') {
+      // ── 👥 SISTEMA DE REFERIDOS ───────────────────────────────────────────
+      const codigoRef = d?.codigoReferido?.toUpperCase()?.trim()
+      if (!codigoRef) {
+        await sendWA(fromPhone, `⚠️ No detecté un código de referido válido. Los códigos tienen el formato *ESTRELLA-XXXX*. ¿Me lo envías de nuevo?`)
+        return new Response('OK', { status: 200 })
+      }
+      // Buscar quién tiene ese código
+      const { data: referidor } = await supabase.from('clientes')
+        .select('id, nombre, telefono, puntos')
+        .eq('codigo_referido', codigoRef)
+        .maybeSingle()
+
+      if (!referidor) {
+        await sendWA(fromPhone, `❌ El código *${codigoRef}* no existe. Verifica que sea correcto y vuelve a intentarlo.`)
+        return new Response('OK', { status: 200 })
+      }
+
+      // Verificar que el cliente actual no haya ya usado un referido
+      const { data: clienteActual } = await supabase.from('clientes')
+        .select('id, referido_por, nombre')
+        .eq('telefono', from10)
+        .maybeSingle()
+
+      if (clienteActual?.referido_por) {
+        await sendWA(fromPhone, `👥 Ya tienes un código de referido registrado. Solo se puede usar uno por cuenta.`)
+        return new Response('OK', { status: 200 })
+      }
+
+      // Aplicar referido: +1 punto al referidor y +1 al cliente actual
+      await supabase.from('clientes').update({ referido_por: codigoRef, puntos: (clienteActual ? 1 : 0) }).eq('id', clienteActual?.id).select()
+      await supabase.rpc('fn_registrar_entrega_bulk', { p_cliente_tel: from10, p_cantidad: 1 }).catch(() => {})
+      await supabase.rpc('fn_registrar_entrega_bulk', { p_cliente_tel: referidor.telefono, p_cantidad: 1 }).catch(() => {})
+
+      // Notificar al referidor
+      await sendWA(`52${referidor.telefono.slice(-10)}`, `🎁 *¡Buenas noticias, ${referidor.nombre?.split(' ')[0] || 'amigo/a'}!*\n\nUn amigo tuyo se acaba de unir con tu código *${codigoRef}*. ¡Te ganaste *1 punto extra* ⭐ gracias a él!`)
+      await sendWAMulti(fromPhone, `✅ ¡Código de referido *${codigoRef}* aplicado con éxito!|||Has ganado *1 punto extra* ⭐ y tu amigo ${referidor.nombre?.split(' ')[0] || ''} también recibió uno. ¡Gracias por crecer la comunidad Estrella! 🚀`)
+    } else if (accion === 'GUARDAR_DIRECCION_FAVORITA') {
+      const etiqueta = d?.etiqueta_direccion?.trim()?.toLowerCase() || 'favorita'
+      const dir = d?.direccion?.trim() || ''
+
+      // Bug 2 Fix: Validar texto vacío
+      if (!dir) {
+        await sendWAMulti(fromPhone, `⚠️ Necesito que me escribas la dirección o me mandes tu ubicación por GPS para poder guardarla.`)
+        return new Response('OK', { status: 200 })
+      }
+
+      let lat = locationData?.lat ?? null
+      let lng = locationData?.lng ?? null
+      if (!lat && dir.includes(',')) {
+        const parts = dir.split(',')
+        const pl = parseFloat(parts[0]), plg = parseFloat(parts[1])
+        if (!isNaN(pl) && !isNaN(plg) && Math.abs(pl) <= 90 && Math.abs(plg) <= 180) { lat = pl; lng = plg }
+      }
+
+      // Validacion Geografica (Nivel 1): Búsqueda difusa en h3_zonas (Robusto)
+      if (!lat || !lng) {
+        try {
+          const { data: dbMatch } = await supabase.from('h3_zonas')
+            .select('nombre, h3_index')
+            .ilike('nombre', `%${dir}%`)
+            .limit(1).maybeSingle();
+
+          if (dbMatch && dbMatch.h3_index) {
+            const [centerLat, centerLng] = h3.cellToLatLng(dbMatch.h3_index);
+            lat = centerLat;
+            lng = centerLng;
+            dir = dbMatch.nombre; // Normalizar el nombre
+            console.log(`[GEO] Match en base de datos local (H3): ${dir} -> [${lat}, ${lng}]`);
+          }
+        } catch (e) {
+          console.error('[GEO] Error buscando en h3_zonas:', e);
+        }
+      }
+
+      // Validacion Geografica (Nivel 2) con Google Maps
+      if (!lat || !lng) {
+        try {
+          const mapsKey = Deno.env.get('GOOGLE_MAPS_KEY');
+          const queryLower = dir.toLowerCase();
+          const buscaCalleOEscuela = queryLower.includes('calle') || queryLower.includes('av ') || queryLower.includes('avenida') || queryLower.includes('escuela') || queryLower.includes('blvd');
+
+          if (mapsKey) {
+            // Usar Google Maps Geocoding API
+            // Forzamos buscar dentro de Comitán con components
+            const searchUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(dir)}&components=locality:Comitán&key=${mapsKey}`;
+            const geocodeRes = await fetch(searchUrl);
+            const geoData = await geocodeRes.json();
+
+            if (geoData.status === 'OK' && geoData.results.length > 0) {
+              let bestMatch = geoData.results[0];
+              
+              if (!buscaCalleOEscuela) {
+                // Buscar si hay algún resultado que sea 'neighborhood' o 'sublocality'
+                for (const res of geoData.results) {
+                  if (res.types && (res.types.includes('neighborhood') || res.types.includes('sublocality'))) {
+                    bestMatch = res;
+                    break;
+                  }
+                }
+              }
+
+              // Prevenir el bug de la ciudad completa (si el mapa devuelve todo Comitán)
+              const isGenericCity = bestMatch.types.includes('locality') && bestMatch.types.includes('political') && !bestMatch.types.includes('neighborhood');
+              
+              if (!isGenericCity) {
+                lat = bestMatch.geometry.location.lat;
+                lng = bestMatch.geometry.location.lng;
+              } else {
+                console.warn(`[Google Maps] Falso positivo detectado (Centro de ciudad) para: "${dir}"`);
+              }
+            }
+          } else {
+            // Fallback a Nominatim si no hay llave
+            const searchDir = queryLower.includes('comitan') || queryLower.includes('comitán') ? dir : `${dir}, Comitán de Domínguez, Chiapas`;
+            const geocodeRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchDir)}&limit=5`, {
+              headers: { 'User-Agent': 'EstrellaDeliveryBot/1.0' }
+            });
+            const geoData = await geocodeRes.json();
+            if (geoData && geoData.length > 0) {
+              let bestMatch = geoData[0];
+              if (!buscaCalleOEscuela) {
+                for (const res of geoData) {
+                  if (res.addresstype === 'suburb' || res.addresstype === 'neighbourhood' || res.type === 'residential') {
+                    bestMatch = res; break;
+                  }
+                }
+              }
+              const isGenericCity = bestMatch.type === 'administrative' || bestMatch.class === 'boundary' || ['city', 'municipality', 'state', 'country'].includes(bestMatch.addresstype);
+              if (!isGenericCity) {
+                lat = parseFloat(bestMatch.lat);
+                lng = parseFloat(bestMatch.lon);
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[Geocoding] Error:', e);
+        }
+      }
+
+      if (!lat || !lng) {
+        await sendWAMulti(fromPhone, `Huy, no logro ubicar "${dir}" exactamente en el mapa 🗺️.|||¿Podrías mandarme tu ubicación por GPS (el botoncito 📎 -> Ubicación) o darme más referencias de calles?`)
+        return new Response('OK', { status: 200 })
+      }
+      
+      const upsertOpts = { onConflict: 'cliente_telefono,tipo,colonia_nombre' }
+      await supabase.from('cliente_ubicaciones').upsert({
+        cliente_telefono: from10,
+        tipo: etiqueta,
+        colonia_nombre: dir,
+        lat, lng,
+        ultima_vez: new Date().toISOString()
+      }, upsertOpts)
+
+      await sendWAMulti(fromPhone, `✅ ¡Listo! Guardé esta dirección como *${etiqueta}*.|||La próxima vez que pidas un mandadito, solo dime "mándalo a mi ${etiqueta}" y sabré exactamente a dónde ir. 🛵💨`)
+    } else if (accion === 'INICIAR_MANDADITO') {
+      try {
+        /* DESACTIVADO TEMPORALMENTE A PETICIÓN DEL ADMIN
+        const origen = d?.origen ? String(d.origen).trim() : undefined
+        const destino = d?.destino ? String(d.destino).trim() : undefined
+        const { iniciarFlujoMandadito } = await import('../whatsapp-bot/mandadito-handler.ts')
+        await iniciarFlujoMandadito(
+          supabase, 
+          fromPhone, 
+          from10, 
+          origen ? { texto: origen } : undefined, 
+          destino ? { texto: destino } : undefined
+        )
+        */
+        await sendWA(fromPhone, `🚧 *Servicio en mantenimiento*\nPor el momento los mandaditos automáticos están desactivados mientras aplicamos unas mejoras. Si necesitas un servicio urgente, por favor comunícate con un asesor. 🙏`)
+      } catch (err) {
+        console.error('Error en INICIAR_MANDADITO:', err)
+      }
     } else {
       const aiMsg = typeof resAI.respuesta.mensajeUsuario === 'string' && resAI.respuesta.mensajeUsuario.trim()
         ? resAI.respuesta.mensajeUsuario
         : '¡Hola! ¿En qué puedo ayudarte hoy? 😊'
-      await sendWAMulti(fromPhone, aiMsg)
+      await sendWAWithMainMenu(fromPhone, aiMsg)
     }
 
     console.log(`✅ [whatsapp-ai] Listo para ${fromPhone} (${accion})`)

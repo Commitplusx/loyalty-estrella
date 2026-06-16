@@ -11,18 +11,22 @@ import { SplashScreen } from '@/components/SplashScreen';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { RestaurantesPage } from '@/pages/client/RestaurantesPage';
 import { RestauranteMenuPage } from '@/pages/client/RestauranteMenuPage';
+import MapEditor from '@/pages/MapEditor';
+import H3MapEditor from '@/pages/admin/H3MapEditor';
 import './App.css';
 
 function AnimatedRoutes() {
   const location = useLocation();
   // FlashBanner solo en rutas de cliente (no en /pedido/:id del repartidor)
-  const showBanner = !location.pathname.startsWith('/pedido');
+  const showBanner = !location.pathname.startsWith('/pedido') && !location.pathname.startsWith('/map-editor') && !location.pathname.startsWith('/h3-editor');
   return (
     <>
       {showBanner && <FlashBanner />}
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
           <Route path="/" element={<Home />} />
+          <Route path="/map-editor" element={<MapEditor />} />
+          <Route path="/h3-editor" element={<H3MapEditor />} />
           <Route path="/cliente" element={<ClienteView />} />
           <Route path="/clientes" element={<ClienteView />} />
           <Route path="/loyalty/:tel" element={<ClienteView />} />

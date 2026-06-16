@@ -45,10 +45,11 @@ class DashboardScreen extends ConsumerWidget {
     final isAdmin = ref.watch(isAdminProvider);
     final userRole = ref.watch(userRoleProvider);
     final themeMode = ref.watch(themeProvider);
+    final userNameAsync = ref.watch(userNameProvider);
 
     final hour = DateTime.now().hour;
     final greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
-    final userName = (user?.email ?? 'Admin').split('@').first;
+    final userName = userNameAsync.value ?? (user?.email ?? 'Admin').split('@').first;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -164,6 +165,25 @@ class DashboardScreen extends ConsumerWidget {
               onTap: () => context.go('/scanner'),
             ),
 
+            SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(child: _ActionButton(
+                  icon: Icons.receipt_long_rounded,
+                  label: 'Gastos',
+                  color: const Color(0xFFF59E0B),
+                  onTap: () => context.go('/gastos'),
+                )),
+                SizedBox(width: 16),
+                Expanded(child: _ActionButton(
+                  icon: Icons.local_shipping_outlined,
+                  label: isAdmin ? 'Pedidos' : 'Asignados',
+                  color: Theme.of(context).colorScheme.primary,
+                  onTap: () => context.go('/pedidos'),
+                )),
+              ],
+            ),
+
             if (isAdmin) ...[
               SizedBox(height: 16),
               Row(
@@ -203,23 +223,16 @@ class DashboardScreen extends ConsumerWidget {
                   )),
                   SizedBox(width: 16),
                   Expanded(child: _ActionButton(
-                    icon: Icons.local_shipping_outlined,
-                    label: 'Pedidos',
-                    color: Theme.of(context).colorScheme.primary,
-                    onTap: () => context.go('/pedidos'),
+                    icon: Icons.people_outline_rounded,
+                    label: 'Clientes',
+                    color: const Color(0xFF3B82F6),
+                    onTap: () => context.go('/clients'),
                   )),
                 ],
               ),
               SizedBox(height: 16),
               Row(
                 children: [
-                  Expanded(child: _ActionButton(
-                    icon: Icons.people_outline_rounded,
-                    label: 'Clientes',
-                    color: const Color(0xFF3B82F6),
-                    onTap: () => context.go('/clients'),
-                  )),
-                  SizedBox(width: 16),
                   Expanded(child: _ActionButton(
                     icon: Icons.map_rounded,
                     label: 'Mapa',
@@ -233,6 +246,8 @@ class DashboardScreen extends ConsumerWidget {
                     color: Theme.of(context).colorScheme.secondary,
                     onTap: () => context.push('/leaderboard'),
                   )),
+                  SizedBox(width: 16),
+                  Spacer(),
                 ],
               ),
               SizedBox(height: 32),
@@ -315,9 +330,9 @@ class DashboardScreen extends ConsumerWidget {
             SizedBox(height: 40),
             Center(
               child: TextButton.icon(
-                onPressed: () async {
-                  await Supabase.instance.client.auth.signOut();
-                  if (context.mounted) context.go('/login');
+                onPressed: () {
+                  context.go('/login');
+                  Supabase.instance.client.auth.signOut();
                 },
                 icon: Icon(Icons.logout_rounded, size: 18, color: Theme.of(context).colorScheme.error),
                 label: Text('Cerrar sesión', style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 14, fontWeight: FontWeight.w600)),
@@ -1034,9 +1049,10 @@ Future<void> _agregarMiServicio(BuildContext context, WidgetRef ref) async {
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setSt) => Padding(
         padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Anotar Entrega de Empresa', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 22, fontWeight: FontWeight.bold)),
             SizedBox(height: 24),
@@ -1101,6 +1117,7 @@ Future<void> _agregarMiServicio(BuildContext context, WidgetRef ref) async {
               ),
             ),
           ],
+        ),
         ),
       ),
     ),

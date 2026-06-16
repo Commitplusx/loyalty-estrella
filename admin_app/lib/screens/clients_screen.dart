@@ -181,8 +181,7 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
                       ),
                     )
                   : ListView.separated(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                       itemCount: clientes.length,
                       separatorBuilder: (_, __) => SizedBox(height: 10),
                       itemBuilder: (ctx, i) =>
@@ -192,10 +191,9 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
           ),
         ],
       ),
-      floatingActionButton: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 16.0, right: 8.0),
-          child: FloatingActionButton.extended(
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 90.0, right: 8.0),
+        child: FloatingActionButton.extended(
             onPressed: _showRegistroExpress,
             backgroundColor: const Color(0xFFFF6B35),
             icon: Icon(Icons.person_add_rounded, color: Theme.of(context).colorScheme.onSurface),
@@ -203,7 +201,6 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
             elevation: 8,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           ),
-        ),
       ),
     );
   }
@@ -234,18 +231,14 @@ class _ClienteTile extends StatelessWidget {
               width: 50,
               height: 50,
               decoration: BoxDecoration(
-                color: const Color(0xFFFF6B35).withOpacity(0.15),
+                color: (cliente.esVip ? const Color(0xFFF59E0B) : const Color(0xFFFF6B35)).withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
               child: Center(
-                child: Text(
-                  cliente.telefono.substring(
-                      cliente.telefono.length - 2),
-                  style: TextStyle(
-                    color: Color(0xFFFF6B35),
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                  ),
+                child: Icon(
+                  cliente.esVip ? Icons.workspace_premium_rounded : Icons.person_rounded,
+                  color: cliente.esVip ? const Color(0xFFF59E0B) : const Color(0xFFFF6B35),
+                  size: 24,
                 ),
               ),
             ),
@@ -256,12 +249,16 @@ class _ClienteTile extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        cliente.nombre ?? cliente.telefono,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
+                      Flexible(
+                        child: Text(
+                          cliente.nombre ?? cliente.telefono,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
                         ),
                       ),
                       if (cliente.tieneGratisDisponible) ...[
