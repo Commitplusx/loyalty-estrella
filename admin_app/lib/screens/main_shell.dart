@@ -4,6 +4,15 @@ import 'package:flutter/services.dart' show SystemNavigator, SystemUiOverlayStyl
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/user_role.dart';
+import '../core/supabase_config.dart';
+// Provider para contar solicitudes pendientes
+final pendingSolicitudesProvider = FutureProvider.autoDispose<int>((ref) async {
+  final res = await supabase
+      .from('restaurantes_solicitudes')
+      .select('id')
+      .eq('estado', 'pendiente');
+  return (res as List).length;
+});
 
 class MainShell extends ConsumerWidget {
   final Widget child;
@@ -13,6 +22,8 @@ class MainShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).matchedLocation;
     final isAdmin = ref.watch(isAdminProvider);
+    final pendingAsync = isAdmin ? ref.watch(pendingSolicitudesProvider) : null;
+    final pendingCount = pendingAsync?.valueOrNull ?? 0;
 
     final tabs = [
       const _TabItem(icon: Icons.grid_view_rounded,      activeIcon: Icons.grid_view_rounded,     label: 'Dashboard',  route: '/dashboard'),
@@ -20,6 +31,7 @@ class MainShell extends ConsumerWidget {
       if (isAdmin) const _TabItem(icon: Icons.delivery_dining_rounded, activeIcon: Icons.delivery_dining_rounded, label: 'Equipo',   route: '/repartidores'),
       if (isAdmin) const _TabItem(icon: Icons.people_outline,       activeIcon: Icons.people_rounded,       label: 'Clientes',  route: '/clients'),
       _TabItem(icon: Icons.inventory_2_outlined, activeIcon: Icons.inventory_2_rounded,  label: isAdmin ? 'Pedidos' : 'Asignados',   route: '/pedidos'),
+      if (isAdmin) _TabItem(icon: Icons.store_outlined, activeIcon: Icons.store_rounded, label: 'Aliados', route: '/solicitudes', badge: pendingCount),
     ];
 
     int currentIndex = 0;
@@ -127,7 +139,9 @@ class _PremiumNavBar extends StatelessWidget {
                 children: List.generate(tabs.length, (i) {
                   final tab = tabs[i];
                   final active = i == currentIndex;
-                  return _NavItem(tab: tab, active: active, onTap: () => onTap(i));
+                  return Expanded(
+                    child: _NavItem(tab: tab, active: active, onTap: () => onTap(i)),
+                  );
                 }),
               ),
             ),
@@ -155,7 +169,6 @@ class _NavItem extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOutQuint,
-        width: 58,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -180,11 +193,21 @@ class _NavItem extends StatelessWidget {
                   )
                 ],
               ),
-              child: Icon(
-                active ? tab.activeIcon : tab.icon,
-                color: active ? Colors.white : theme.colorScheme.onSurfaceVariant.withOpacity(0.6),
-                size: 24,
-              ),
+              child: tab.badge > 0
+                  ? Badge(
+                      label: Text(tab.badge.toString()),
+                      backgroundColor: const Color(0xFFF97316),
+                      child: Icon(
+                        active ? tab.activeIcon : tab.icon,
+                        color: active ? Colors.white : theme.colorScheme.onSurfaceVariant.withOpacity(0.6),
+                        size: 24,
+                      ),
+                    )
+                  : Icon(
+                      active ? tab.activeIcon : tab.icon,
+                      color: active ? Colors.white : theme.colorScheme.onSurfaceVariant.withOpacity(0.6),
+                      size: 24,
+                    ),
             ),
             const SizedBox(height: 4),
             AnimatedDefaultTextStyle(
@@ -208,10 +231,12 @@ class _TabItem {
   final IconData activeIcon;
   final String label;
   final String route;
+  final int badge;
   const _TabItem({
     required this.icon,
     required this.activeIcon,
     required this.label,
     required this.route,
+    this.badge = 0,
   });
 }

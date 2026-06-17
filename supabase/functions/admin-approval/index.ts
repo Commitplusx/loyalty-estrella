@@ -1,4 +1,3 @@
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -7,6 +6,11 @@ const WHATSAPP_TOKEN = Deno.env.get('WHATSAPP_TOKEN')!
 const WHATSAPP_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_ID')!
 const APPROVAL_SECRET = Deno.env.get('ADMIN_APPROVAL_SECRET') ?? ''
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
 async function sendWA(to: string, text: string) {
   try {
     const res = await fetch(`https://graph.facebook.com/v19.0/${WHATSAPP_PHONE_ID}/messages`, {
@@ -14,117 +18,125 @@ async function sendWA(to: string, text: string) {
       headers: { 'Authorization': `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'text', text: { body: text } })
     })
-    if (!res.ok) {
-      const errText = await res.text()
-      console.error(`Error sending WA message to ${to}: ${res.status} ${res.statusText} - ${errText}`)
-    }
+    if (!res.ok) console.error(`Error sending WA message to ${to}:`, await res.text())
   } catch (error) {
     console.error(`Exception sending WA message to ${to}:`, error)
   }
 }
 
-function htmlResponse(title: string, message: string, isError = false) {
+function sendResponse(message: string, isError = false, isJson = false) {
+  if (isJson) {
+    return new Response(JSON.stringify({ error: isError, message }), { 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: isError ? 400 : 200
+    })
+  }
   const color = isError ? '#ef4444' : '#10b981'
   return new Response(`
     <!DOCTYPE html>
     <html lang="es">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${title}</title>
-      <style>
-        body { font-family: system-ui, sans-serif; background: #0f0f0f; color: white; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
-        .card { background: #1a1a1a; padding: 2rem; border-radius: 20px; border-top: 4px solid ${color}; box-shadow: 0 10px 30px rgba(0,0,0,0.5); max-width: 400px; }
-        h1 { margin-top: 0; color: ${color}; }
-      </style>
-    </head>
-    <body>
-      <div class="card">
-        <h1>${title}</h1>
-        <p>${message}</p>
+    <head><meta charset="UTF-8"><title>Aprobación</title></head>
+    <body style="font-family: system-ui; background: #0f0f0f; color: white; display: flex; align-items: center; justify-content: center; height: 100vh; text-align: center;">
+      <div style="background: #1a1a1a; padding: 2rem; border-radius: 20px; border-top: 4px solid ${color}; max-width: 400px;">
+        <h1 style="color: ${color}">Aprobación</h1><p>${message}</p>
       </div>
-    </body>
-    </html>
-  `, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+    </body></html>
+  `, { headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } })
 }
 
-serve(async (req: Request) => {
-  if (req.method !== 'GET') return htmlResponse('Error', 'Método no permitido', true)
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
 
-  const url = new URL(req.url)
-  const action = url.searchParams.get('action')
-  const tel = url.searchParams.get('tel')
+  let action = ''
+  let tel = ''
+  let secret = ''
+  const isJson = req.headers.get('content-type')?.includes('application/json') || req.method === 'POST'
+  
+  if (req.method === 'GET') {
+    const url = new URL(req.url)
+    action = url.searchParams.get('action') || ''
+    tel = url.searchParams.get('tel') || ''
+    secret = url.searchParams.get('secret') || ''
+  } else if (req.method === 'POST') {
+    const body = await req.json()
+    action = body.action || ''
+    tel = body.tel || ''
+  }
 
-  if (!action || !tel) return htmlResponse('Error', 'Faltan parámetros (action o tel).', true)
+  if (!action || !tel) return sendResponse('Faltan parámetros.', true, isJson)
 
-  // Verificación de seguridad obligatoria
-  const secret = url.searchParams.get('secret')
-  if (!APPROVAL_SECRET || secret !== APPROVAL_SECRET) {
-    return htmlResponse('No Autorizado', 'Token de seguridad inválido o faltante.', true)
+  const authHeader = req.headers.get('Authorization')
+  if ((!APPROVAL_SECRET || secret !== APPROVAL_SECRET) && !authHeader) {
+    return sendResponse('No Autorizado.', true, isJson)
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
-  // 1. Buscar la solicitud pendiente
   const { data: sol, error: solErr } = await supabase.from('restaurantes_solicitudes')
     .select('*').eq('telefono', tel).eq('estado', 'pendiente').order('creado_en', { ascending: false }).limit(1).maybeSingle()
 
   if (solErr || !sol) {
-    return htmlResponse('Solicitud no encontrada', 'No se encontró una solicitud pendiente para este teléfono o ya fue procesada.', true)
+    return sendResponse('Solicitud no encontrada.', true, isJson)
   }
 
   const sendPhone = `52${tel}`
 
   if (action === 'reject') {
-    await supabase.from('restaurantes_solicitudes').update({ estado: 'rechazado' }).eq('id', sol.id)
-    await sendWA(sendPhone, `Estimado comercio, por el momento no estamos aceptando más registros en su zona o los datos proporcionados no cumplen con las políticas. Gracias por su interés en Estrella Delivery.`)
-    return htmlResponse('Rechazado', `La solicitud de ${sol.nombre_restaurante} ha sido denegada y se le ha notificado por WhatsApp.`)
+    const { error: updErr } = await supabase.from('restaurantes_solicitudes').update({ estado: 'rechazado' }).eq('telefono', tel).eq('estado', 'pendiente').select()
+    if (updErr) {
+      return sendResponse(`Error al actualizar DB: ${updErr.message}`, true, isJson)
+    }
+    await sendWA(sendPhone, `Estimado comercio, por el momento no estamos aceptando más registros. Gracias.`)
+    return sendResponse(`Rechazado.`, false, isJson)
   }
 
   if (action === 'accept') {
-    // Generar contraseña segura (BUG FIX: Increased entropy)
-    const randomBytes = crypto.getRandomValues(new Uint8Array(12));
-    const genPassword = btoa(String.fromCharCode(...randomBytes)).slice(0, 16);
+    const rNum = Math.floor(1000 + Math.random() * 9000);
+    const genPassword = `Estrella${rNum}*`;
 
-    // Crear Usuario en Auth
     const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
       email: sol.correo,
       password: genPassword,
       email_confirm: true
     })
 
+    let isAuthCreated = true;
+    let adminId = authData?.user?.id;
+
     if (authErr) {
-      if (authErr.message.includes('already exists')) {
-        return htmlResponse('Error de Auth', `El correo ${sol.correo} ya está registrado en el sistema. Dile que inicie sesión con su correo o recupere su contraseña.`, true)
+      if (authErr.message.includes('already been registered') || authErr.message.includes('already exists')) {
+        isAuthCreated = false;
+        // Obtener el ID del usuario existente usando la función RPC
+        const { data: existingId } = await supabase.rpc('get_user_id_by_email', { email_to_search: sol.correo });
+        adminId = existingId;
+      } else {
+        return sendResponse(`Error de Auth: ${authErr.message}`, true, isJson)
       }
-      return htmlResponse('Error de Auth', `Fallo al crear usuario: ${authErr.message}`, true)
     }
 
-    const userId = authData.user.id
-
-    // Crear fila en Restaurantes
     const { error: restErr } = await supabase.from('restaurantes').insert({
       nombre: sol.nombre_restaurante,
       telefono: tel,
-      admin_id: userId,
-      activo: true
+      activo: true,
+      admin_id: adminId
     })
 
-    if (restErr) {
-      // Revertir usuario si falla
-      await supabase.auth.admin.deleteUser(userId)
-      return htmlResponse('Error de BD', `No se pudo registrar en la base de datos: ${restErr.message}`, true)
+    if (restErr && restErr.code !== '23505') {
+      return sendResponse(`Error de BD: ${restErr.message}`, true, isJson)
     }
 
-    // Actualizar solicitud
     await supabase.from('restaurantes_solicitudes').update({ estado: 'aprobado' }).eq('id', sol.id)
 
-    // Enviar WhatsApp de bienvenida
-    const msg = `🎉 *¡Felicidades!*\n\nTu restaurante *${sol.nombre_restaurante}* ha sido aprobado en Estrella Delivery.\n\nYa puedes acceder a tu panel de control (Menú Digital) y subir tus productos:\n\n🌐 *Portal:* https://restaurantes-app-estrella.shop\n📧 *Correo:* ${sol.correo}\n🔑 *Contraseña temporal:* ${genPassword}\n\nPor seguridad, te sugerimos cambiar tu contraseña al iniciar sesión.`
-    await sendWA(sendPhone, msg)
+    let msgCredenciales = `🎉 *¡Felicidades, ${sol.encargado}! Tu restaurante ha sido APROBADO.*\n\nYa puedes gestionar todo enviándonos la palabra *Menú* o *Hola* por este mismo chat.`;
+    if (isAuthCreated) {
+      msgCredenciales += `\n\nPara administrar tu menú e información, ingresa a:\n🌐 *https://restaurantes-app-estrella.shop*\n\n_(Tus credenciales web son:_ Correo: ${sol.correo} _/ Clave:_ ${genPassword}_)_`;
+    }
+    await sendWA(sendPhone, msgCredenciales)
 
-    return htmlResponse('¡Aprobado con éxito!', `El restaurante <b>${sol.nombre_restaurante}</b> fue dado de alta y se le enviaron sus accesos a su WhatsApp.`)
+    return sendResponse('¡Aprobado con éxito!', false, isJson)
   }
 
-  return htmlResponse('Acción desconocida', 'La acción no es accept ni reject.', true)
+  return sendResponse('Acción desconocida.', true, isJson)
 })

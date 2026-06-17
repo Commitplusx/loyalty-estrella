@@ -12,6 +12,97 @@ export async function handleSlashCommands(
   esAdmin: boolean = true
 ): Promise<Response | null> {
 
+  if (slashText.startsWith('/force_loyalty')) {
+    if (!esAdmin) return null
+    const { error } = await supabase.from('restaurantes').update({ programa_lealtad_activo: true }).neq('id', '00000000-0000-0000-0000-000000000000')
+    if (error) {
+      await sendWA(fromPhone, `❌ Error: ${error.message}`)
+    } else {
+      await sendWA(fromPhone, `✅ Programa de lealtad activado para TODOS los restaurantes en la base de datos.`)
+    }
+    return new Response('OK', { status: 200 })
+  }
+
+  if (slashText.startsWith('/test_typing')) {
+    if (!esAdmin) return null
+    const token = Deno.env.get('WHATSAPP_TOKEN')
+    const phoneId = Deno.env.get('WHATSAPP_PHONE_ID')
+    try {
+      const res = await fetch(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: fromPhone,
+          type: 'typing_indicator',
+          typing_indicator: {
+            type: 'text'
+          }
+        })
+      })
+      const text = await res.text()
+      await sendWA(fromPhone, `📡 *Meta Typing Response:*\n\nHTTP ${res.status}\n${text}`)
+    } catch (e: any) {
+      await sendWA(fromPhone, `❌ Error: ${e.message}`)
+    }
+    return new Response('OK', { status: 200 })
+  }
+
+  if (slashText.startsWith('/force_key')) {
+    if (!esAdmin) return null
+    const token = Deno.env.get('WHATSAPP_TOKEN')
+    const phoneId = '1155044321029650'
+    const publicKey = `-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtx6Q5hLj8g+mW5Lnv04/\ncNxckCQJFeXAj5AvUNrQwAq/3/PASv0ZUsNJbQcQ2DiomtH4kUPT6YFAx76IWFFf\nR49slxEd1+lIl6t/CmLeYrHXg8gNCrVNDeESWDy0w4Cz8RJGDmKd/qV2PCJdaPB3\nhaMqGNHRU6VxN5vFtxir7HL3Bkm+qyJftHmZQHml0CBclYYtx0V45FYjyvbLN+F0\nl51egwdaXtQQQcGJs8h1ukouGKer082Ff/tjTbQe2SOZ/GPTY8UAUHVYtTcpbiDF\nKXTNb+kGvZYOGdAYiWTcUbwrTGiHmY3m3mC+DcfHCppF+Rox2PSFCOybiJs/ccjY\n6QIDAQAB\n-----END PUBLIC KEY-----`
+    
+    try {
+      const data = new URLSearchParams({ business_public_key: publicKey }).toString()
+      const res = await fetch(`https://graph.facebook.com/v20.0/${phoneId}/whatsapp_business_encryption`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: data
+      })
+      const text = await res.text()
+      await sendWA(fromPhone, `📡 *Meta API Response (Key):*\n\nHTTP ${res.status}\n${text}`)
+    } catch (e: any) {
+      await sendWA(fromPhone, `❌ Error: ${e.message}`)
+    }
+    return new Response('OK', { status: 200 })
+  }
+
+  if (slashText.startsWith('/wa_register ')) {
+    if (!esAdmin) return null
+    const parts = slashText.split(' ')
+    const phoneId = parts[1]
+    const pin = parts[2] || '123456'
+    
+    const token = Deno.env.get('WHATSAPP_TOKEN')
+    try {
+      const res = await fetch(`https://graph.facebook.com/v20.0/${phoneId}/register`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          pin: pin
+        })
+      })
+      const text = await res.text()
+      await sendWA(fromPhone, `📡 *Meta API Response:*\n\n${text}`)
+    } catch (e: any) {
+      await sendWA(fromPhone, `❌ Error: ${e.message}`)
+    }
+    return new Response('OK', { status: 200 })
+  }
+
   if (slashText === '/repartidor') {
     if (!esAdmin) return null
     await supabase.from('bot_memory').upsert({

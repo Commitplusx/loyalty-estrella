@@ -360,6 +360,60 @@ export async function sendInteractiveCtaUrl(
   }
 }
 
+// ── Flow Button (Abrir Formulario Nativo) ─────────────────────────────────────
+export async function sendInteractiveFlow(
+  to: string,
+  text: string,
+  buttonText: string,
+  flowId: string,
+  flowToken: string = 'FLOW_TOKEN',
+  screenName: string,
+  headerText?: string
+): Promise<void> {
+  try {
+    const payload: any = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'flow',
+        body: { text: text.substring(0, 1024) },
+        action: {
+          name: 'flow',
+          parameters: {
+            flow_message_version: '3',
+            flow_token: flowToken,
+            flow_id: flowId,
+            flow_cta: buttonText.substring(0, 20),
+            flow_action: 'navigate',
+            flow_action_payload: {
+              screen: screenName
+            }
+          }
+        }
+      }
+    }
+    
+    if (headerText) {
+      payload.interactive.header = {
+        type: 'text',
+        text: headerText.substring(0, 60)
+      }
+    }
+
+    const res = await fetchConReintento(WA_BASE, {
+      method: 'POST',
+      headers: WA_HEADERS(),
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) console.error('WA Flow Error:', await res.text())
+    else syncOutgoingToChatwoot(to, `${text}\n[Formulario: ${buttonText}]`).catch(e => console.error(e))
+  } catch (e) {
+    console.error('WA Fatal Net Error (Flow):', e)
+  }
+}
+
 // ── Plantilla Meta (WhatsApp Template) ────────────────────────────────────────
 export async function sendWATemplate(
   to: string,

@@ -68,6 +68,7 @@ async function enviarMenuPrincipal(fromPhone: string, nombreRest: string, supaba
         title: 'Gestión Rápida',
         rows: [
           { id: 'REST_MENU_AFILIAR', title: '➕ Afiliar + Puntos', description: 'Registrar cliente y sumar puntos' },
+          { id: 'REST_MENU_MOTO', title: '🛵 Solicitar Moto', description: 'Pedir un repartidor Estrella' },
           { id: 'REST_MENU_PUNTOS', title: '⭐ Sumar Puntos', description: 'Premiar visita al local' },
           { id: 'REST_MENU_CANJEAR', title: '🎟️ Canjear Puntos', description: 'Cobrar recompensa del cliente' },
           { id: 'REST_MENU_INFO', title: '📊 Ver Perfil VIP', description: 'Consultar datos de un cliente' },
@@ -209,13 +210,26 @@ export async function handleRestaurantCommand(
 
     let promptMsg = ''
     let newState = ''
+    
+    if (buttonId === 'REST_MENU_MOTO') {
+      const { sendInteractiveFlow } = await import('./whatsapp.ts')
+      const flowToken = JSON.stringify({ phone: fromPhone })
+      await sendInteractiveFlow(fromPhone, `🛵 *Solicitar Moto B2B*\n\nLlena este formulario rápido para despachar tu moto de inmediato:`, `📝 Llenar Formulario`, `1367997788584171`, flowToken, `SOLICITAR_MOTO`)
+      return new Response('OK', { status: 200 })
+    }
+
     // AFILIAR ahora usa PUNTOS_TEL: registra al cliente si no existe y suma puntos en 1 solo paso
     if (buttonId === 'REST_MENU_AFILIAR') { promptMsg = 'Escribe el número a *10 dígitos* del cliente:\n_Si es nuevo lo registramos al vuelo y le sumas puntos de inmediato._ 📱'; newState = 'PUNTOS_TEL' }
     else if (buttonId === 'REST_MENU_PUNTOS') { promptMsg = 'Escribe el número a *10 dígitos* del cliente:\n_(También puedes enviar una foto de su Tarjeta VIP QR)_ 📸'; newState = 'PUNTOS_TEL' }
     else if (buttonId === 'REST_MENU_CANJEAR') { promptMsg = 'Escribe el número a *10 dígitos* del cliente que va a cobrar su recompensa:'; newState = 'CANJEAR_TEL' }
     else if (buttonId === 'REST_MENU_REGALAR') { promptMsg = 'Escribe el número a *10 dígitos* del cliente a premiar:'; newState = 'REGALAR_TEL' }
     else if (buttonId === 'REST_MENU_INFO') { promptMsg = 'Escribe el número a *10 dígitos* del cliente a consultar:'; newState = 'INFO_TEL' }
-    else if (buttonId === 'REST_MENU_BROADCAST') { promptMsg = 'Escribe la promoción que deseas enviar a tus mejores clientes VIP (Top 20).\n\n⚠️ *Asegúrate de que sea clara y atractiva*.\n_Ejemplo: "Hoy en tu compra de pizza grande te regalamos unos palitroques. Muestra tu tarjeta digital."_'; newState = 'BROADCAST_TXT' }
+    else if (buttonId === 'REST_MENU_BROADCAST') {
+      const { sendInteractiveFlow } = await import('./whatsapp.ts')
+      const flowToken = JSON.stringify({ phone: fromPhone, restId: restauranteId, restName: nombreRest })
+      await sendInteractiveFlow(fromPhone, `📣 *Creador de Promociones*\n\nUsa este formulario para redactar y segmentar tu promoción a los clientes afiliados:`, `📝 Crear Promoción`, `1047676157695788`, flowToken, `crear_promo`)
+      return new Response('OK', { status: 200 })
+    }
 
     if (newState) {
       await supabase.from('bot_memory').upsert({

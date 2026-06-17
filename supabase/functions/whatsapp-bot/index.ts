@@ -1,6 +1,6 @@
 // supabase/functions/whatsapp-bot/index.ts
 // WhatsApp AI Bot — Edge Function (Modular Architecture, Refactored)
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
+// Eliminamos import de serve para usar Deno.serve nativo
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 import { sendWA, sendWATemplate, markMessageAsRead } from './whatsapp.ts'
@@ -20,7 +20,7 @@ const SUPABASE_URL     = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_KEY     = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const ADMIN_PHONES_ENV = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHONE') ?? ''
 
-serve(async (req: Request) => {
+Deno.serve(async (req: Request) => {
   if (req.method === 'GET') {
     const url = new URL(req.url)
     return new Response(url.searchParams.get('hub.challenge') ?? 'Forbidden', {
@@ -97,6 +97,8 @@ serve(async (req: Request) => {
       if (idempError.code === '23505' || idempError.message.includes('duplicate key')) return new Response('OK', { status: 200 })
       return new Response('Service Unavailable', { status: 503 })
     }
+
+    // (Typing indicator no soportado oficialmente por Meta)
 
     try { await markMessageAsRead(messageId) } catch (e) { console.error('[ReadReceipt]', e) }
 

@@ -766,22 +766,16 @@ export async function handleButtonEvent(
 
   // ── Embudo inicial: elección de tipo de usuario ──
   if (buttonId === 'REG_TIPO_CLIENTE') {
-    const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
-    // @ts-ignore
-    EdgeRuntime.waitUntil(
-      fetch(`${SUPABASE_PROJECT_URL}/functions/v1/whatsapp-ai`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fromPhone, from10, texto: 'hola',
-          isRepartidor: false, repartidorInfo: null, isClient: false, clienteCtx: null,
-          regState: { tel: from10, step: 0 } })
-      }).catch(err => console.error('Error REG_TIPO_CLIENTE:', err))
-    )
+    const { sendInteractiveFlow } = await import('./whatsapp.ts')
+    const flowToken = JSON.stringify({ phone: fromPhone })
+    await sendInteractiveFlow(fromPhone, `¡Genial! 🎉 Para darte de alta como Cliente VIP y enviarte tu tarjeta digital, por favor llena este rápido formulario:`, `📝 Llenar Formulario`, `1489224042353572`, flowToken, `REGISTRO_CLIENTE`)
     return new Response('OK', { status: 200 })
   }
 
   if (buttonId === 'REG_TIPO_RESTAURANTE') {
-    await startRestaurantOnboarding(supabase, fromPhone, from10)
+    const { sendInteractiveFlow } = await import('./whatsapp.ts')
+    const flowToken = JSON.stringify({ phone: fromPhone })
+    await sendInteractiveFlow(fromPhone, `¡Excelente decisión! 🏪 Para iniciar tu afiliación como Restaurante Aliado, por favor completa esta solicitud:`, `📝 Llenar Formulario`, `27165926819731779`, flowToken, `REGISTRO_RESTAURANTE`)
     return new Response('OK', { status: 200 })
   }
 
@@ -816,6 +810,7 @@ export async function handleButtonEvent(
         telefono: clientTel, nombre: regInfo.nombre,
         direccion: regInfo.colonia ? `${regInfo.colonia}, ${regInfo.direccion || ''}`.trim() : (regInfo.direccion || null),
         lat_frecuente: regInfo.lat || null, lng_frecuente: regInfo.lng || null,
+        cumpleanos: regInfo.cumpleanos || null,
         puntos: 0, es_vip: false, acepta_terminos: false,
         qr_code: qrCode, codigo_referido: codigoReferido, created_at: new Date().toISOString()
       }, { onConflict: 'telefono' })
@@ -846,6 +841,89 @@ export async function handleButtonEvent(
     }
   }
 
+  // ── Admin: Aceptar / Rechazar Restaurante (Versión Flow) ──
+  if (esAdmin && (buttonId.startsWith('flow_rest_accept_') || buttonId.startsWith('flow_rest_reject_'))) {
+    const restTel = buttonId.replace(/^flow_rest_(accept|reject)_/, '')
+    
+    // Buscar la solicitud en la base de datos
+    const { data: sol, error: solErr } = await supabase.from('restaurantes_solicitudes')
+      .select('*').eq('telefono', restTel).eq('estado', 'pendiente').order('creado_en', { ascending: false }).limit(1).maybeSingle()
+    
+    if (solErr || !sol) {
+      await sendWA(fromPhone, `⚠️ No encontré una solicitud pendiente para ${restTel} o ya fue procesada.`)
+      return new Response('OK', { status: 200 })
+    }
+
+    if (buttonId.startsWith('flow_rest_accept_')) {
+      // Generar contraseña segura
+      const rNum = Math.floor(1000 + Math.random() * 9000);
+      const genPassword = `Estrella${rNum}*`;
+
+      // Crear Usuario en Auth
+      const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
+        email: sol.correo,
+        password: genPassword,
+        email_confirm: true
+      })
+
+      let isAuthCreated = true;
+      let adminId = authData?.user?.id;
+
+      if (authErr) {
+        if (authErr.message.includes('already been registered') || authErr.message.includes('already exists')) {
+           await sendWA(fromPhone, `⚠️ El correo ${sol.correo} ya está registrado. Aprobaremos el perfil de todos modos en la BD, pero dile al cliente que si usa la app web deberá iniciar sesión con su contraseña anterior o recuperarla.`)
+           isAuthCreated = false;
+           // Obtener el ID del usuario existente usando la función RPC
+           const { data: existingId } = await supabase.rpc('get_user_id_by_email', { email_to_search: sol.correo });
+           adminId = existingId;
+        } else {
+           await sendWA(fromPhone, `❌ Error al crear usuario en Auth: ${authErr.message}`)
+           return new Response('OK', { status: 200 })
+        }
+      }
+
+      // Insertar en la tabla restaurantes
+      const { error: insertErr } = await supabase.from('restaurantes').insert({
+        nombre: sol.nombre_restaurante,
+        telefono: sol.telefono,
+        direccion: sol.direccion,
+        activo: true,
+        programa_lealtad_activo: true,
+        admin_id: adminId
+      })
+
+      if (insertErr && insertErr.code !== '23505') { // Ignorar duplicados de teléfono (si ya existe, lo actualizamos de estado)
+         await sendWA(fromPhone, `❌ Error al insertar el restaurante: ${insertErr.message}`)
+         return new Response('OK', { status: 200 })
+      } else if (insertErr && insertErr.code === '23505') {
+         await supabase.from('restaurantes').update({ activo: true, programa_lealtad_activo: true }).eq('telefono', sol.telefono)
+      }
+
+      // Actualizar estado de solicitud
+      await supabase.from('restaurantes_solicitudes').update({ estado: 'aprobado' }).eq('id', sol.id)
+
+      await sendWA(fromPhone, `✅ Restaurante *${sol.nombre_restaurante}* aprobado. Se le enviarán sus accesos por WA.`)
+
+      let msgCredenciales = `🎉 *¡Felicidades, ${sol.encargado}! Tu restaurante ha sido APROBADO.*\n\nYa puedes gestionar todo como Aliado enviándonos la palabra *Menú* o *Hola* por este mismo chat.`;
+      if (isAuthCreated) {
+        msgCredenciales += `\n\nPara administrar tu menú e información, ingresa a:\n🌐 *https://restaurantes-app-estrella.shop*\n\n_(Tus credenciales para la plataforma web son:_ Correo: ${sol.correo} _/ Clave:_ ${genPassword}_)_`;
+      }
+      await sendWA(`52${restTel}`, msgCredenciales)
+      
+      const pdfUrl = Deno.env.get('PDF_BIENVENIDA_URL') || "https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/restaurantes/pdf-restaurantes/pdf-restaurante.pdf" 
+      await sendWADocument(`52${restTel}`, pdfUrl, "Guia_Restaurantes.pdf", "📖 Te enviamos esta pequeña guía en PDF para que sepas cómo sacarle el máximo provecho a Estrella Delivery.")
+
+      return new Response('OK', { status: 200 })
+
+    } else {
+      // Rechazar
+      await supabase.from('restaurantes_solicitudes').update({ estado: 'rechazado' }).eq('telefono', restTel).eq('estado', 'pendiente')
+      await sendWA(fromPhone, `❌ Solicitud de restaurante *${sol.nombre_restaurante}* rechazada.`)
+      await sendWA(`52${restTel}`, `Estimado comercio, por el momento no estamos aceptando más registros en su zona o los datos proporcionados no cumplen con las políticas. Gracias por su interés en Estrella Delivery.`)
+      return new Response('OK', { status: 200 })
+    }
+  }
+
   // ── Admin: aceptar / rechazar Restaurante ──
   if (esAdmin && (buttonId.startsWith('rest_accept_') || buttonId.startsWith('rest_reject_'))) {
     const restTel = buttonId.replace(/^rest_(accept|reject)_/, '')
@@ -865,6 +943,10 @@ export async function handleButtonEvent(
         return new Response('OK', { status: 200 })
       }
 
+      // Generar slug
+      const baseSlug = restInfo.nombreRest.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      const finalSlug = `${baseSlug}-${restTel.slice(-4)}`;
+      
       // Guardar todo: telefono, nombre, foto, ubicacion y que esté activo
       const { error } = await supabase.from('restaurantes').insert({
         telefono: restTel,
@@ -872,7 +954,8 @@ export async function handleButtonEvent(
         direccion: restInfo.ubicacion,
         foto_fachada_url: restInfo.fotoUrl,
         programa_lealtad_activo: true,
-        activo: true
+        activo: true,
+        slug: finalSlug
       })
 
       if (error) {
@@ -884,7 +967,16 @@ export async function handleButtonEvent(
       await supabase.from('bot_memory').delete().eq('phone', `pending_rest_${restTel}`)
       
       await sendWA(fromPhone, `✅ Restaurante *${restInfo.nombreRest}* aprobado y registrado en el sistema.`)
-      await sendWA(`52${restTel}`, `🎉 *¡Felicidades, ${restInfo.responsable || 'aliado'}!*\n\nTu restaurante ha sido aprobado por la administración. Ya eres parte oficial de Estrella Delivery.\n\nEnvía la palabra *Hola* o *Menú* para abrir tu Portal de Aliados B2B.`)
+      
+      const menuUrl = `https://app-estrella.shop/menu/${finalSlug}`;
+      const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(menuUrl)}&size=500&margin=2`;
+      
+      const { sendWAImage } = await import('./whatsapp.ts');
+      await sendWAImage(
+        `52${restTel}`, 
+        qrUrl, 
+        `🎉 *¡Felicidades, ${restInfo.responsable || 'aliado'}!*\n\nTu restaurante ha sido aprobado por la administración. Ya eres parte oficial de Estrella Delivery.\n\nAquí tienes tu Código QR y tu link público para que tus clientes comiencen a pedir:\n🔗 ${menuUrl}\n\nPara configurar tu menú, entra a restaurantes-app-estrella.shop con tu número de teléfono.`
+      )
       
       // Enviar documento leyendo URL de variable de entorno (con fallback al actual si no existe)
       const pdfUrl = Deno.env.get('PDF_BIENVENIDA_URL') || "https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/restaurantes/pdf-restaurantes/pdf-restaurante.pdf" 

@@ -7,6 +7,7 @@ import 'core/theme_provider.dart';
 import 'router.dart';
 
 import 'services/sync_service.dart';
+import 'services/notification_service.dart';
 
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -22,6 +23,24 @@ void main() async {
     anonKey:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkcnJrcHZvZG5xb2xqeWNpeGJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNDkyOTEsImV4cCI6MjA5MDYyNTI5MX0.WEKqdL2p99cy8XvyqY31EP8-KbdOnhx2-fx9qz_iQtQ',
   );
+
+  await NotificationService().init();
+
+  Supabase.instance.client.channel('public:pedidos').onPostgresChanges(
+    event: PostgresChangeEvent.insert,
+    schema: 'public',
+    table: 'pedidos',
+    callback: (payload) {
+      final newRecord = payload.newRecord;
+      if (newRecord['estado'] == 'pendiente') {
+        NotificationService().showNotification(
+          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+          title: '🔔 ¡Nuevo Pedido!',
+          body: 'De: ${newRecord['restaurante'] ?? 'Estrella'} - \$${newRecord['total'] ?? '0.0'}',
+        );
+      }
+    },
+  ).subscribe();
 
   SyncService().init();
 

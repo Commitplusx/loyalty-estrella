@@ -421,7 +421,7 @@ export function ClienteView() {
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 1.02, y: -10 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="min-h-screen overflow-x-hidden bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/20 transition-colors duration-300"
+      className="min-h-screen overflow-x-hidden bg-gradient-to-br from-slate-50 via-white to-orange-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-orange-950/20 transition-colors duration-300"
     >
       {/* Onboarding primera visita */}
       {showOnboarding && (
@@ -430,26 +430,26 @@ export function ClienteView() {
           setTimeout(() => inputRef.current?.focus(), 300);
         }} />
       )}
-      {/* Header "” fixed blue like Home page */}
-      <header
-        className={`fixed top-0 inset-x-0 z-50 bg-blue-600 transition-all duration-300
-          ${navScrolled ? 'shadow-xl shadow-blue-700/40' : ''}`}
+      {/* Header — Fixed Peach */}
+      <div
+        className={`fixed top-0 inset-x-0 z-50 bg-white/80 dark:bg-card/80 backdrop-blur-md transition-all duration-300
+          ${navScrolled ? 'shadow-xl shadow-orange-100/40 dark:shadow-orange-900/20' : ''}`}
         style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm shadow-inner">
+              <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/20 rounded-xl flex items-center justify-center backdrop-blur-sm shadow-inner">
                 <img src="/logo.png" className="w-7 h-7 object-contain" alt="Estrella" />
               </div>
-              <span className="font-black text-white text-2xl tracking-tighter">
-                Estrella<span className="text-blue-200">.</span>
-              </span>
+              <div className="font-bold text-lg text-orange-600 dark:text-orange-500 tracking-tight">
+                Estrella<span className="text-orange-300">.</span>
+              </div>
             </div>
 
             {/* Estado tienda */}
-            <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-white/15 text-white backdrop-blur-sm">
+            <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-orange-100 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 backdrop-blur-sm">
               <span className={`w-1.5 h-1.5 rounded-full ${storeState.isOpen ? 'bg-green-400 animate-pulse' : 'bg-red-300'}`} />
               {storeState.isOpen ? 'Abierto' : 'Cerrado'}
             </div>
@@ -460,25 +460,25 @@ export function ClienteView() {
                 variant={storeState.isOpen ? 'default' : 'secondary'}
                 className={`sm:hidden text-[11px] px-3 py-1 font-black ${storeState.isOpen
                   ? 'bg-green-500 shadow-lg shadow-green-500/30'
-                  : 'bg-white/20 text-white'}`}
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600'}`}
               >
                 {storeState.isOpen ? 'ABIERTO' : 'CERRADO'}
               </Badge>
               <button
                 onClick={toggle}
                 aria-label="Cambiar tema"
-                className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/15 hover:bg-white/25 transition-colors shadow-inner"
+                className="w-10 h-10 rounded-xl flex items-center justify-center bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors shadow-inner"
               >
                 {isDark
                   ? <Sun className="w-5 h-5 text-amber-300" />
-                  : <Moon className="w-5 h-5 text-white" />}
+                  : <Moon className="w-5 h-5 text-gray-600" />}
               </button>
               {cliente && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleReset}
-                  className="text-white/80 hover:text-white hover:bg-white/15 ml-1 text-xs gap-1"
+                  className="text-gray-500 hover:text-gray-900 hover:bg-gray-100 ml-1 text-xs gap-1"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                   Salir
@@ -487,7 +487,7 @@ export function ClienteView() {
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Main "” padding-top to clear fixed header + bottom safe-area for iPhone home bar */}
       <main className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pt-20 sm:pt-24"
@@ -573,7 +573,7 @@ export function ClienteView() {
               {[0, 1, 2].map((i) => (
                 <motion.div
                   key={i}
-                  className="w-1.5 h-1.5 rounded-full bg-blue-400"
+                  className="w-1.5 h-1.5 rounded-full bg-primary"
                   animate={{ scale: [1, 1.6, 1], opacity: [0.4, 1, 0.4] }}
                   transition={{ duration: 1, repeat: Infinity, delay: i * 0.2, ease: 'easeInOut' }}
                 />
@@ -602,8 +602,8 @@ export function ClienteView() {
                 <p className="text-gray-700 font-medium">
                   Para poder acceder a tu billetera y acumular puntos, necesitas registrarte en nuestro programa de lealtad.
                 </p>
-                <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-xl text-left border border-blue-100">
-                  <Gift className="w-8 h-8 text-blue-500 shrink-0" />
+                <div className="flex items-center gap-3 p-4 bg-orange-50 dark:bg-orange-900/10 rounded-xl text-left border border-orange-100 dark:border-orange-900/20">
+                  <Gift className="w-8 h-8 text-primary shrink-0" />
                   <div>
                     <p className="font-semibold text-gray-800 text-sm">¡El registro es gratis!</p>
                     <p className="text-gray-500 text-sm">
@@ -657,7 +657,7 @@ export function ClienteView() {
             className="flex flex-col -mx-4 sm:-mx-6 lg:-mx-8 -mt-4 min-h-[calc(100vh-4rem)]"
           >
             {/* ── HERO ── */}
-            <div className="relative flex flex-col items-center justify-center px-6 pt-14 pb-12 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 overflow-hidden">
+            <div className="relative flex flex-col items-center justify-center px-6 pt-14 pb-12 bg-gradient-primary overflow-hidden">
               {/* Blobs */}
               <div className="absolute top-0 right-0 w-72 h-72 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
               <div className="absolute bottom-0 left-0 w-52 h-52 bg-black/10 rounded-full translate-y-1/3 -translate-x-1/4" />
@@ -679,7 +679,7 @@ export function ClienteView() {
                 className="relative z-10 text-center"
               >
                 <h1 className="text-4xl font-black text-white tracking-tight mb-2">Billetera Digital</h1>
-                <p className="text-blue-100/80 text-base font-medium max-w-xs mx-auto">
+                <p className="text-white/80 text-base font-medium max-w-xs mx-auto">
                   Descubre tus beneficios y envíos gratis acumulados
                 </p>
               </motion.div>
@@ -698,7 +698,7 @@ export function ClienteView() {
                 ].map((s) => (
                   <div key={s.label} className="text-center">
                     <p className="text-white font-black text-lg">{s.val}</p>
-                    <p className="text-blue-200/70 text-xs font-medium">{s.label}</p>
+                    <p className="text-white/70 text-xs font-medium">{s.label}</p>
                   </div>
                 ))}
               </motion.div>
@@ -729,7 +729,7 @@ export function ClienteView() {
                     setTelefono(onlyDigits);
                   }}
                   placeholder="10 dígitos"
-                  className="pl-[4.5rem] pr-14 h-16 text-2xl font-black rounded-2xl border-2 border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10 transition-all tracking-widest shadow-sm"
+                  className="pl-[4.5rem] pr-14 h-16 text-2xl font-black rounded-2xl border-2 border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all tracking-widest shadow-sm"
                   type="tel"
                   inputMode="numeric"
                   pattern="[0-9]*"
@@ -767,7 +767,7 @@ export function ClienteView() {
                   type="button"
                   onClick={(e) => handleBuscar(e as any)}
                   disabled={telefono.length < 10}
-                  className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-xl shadow-blue-600/30 disabled:opacity-40 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+                  className="w-full h-14 bg-gradient-primary text-white font-bold text-lg rounded-2xl shadow-xl shadow-primary/30 disabled:opacity-40 disabled:shadow-none transition-all flex items-center justify-center gap-2"
                 >
                   Consultar mi saldo
                   <ArrowRight className="w-5 h-5" />
@@ -797,7 +797,7 @@ export function ClienteView() {
               <div className="grid grid-cols-3 gap-3 pt-1">
                 {[
                   { icon: Gift, label: '6to gratis', sub: 'Cada 5 envíos', cls: 'text-orange-500 bg-orange-50 dark:bg-orange-900/20' },
-                  { icon: Star, label: 'Fidelidad', sub: 'Suma beneficios', cls: 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' },
+                  { icon: Star, label: 'Fidelidad', sub: 'Suma beneficios', cls: 'text-primary bg-orange-50 dark:bg-orange-900/20' },
                   { icon: Truck, label: 'Garantizado', sub: 'Envío seguro', cls: 'text-green-600 bg-green-50 dark:bg-green-900/20' },
                 ].map(({ icon: Icon, label, sub, cls }) => (
                   <div key={label} className="flex flex-col items-center gap-2 p-3 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm text-center">
@@ -833,10 +833,10 @@ export function ClienteView() {
                 {viewState === 'pin-setup' ? (
                   <>
                     <div className="text-center">
-                      <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
+                      <div className="w-20 h-20 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
                         <span className="text-4xl">🔒</span>
                       </div>
-                      <h2 className="text-2xl font-black text-gray-900 dark:text-white leading-tight">
+                      <h2 className="text-2xl font-black text-gray-800 dark:text-white leading-tight">
                         {pinSetupStep === 'enter' ? 'Crea tu PIN de seguridad' : 'Confirma tu PIN'}
                       </h2>
                       <p className="text-base text-muted-foreground mt-2 font-medium">
@@ -846,21 +846,21 @@ export function ClienteView() {
                       </p>
                     </div>
                     <PinEntry key={pinSetupStep} onComplete={handlePinSetup} disabled={pinLoading} error={pinError} />
-                    {pinLoading && <p className="text-center text-sm text-blue-500 animate-pulse">Guardando...</p>}
+                    {pinLoading && <p className="text-center text-sm text-primary animate-pulse">Guardando...</p>}
                   </>
                 ) : (
                   <>
                     <div className="text-center">
-                      <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
+                      <div className="w-20 h-20 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
                         <span className="text-4xl">🔑</span>
                       </div>
-                      <h2 className="text-2xl font-black text-gray-900 dark:text-white leading-tight">Ingresa tu PIN</h2>
+                      <h2 className="text-2xl font-black text-gray-800 dark:text-white leading-tight">Ingresa tu PIN</h2>
                       <p className="text-base text-muted-foreground mt-2 font-medium">
                         Hola, <strong>{cliente.nombre || cliente.telefono}</strong> 👋
                       </p>
                     </div>
                     <PinEntry onComplete={handlePinVerify} disabled={pinLoading} error={pinError} />
-                    {pinLoading && <p className="text-center text-sm text-blue-500 animate-pulse">Verificando...</p>}
+                    {pinLoading && <p className="text-center text-sm text-primary animate-pulse">Verificando...</p>}
                     {pinAttempts > 0 && (
                       <p className="text-center text-sm font-bold text-red-500 bg-red-50 dark:bg-red-900/20 py-2.5 rounded-xl">
                         Intento {pinAttempts}/5 — {5 - pinAttempts} restante{5 - pinAttempts !== 1 ? 's' : ''}
@@ -883,10 +883,10 @@ export function ClienteView() {
                 {viewState === 'pin-setup' ? (
                   <>
                     <div className="text-center">
-                      <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <div className="w-20 h-20 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
                         <span className="text-4xl">🔒</span>
                       </div>
-                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      <h2 className="text-2xl font-bold text-gray-800 dark:text-white">
                         {pinSetupStep === 'enter' ? 'Crea tu PIN' : 'Confirma tu PIN'}
                       </h2>
                       <p className="text-sm text-muted-foreground mt-2">
@@ -896,21 +896,21 @@ export function ClienteView() {
                       </p>
                     </div>
                     <PinEntry key={pinSetupStep} onComplete={handlePinSetup} disabled={pinLoading} error={pinError} />
-                    {pinLoading && <p className="text-center text-sm text-blue-500 animate-pulse">Guardando...</p>}
+                    {pinLoading && <p className="text-center text-sm text-primary animate-pulse">Guardando...</p>}
                   </>
                 ) : (
                   <>
                     <div className="text-center">
-                      <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <div className="w-20 h-20 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
                         <span className="text-4xl">🔑</span>
                       </div>
-                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Ingresa tu PIN</h2>
+                      <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Ingresa tu PIN</h2>
                       <p className="text-sm text-muted-foreground mt-2">
                         Hola, <strong>{cliente.nombre || cliente.telefono}</strong> 👋
                       </p>
                     </div>
                     <PinEntry onComplete={handlePinVerify} disabled={pinLoading} error={pinError} />
-                    {pinLoading && <p className="text-center text-sm text-blue-500 animate-pulse">Verificando...</p>}
+                    {pinLoading && <p className="text-center text-sm text-primary animate-pulse">Verificando...</p>}
                     {pinAttempts > 0 && (
                       <p className="text-center text-xs text-red-500">
                         Intento {pinAttempts}/5 — {5 - pinAttempts} restante{5 - pinAttempts !== 1 ? 's' : ''}
@@ -939,7 +939,7 @@ export function ClienteView() {
                 {activeTab === 'home' ? 'Inicio' : activeTab === 'wallet' ? 'Billetera' : 'Perfil'}
               </h2>
               <div className="flex items-center gap-2">
-                <button onClick={handleShare} className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-50 dark:bg-blue-900/30 text-blue-500">
+                <button onClick={handleShare} className="w-9 h-9 rounded-full flex items-center justify-center bg-orange-50 dark:bg-orange-900/30 text-primary">
                   <Share2 className="w-4 h-4" />
                 </button>
                 <button onClick={handleReset} className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 bg-gray-50 dark:bg-gray-800">
@@ -956,7 +956,7 @@ export function ClienteView() {
                 <div className="hidden lg:flex items-center justify-between px-2 pb-2">
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white">Mi Tarjeta VIP</h2>
                   <div className="flex items-center gap-2">
-                    <button onClick={handleShare} className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-50 dark:bg-blue-900/30 text-blue-500">
+                    <button onClick={handleShare} className="w-9 h-9 rounded-full flex items-center justify-center bg-orange-50 dark:bg-orange-900/30 text-primary">
                       <Share2 className="w-4 h-4" />
                     </button>
                     <button onClick={handleReset} className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 bg-gray-50 dark:bg-gray-800">
@@ -1001,7 +1001,7 @@ export function ClienteView() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center shadow-sm">
+              <div className="w-6 h-6 bg-gradient-primary rounded-md flex items-center justify-center shadow-sm">
                 <Truck className="w-3.5 h-3.5 text-white" />
               </div>
               <span className="font-semibold text-sm text-gray-700 dark:text-gray-300">Estrella Delivery</span>

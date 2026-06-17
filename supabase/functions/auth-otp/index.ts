@@ -52,14 +52,14 @@ serve(async (req) => {
       }
 
       if (!isAuthorized) {
-        // Buscar en tabla admins ignorando el prefijo de país usando 'like'
-        const { data: adminData } = await supabase.from('admins').select('id, telefono').like('telefono', `%${cleanPhone}`).maybeSingle()
+        // Buscar en tabla admins ignorando el prefijo de país usando 'like' con los últimos 10 dígitos
+        const { data: adminData } = await supabase.from('admins').select('id, telefono').like('telefono', `%${cleanPhone10}`).maybeSingle()
         if (adminData) {
           isAuthorized = true
           targetPhone = adminData.telefono || cleanPhone
         } else {
           // Buscar en tabla repartidores
-          const { data: repData } = await supabase.from('repartidores').select('id, telefono').like('telefono', `%${cleanPhone}`).eq('activo', true).maybeSingle()
+          const { data: repData } = await supabase.from('repartidores').select('id, telefono').like('telefono', `%${cleanPhone10}`).eq('activo', true).maybeSingle()
           if (repData) {
             isAuthorized = true
             role = 'repartidor'
@@ -152,7 +152,8 @@ serve(async (req) => {
 
       if (targetUser) {
         // Actualizar contraseña
-        const { error: updErr } = await supabase.auth.admin.updateUserById(targetUser.id, { password: nuevaPassword }); if (isAdmin) { await supabase.from('admins').update({id: targetUser.id}).eq('telefono', cleanPhone); } else { await supabase.from('repartidores').update({user_id: targetUser.id}).eq('telefono', cleanPhone); }
+        const { error: updErr } = await supabase.auth.admin.updateUserById(targetUser.id, { password: nuevaPassword }); 
+        if (isAdmin) { await supabase.from('admins').update({id: targetUser.id}).like('telefono', `%${extract10(cleanPhone)}`); } else { await supabase.from('repartidores').update({user_id: targetUser.id}).like('telefono', `%${extract10(cleanPhone)}`); }
         if (updErr) throw updErr
       } else {
         // Crear usuario
@@ -162,7 +163,8 @@ serve(async (req) => {
           email_confirm: true
         })
         if (createErr) throw createErr
-        targetUser = newUser.user; if (isAdmin) { await supabase.from('admins').update({id: targetUser.id}).eq('telefono', cleanPhone); } else { await supabase.from('repartidores').update({user_id: targetUser.id}).eq('telefono', cleanPhone); }
+        targetUser = newUser.user; 
+        if (isAdmin) { await supabase.from('admins').update({id: targetUser.id}).like('telefono', `%${extract10(cleanPhone)}`); } else { await supabase.from('repartidores').update({user_id: targetUser.id}).like('telefono', `%${extract10(cleanPhone)}`); }
       }
 
       // 4. Marcar OTP como usado (borrarlo)

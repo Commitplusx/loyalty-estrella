@@ -43,12 +43,12 @@ export function BottomNav({ activeTab, onChange, items }: BottomNavProps) {
                 animate={{
                   scale: isActive ? 1.15 : 1,
                   y: isActive ? -2 : 0,
-                  color: isActive ? '#2563eb' : '#9ca3af'
+                  color: isActive ? '#fa8072' : '#9ca3af'
                 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                 className="relative z-10"
               >
-                <Icon className={`w-6 h-6 ${isActive ? 'fill-blue-50/50' : ''}`} />
+                <Icon className={`w-6 h-6 ${isActive ? 'fill-orange-50/50' : ''}`} />
               </motion.div>
               
               <motion.span
@@ -56,7 +56,7 @@ export function BottomNav({ activeTab, onChange, items }: BottomNavProps) {
                   opacity: isActive ? 1 : 0.7,
                   y: isActive ? 2 : 0,
                   fontWeight: isActive ? 700 : 500,
-                  color: isActive ? '#2563eb' : '#9ca3af'
+                  color: isActive ? '#fa8072' : '#9ca3af'
                 }}
                 className="text-[10px] mt-1"
               >
@@ -66,7 +66,7 @@ export function BottomNav({ activeTab, onChange, items }: BottomNavProps) {
               {isActive && (
                 <motion.div
                   layoutId="bottom-nav-indicator"
-                  className="absolute -top-[1px] w-8 h-[3px] bg-blue-600 rounded-b-full"
+                  className="absolute -top-[1px] w-8 h-[3px] bg-gradient-primary rounded-b-full"
                   transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                 />
               )}

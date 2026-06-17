@@ -49,28 +49,28 @@ export function RestaurantesPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-orange-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-orange-950/10 pb-20">
 
-      {/* ── Header ──────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-blue-600 shadow-lg shadow-blue-700/30"
+      {/* ── Header Rediseñado ─────────────────────────────────── */}
+      <header className="sticky top-0 z-50 bg-white/80 dark:bg-card/80 backdrop-blur-md border-b border-orange-100 dark:border-orange-900/30"
         style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center gap-3">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => navigate(-1)}
-            className="rounded-full text-white hover:bg-white/20 shrink-0"
+            className="rounded-xl text-primary hover:bg-orange-50 dark:hover:bg-orange-950/30 shrink-0"
           >
             <ChevronLeft className="w-6 h-6" />
           </Button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-base sm:text-lg font-bold text-white leading-tight truncate">
-              Restaurantes Asociados
+            <h1 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white leading-tight truncate">
+              Aliados
             </h1>
-            <p className="text-blue-100 text-[11px] sm:text-xs">
+            <p className="text-gray-500 dark:text-gray-400 text-[11px] sm:text-xs">
               Toca uno para ver su menú
             </p>
           </div>
           {!loading && (
-            <span className="text-[11px] font-semibold bg-white/20 text-white px-2.5 py-1 rounded-full shrink-0">
+            <span className="text-[11px] font-semibold bg-orange-100 dark:bg-orange-900/30 text-primary px-3 py-1 rounded-full shrink-0">
               {filtrados.length} local{filtrados.length !== 1 ? 'es' : ''}
             </span>
           )}
@@ -99,7 +99,7 @@ export function RestaurantesPage() {
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Buscar restaurante..."
-                  className="w-full pl-9 pr-4 h-10 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition"
+                  className="w-full pl-9 pr-4 h-10 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
                 />
               </div>
             )}
@@ -109,8 +109,8 @@ export function RestaurantesPage() {
         {/* ── States ──────────────────────────────────────────── */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground">
-            <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
-            <p className="text-sm">Buscando restaurantes...</p>
+            <Loader2 className="w-10 h-10 animate-spin text-primary" />
+            <p className="text-sm">Cargando...</p>
           </div>
         ) : restaurantes.length === 0 ? (
           <div className="text-center py-20">
@@ -125,7 +125,7 @@ export function RestaurantesPage() {
         ) : filtrados.length === 0 ? (
           <div className="text-center py-16">
             <p className="font-semibold text-gray-700 dark:text-gray-300">Sin resultados para "{search}"</p>
-            <button onClick={() => setSearch('')} className="text-sm text-blue-500 mt-2 hover:underline">
+            <button onClick={() => setSearch('')} className="text-sm text-primary mt-2 hover:underline">
               Limpiar búsqueda
             </button>
           </div>

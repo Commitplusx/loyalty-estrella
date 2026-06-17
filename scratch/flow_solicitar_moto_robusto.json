@@ -1,0 +1,118 @@
+{
+  "version": "5.0",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "SOLICITAR_MOTO": []
+  },
+  "screens": [
+    {
+      "id": "SOLICITAR_MOTO",
+      "title": "Despachar Moto B2B",
+      "data": {},
+      "terminal": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "flow_path",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "1. Datos del Cliente"
+              },
+              {
+                "type": "TextInput",
+                "label": "Teléfono del Cliente (10 dígitos)",
+                "name": "telefono_cliente",
+                "input-type": "phone",
+                "required": true
+              },
+              {
+                "type": "TextInput",
+                "label": "Nombre del Cliente",
+                "name": "nombre_cliente",
+                "input-type": "text",
+                "required": true
+              },
+              {
+                "type": "TextHeading",
+                "text": "2. Dirección Exacta"
+              },
+              {
+                "type": "TextInput",
+                "label": "Colonia o Barrio",
+                "name": "colonia",
+                "input-type": "text",
+                "required": true
+              },
+              {
+                "type": "TextInput",
+                "label": "Calle y Número",
+                "name": "calle_numero",
+                "input-type": "text",
+                "required": true
+              },
+              {
+                "type": "TextInput",
+                "label": "Referencias (Opcional)",
+                "name": "referencias",
+                "input-type": "text",
+                "required": false,
+                "helper-text": "Ej: Casa verde portón negro"
+              },
+              {
+                "type": "TextHeading",
+                "text": "3. Detalles y Cobranza"
+              },
+              {
+                "type": "TextInput",
+                "label": "¿Qué lleva el pedido? (Opcional)",
+                "name": "detalles_pedido",
+                "input-type": "text",
+                "required": false,
+                "helper-text": "Ej: 2 Pizzas Familiares"
+              },
+              {
+                "type": "TextInput",
+                "label": "Monto a cobrar al cliente ($)",
+                "name": "monto_cobrar",
+                "input-type": "number",
+                "required": true,
+                "helper-text": "Total a cobrar. Si ya pagó, pon 0."
+              },
+              {
+                "type": "Dropdown",
+                "label": "Método de Pago",
+                "name": "metodo_pago",
+                "required": true,
+                "data-source": [
+                  { "id": "efectivo", "title": "💵 Efectivo" },
+                  { "id": "transferencia", "title": "🏦 Transferencia" },
+                  { "id": "pagado", "title": "✅ Ya está pagado" }
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Pedir Repartidor",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "telefono": "${form.telefono_cliente}",
+                    "nombre": "${form.nombre_cliente}",
+                    "colonia": "${form.colonia}",
+                    "calle": "${form.calle_numero}",
+                    "referencias": "${form.referencias}",
+                    "pedido": "${form.detalles_pedido}",
+                    "cobro": "${form.monto_cobrar}",
+                    "pago": "${form.metodo_pago}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

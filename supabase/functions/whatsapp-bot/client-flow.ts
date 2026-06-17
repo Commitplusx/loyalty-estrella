@@ -50,55 +50,16 @@ export async function handleClientFlow(
   }
 
   // ── Embudo Inicial: número desconocido ──
-  if (!clienteDB) {
-    // ¿Está en flujo de registro de cliente?
-    const { data: clientRegData } = await supabase.from('bot_memory')
-      .select('history').eq('phone', `reg_state_${from10}`).maybeSingle()
-    
-    // Sin estado previo → mostrar embudo inicial
-    if (!clientRegData?.history?.[0]) {
-      await sendInteractiveButtons(
-        fromPhone,
-        `🌟 *¡Hola! Bienvenido a Estrella Delivery.*\n\nSomos la mejor plataforma para pedir comida de tus lugares favoritos y ganar recompensas 🍕🛵\n\nPara darte la atención que mereces, cuéntanos:\n*¿Quieres pedir comida o eres un restaurante aliado?*`,
-        [
-          { id: 'REG_TIPO_CLIENTE',     title: '🤤 Soy Cliente (Pedir)' },
-          { id: 'REG_TIPO_RESTAURANTE', title: '🏪 Soy Restaurante' }
-        ]
-      )
-      return new Response('OK', { status: 200 })
-    }
-  }
-
-  // Si llegó aquí con location (y no era onboarding de restaurante), avisar y salir
-  if (msgType === 'location') {
-    await sendWA(fromPhone, `📍 Hemos recibido tu ubicación. Por favor escríbenos qué deseas hacer.`)
-    return new Response('OK', { status: 200 })
-  }
-
-  // ── Contexto para la IA ──
-  const clienteCtx = (clienteDB?.acepta_terminos === true) ? {
-    nombre:     clienteDB.nombre,
-    puntos:     clienteDB.puntos         ?? 0,
-    esVip:      clienteDB.es_vip         === true,
-    reputacion: clienteDB.reputacion     || 'sin_calificar',
-    saldo:      clienteDB.saldo_billetera ?? 0,
-    envios:     clienteDB.envios_totales  ?? 0,
-    rango:      clienteDB.rango          || 'bronce',
-    notasCrm:   clienteDB.notas_crm      || '',
-    ubicaciones: ubicacionesGuardadas
-  } : null
-
-  // ── Estado de registro (máquina de estados) ──
-  let regState: { nombre?: string; tel?: string; colonia?: string; step?: number } | undefined = undefined
   if (!clienteDB || clienteDB.acepta_terminos === false) {
-    const { data: regData } = await supabase.from('bot_memory')
-      .select('history').eq('phone', `reg_state_${from10}`).maybeSingle()
-    if (regData?.history?.[0]) {
-      regState = regData.history[0] as { nombre?: string; tel?: string; colonia?: string; step?: number }
-    }
-    if (!regState) regState = { tel: from10, step: 0 }
-    else if (!regState.tel) regState.tel = from10
-    console.log('📋 RegState loaded:', JSON.stringify(regState))
+    await sendInteractiveButtons(
+      fromPhone,
+      `🌟 *¡Hola! Bienvenido a Estrella Delivery.*\n\nSomos la mejor plataforma para pedir comida de tus lugares favoritos y ganar recompensas 🍕🛵\n\nPara darte la atención que mereces, cuéntanos:\n*¿Quieres pedir comida o eres un restaurante aliado?*`,
+      [
+        { id: 'REG_TIPO_CLIENTE',     title: '🍔 Pedir Comida' },
+        { id: 'REG_TIPO_RESTAURANTE', title: '🏪 Soy Negocio' }
+      ]
+    )
+    return new Response('OK', { status: 200 })
   }
 
   // ── Interceptor para el Mesero Virtual (Comercio Conversacional) [DESACTIVADO] ──
@@ -145,7 +106,10 @@ export async function handleClientFlow(
 
   const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
 
+  const clienteCtx = clienteDB ? { ...clienteDB, ubicacionesGuardadas } : null;
+
   // ── Despacho asíncrono a whatsapp-ai (evita timeout de Meta) ──
+  
   // @ts-ignore
   EdgeRuntime.waitUntil(
     fetch(`${SUPABASE_PROJECT_URL}/functions/v1/whatsapp-ai`, {
@@ -155,7 +119,7 @@ export async function handleClientFlow(
         fromPhone, from10,
         texto: msg.text?.body as string ?? '',
         isRepartidor: false, repartidorInfo: null,
-        isClient: true, clienteCtx, regState
+        isClient: true, clienteCtx, regState: undefined
       })
     }).catch(err => console.error('Error invocando whatsapp-ai:', err))
   )

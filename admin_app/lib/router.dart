@@ -20,6 +20,7 @@ import 'screens/zonas_config_screen.dart';
 import 'screens/zonas_entrega_screen.dart';
 import 'screens/mapa_zonas_screen.dart';
 import 'screens/excepciones_precio_screen.dart';
+import 'screens/solicitudes_screen.dart';
 
 
 
@@ -43,6 +44,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           '/config',
           '/leaderboard',
           '/map',
+          '/solicitudes',
         ];
         if (!isAdmin && adminOnlyPrefixes.any((p) => loc.startsWith(p))) {
           // Repartidores sí pueden ver el detalle de su pedido via deep link
@@ -146,6 +148,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (ctx, state) => PedidoDetailScreen(
               pedidoId: state.pathParameters['id']!,
             ),
+          ),
+          GoRoute(
+            path: '/solicitudes',
+            builder: (ctx, state) => const SolicitudesScreen(),
           ),
         ],
       ),

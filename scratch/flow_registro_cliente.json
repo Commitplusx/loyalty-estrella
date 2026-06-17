@@ -1,0 +1,65 @@
+{
+  "version": "7.3",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "REGISTRO_CLIENTE": []
+  },
+  "screens": [
+    {
+      "id": "REGISTRO_CLIENTE",
+      "title": "Registro Estrella VIP",
+      "data": {},
+      "terminal": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "flow_path",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "¡Únete a la Familia Estrella!"
+              },
+              {
+                "type": "TextInput",
+                "label": "Nombre Completo",
+                "name": "nombre",
+                "input-type": "text",
+                "required": true
+              },
+              {
+                "type": "TextInput",
+                "label": "Colonia o Barrio",
+                "name": "colonia",
+                "input-type": "text",
+                "required": false,
+                "helper-text": "Opcional. Para saber hasta dónde llegamos."
+              },
+              {
+                "type": "DatePicker",
+                "label": "Fecha de Nacimiento",
+                "name": "cumpleanos",
+                "required": false,
+                "helper-text": "¡Para enviarte regalos en tu día!"
+              },
+              {
+                "type": "Footer",
+                "label": "Completar Registro",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "accion": "REGISTRO_CLIENTE",
+                    "nombre": "${form.nombre}",
+                    "colonia": "${form.colonia}",
+                    "cumpleanos": "${form.cumpleanos}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
