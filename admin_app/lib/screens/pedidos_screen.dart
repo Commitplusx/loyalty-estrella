@@ -151,27 +151,24 @@ class PedidosScreen extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
-                    width: 100, height: 100,
+                    width: 80, height: 80,
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E28) : Colors.white,
+                      color: isDark ? const Color(0xFF1E1E28) : const Color(0xFFF8F9FA),
                       shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 10)),
-                      ],
                     ),
                     child: Center(
-                      child: Icon(Icons.inbox_rounded, color: onSurface.withValues(alpha: 0.2), size: 40),
+                      child: Icon(Icons.inbox_outlined, color: onSurface.withValues(alpha: 0.15), size: 32),
                     ),
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    'No hay pedidos activos',
-                    style: TextStyle(color: onSurface.withValues(alpha: 0.8), fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5),
+                    'Sin servicios activos',
+                    style: TextStyle(color: onSurface.withValues(alpha: 0.8), fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: -0.3),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Text(
                     'Es un buen momento para un descanso.',
-                    style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 14),
+                    style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 13),
                   ),
                 ],
               ),
@@ -189,48 +186,27 @@ class PedidosScreen extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
             children: [
               // Banner de resumen minimalista
-              Container(
-                margin: const EdgeInsets.only(bottom: 24),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E1E28) : Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05), width: 1),
-                ),
-                child: Row(
+              Padding(
+                padding: const EdgeInsets.only(bottom: 24, left: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: primary.withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
+                    Text(
+                      '${pedidos.length} SERVICIOS',
+                      style: TextStyle(
+                        color: isDark ? Colors.white : const Color(0xFF1A1A2E), 
+                        fontWeight: FontWeight.w800, 
+                        fontSize: 22,
+                        letterSpacing: -0.5,
                       ),
-                      child: Icon(Icons.flash_on_rounded, color: primary, size: 24),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${pedidos.length} servicios activos',
-                            style: TextStyle(
-                              color: isDark ? Colors.white : const Color(0xFF1A1A2E), 
-                              fontWeight: FontWeight.w900, 
-                              fontSize: 16,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${enCamino.length} en camino • ${recibidos.length} recibidos',
-                            style: TextStyle(
-                              color: isDark ? Colors.white60 : Colors.black54, 
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
+                    const SizedBox(height: 4),
+                    Text(
+                      '${enCamino.length} en camino • ${recibidos.length} recibidos',
+                      style: TextStyle(
+                        color: isDark ? Colors.white54 : Colors.black54, 
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
@@ -238,35 +214,35 @@ class PedidosScreen extends ConsumerWidget {
               ),
 
               if (pendientes.isNotEmpty) ...[
-                _SectionHeader(title: '🚨 Pendientes (Sin Repartidor)', count: pendientes.length, color: const Color(0xFFEF4444), isDark: isDark),
+                _SectionHeader(title: 'Pendientes (Sin Repartidor)', count: pendientes.length, color: const Color(0xFFEF4444), isDark: isDark),
                 const SizedBox(height: 8),
                 ...pendientes.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
                 const SizedBox(height: 20),
               ],
 
               if (enCamino.isNotEmpty) ...[
-                _SectionHeader(title: '🚀 En Camino', count: enCamino.length, color: const Color(0xFFFF6B35), isDark: isDark),
+                _SectionHeader(title: 'En Camino', count: enCamino.length, color: const Color(0xFFFF6B35), isDark: isDark),
                 const SizedBox(height: 8),
                 ...enCamino.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
                 const SizedBox(height: 20),
               ],
 
               if (recibidos.isNotEmpty) ...[
-                _SectionHeader(title: '🛍️ En Restaurante', count: recibidos.length, color: Theme.of(context).colorScheme.secondary, isDark: isDark),
+                _SectionHeader(title: 'En Restaurante', count: recibidos.length, color: Theme.of(context).colorScheme.secondary, isDark: isDark),
                 const SizedBox(height: 8),
                 ...recibidos.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
                 const SizedBox(height: 20),
               ],
 
               if (asignados.isNotEmpty) ...[
-                _SectionHeader(title: '📋 Asignados', count: asignados.length, color: const Color(0xFF60A5FA), isDark: isDark),
+                _SectionHeader(title: 'Asignados', count: asignados.length, color: const Color(0xFF60A5FA), isDark: isDark),
                 const SizedBox(height: 8),
                 ...asignados.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
                 const SizedBox(height: 20),
               ],
 
               if (otros.isNotEmpty) ...[
-                _SectionHeader(title: '📦 Otros', count: otros.length, color: Colors.grey, isDark: isDark),
+                _SectionHeader(title: 'Otros', count: otros.length, color: Colors.grey, isDark: isDark),
                 const SizedBox(height: 8),
                 ...otros.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
               ],
@@ -305,28 +281,31 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      padding: const EdgeInsets.only(left: 4, bottom: 12, top: 8),
       child: Row(
         children: [
           Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+            width: 3,
+            height: 14,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(2),
+            ),
           ),
           const SizedBox(width: 8),
           Text(
-            title, 
+            title.toUpperCase(), 
             style: TextStyle(
-              color: isDark ? Colors.white : const Color(0xFF1A1A2E), 
-              fontWeight: FontWeight.w800, 
-              fontSize: 16,
-              letterSpacing: -0.3,
+              color: isDark ? Colors.white54 : Colors.black54, 
+              fontWeight: FontWeight.w700, 
+              fontSize: 12,
+              letterSpacing: 0.5,
             )
           ),
           const SizedBox(width: 6),
           Text(
-            '($count)', 
-            style: TextStyle(color: color.withValues(alpha: 0.8), fontWeight: FontWeight.w600, fontSize: 13)
+            '$count', 
+            style: TextStyle(color: isDark ? Colors.white30 : Colors.black38, fontWeight: FontWeight.w600, fontSize: 12)
           ),
         ],
       ),
@@ -419,44 +398,75 @@ class _PedidoTile extends StatelessWidget {
                 const SizedBox(height: 16),
                 
                 // Cuerpo Central: Rutas (Minimalista)
-                Row(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            origenStr,
-                            style: TextStyle(
-                              color: onSurface.withValues(alpha: 0.9),
-                              fontWeight: FontWeight.w800,
-                              fontSize: 15,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.only(top: 4, right: 12),
+                          width: 8, height: 8,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: onSurface.withValues(alpha: 0.3), width: 2),
+                            shape: BoxShape.circle,
                           ),
-                          const SizedBox(height: 4),
-                          Row(
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(Icons.arrow_right_alt_rounded, size: 16, color: onSurface.withValues(alpha: 0.3)),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  destinoStr,
-                                  style: TextStyle(
-                                    color: onSurface.withValues(alpha: 0.6),
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 14,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                              Text('RECOGER EN', style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                              Text(
+                                origenStr,
+                                style: TextStyle(
+                                  color: onSurface.withValues(alpha: 0.9),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      margin: const EdgeInsets.only(left: 3.5, top: 4, bottom: 4),
+                      width: 1, height: 16,
+                      color: onSurface.withValues(alpha: 0.1),
+                    ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.only(top: 4, right: 12),
+                          width: 8, height: 8,
+                          decoration: BoxDecoration(
+                            color: primary.withValues(alpha: 0.8),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('ENTREGAR A', style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                              Text(
+                                destinoStr,
+                                style: TextStyle(
+                                  color: onSurface.withValues(alpha: 0.9),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
