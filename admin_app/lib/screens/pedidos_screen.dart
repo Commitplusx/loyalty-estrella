@@ -151,22 +151,27 @@ class PedidosScreen extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
-                    width: 90, height: 90,
+                    width: 100, height: 100,
                     decoration: BoxDecoration(
-                      color: primary.withValues(alpha: 0.08),
+                      color: isDark ? const Color(0xFF1E1E28) : Colors.white,
                       shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 10)),
+                      ],
                     ),
-                    child: Icon(Icons.inbox_rounded, color: primary, size: 44),
+                    child: Center(
+                      child: Icon(Icons.inbox_rounded, color: onSurface.withValues(alpha: 0.2), size: 40),
+                    ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
                   Text(
-                    'Sin pedidos activos',
-                    style: TextStyle(color: onSurface, fontSize: 17, fontWeight: FontWeight.bold),
+                    'No hay pedidos activos',
+                    style: TextStyle(color: onSurface.withValues(alpha: 0.8), fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Text(
-                    'Toca + para crear un nuevo servicio',
-                    style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 13),
+                    'Es un buen momento para un descanso.',
+                    style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 14),
                   ),
                 ],
               ),
@@ -183,40 +188,47 @@ class PedidosScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
             children: [
-              // Banner de resumen
+              // Banner de resumen minimalista
               Container(
-                margin: const EdgeInsets.only(bottom: 20),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                margin: const EdgeInsets.only(bottom: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [primary, Theme.of(context).colorScheme.secondary],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: primary.withValues(alpha: 0.3),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
+                  color: isDark ? const Color(0xFF1E1E28) : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05), width: 1),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.local_fire_department_rounded, color: Colors.white, size: 24),
-                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: primary.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.flash_on_rounded, color: primary, size: 24),
+                    ),
+                    const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${pedidos.length} servicios en juego',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15),
+                            '${pedidos.length} servicios activos',
+                            style: TextStyle(
+                              color: isDark ? Colors.white : const Color(0xFF1A1A2E), 
+                              fontWeight: FontWeight.w900, 
+                              fontSize: 16,
+                              letterSpacing: -0.5,
+                            ),
                           ),
+                          const SizedBox(height: 2),
                           Text(
-                            '${enCamino.length} en camino • ${recibidos.length} recibidos • ${asignados.length} asignados',
-                            style: const TextStyle(color: Colors.white70, fontSize: 11),
+                            '${enCamino.length} en camino • ${recibidos.length} recibidos',
+                            style: TextStyle(
+                              color: isDark ? Colors.white60 : Colors.black54, 
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ],
                       ),
@@ -292,16 +304,32 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text(title, style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1A1A2E), fontWeight: FontWeight.w800, fontSize: 14)),
-        const SizedBox(width: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-          child: Text('$count', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            title, 
+            style: TextStyle(
+              color: isDark ? Colors.white : const Color(0xFF1A1A2E), 
+              fontWeight: FontWeight.w800, 
+              fontSize: 16,
+              letterSpacing: -0.3,
+            )
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '($count)', 
+            style: TextStyle(color: color.withValues(alpha: 0.8), fontWeight: FontWeight.w600, fontSize: 13)
+          ),
+        ],
+      ),
     );
   }
 }
@@ -327,96 +355,124 @@ class _PedidoTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = _estadoColor(pedido.estado);
     final timeAgo = _timeAgo(pedido.createdAt);
+    
+    final String origenStr = pedido.restaurante?.isNotEmpty == true ? pedido.restaurante! : (pedido.origen?.isNotEmpty == true ? pedido.origen! : 'Punto de recogida');
+    final String destinoStr = pedido.clienteNombre?.isNotEmpty == true ? pedido.clienteNombre! : (pedido.destino?.isNotEmpty == true ? pedido.destino! : 'Cliente');
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 12),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
+          highlightColor: color.withValues(alpha: 0.05),
+          splashColor: color.withValues(alpha: 0.1),
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: cardBg,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+              color: isDark ? const Color(0xFF1E1E28) : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05), width: 1),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Fila superior: ícono, descripción, tiempo
+                // Fila Superior: Estado y Tiempo
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            pedido.estadoLabel.toUpperCase(),
+                            style: TextStyle(
+                              color: color, 
+                              fontSize: 10, 
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                        if (pedido.tipoPedido == 'tienda') ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text('🏪 RECOGER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange)),
+                          ),
+                        ],
+                      ],
+                    ),
+                    Text(timeAgo, style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 12, fontWeight: FontWeight.w500)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                
+                // Cuerpo Central: Rutas (Minimalista)
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Estado indicator
-                    Container(
-                      width: 48, height: 48,
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Icon(_estadoIcon(pedido.estado), color: color, size: 24),
-                    ),
-                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            pedido.descripcion,
+                            origenStr,
                             style: TextStyle(
-                              color: onSurface,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
+                              color: onSurface.withValues(alpha: 0.9),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
                             ),
-                            maxLines: 2,
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              Flexible(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                  decoration: BoxDecoration(
-                                    color: color.withValues(alpha: isDark ? 0.25 : 0.15),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: color.withValues(alpha: 0.3)),
+                              Icon(Icons.arrow_right_alt_rounded, size: 16, color: onSurface.withValues(alpha: 0.3)),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  destinoStr,
+                                  style: TextStyle(
+                                    color: onSurface.withValues(alpha: 0.6),
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 14,
                                   ),
-                                  child: Text(
-                                    pedido.estadoLabel.toUpperCase(),
-                                    style: TextStyle(
-                                      color: color, 
-                                      fontSize: 12, 
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 0.5,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              const SizedBox(width: 6),
-                              Icon(Icons.access_time_rounded, size: 11, color: onSurface.withValues(alpha: 0.4)),
-                              const SizedBox(width: 2),
-                              Text(timeAgo, style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 11)),
                             ],
                           ),
                         ],
                       ),
                     ),
-                    Icon(Icons.chevron_right_rounded, color: onSurface.withValues(alpha: 0.2), size: 20),
                   ],
                 ),
+                
+                if (pedido.descripcion.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    pedido.descripcion,
+                    style: TextStyle(
+                      color: onSurface.withValues(alpha: 0.5),
+                      fontSize: 13,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ],
             ),
           ),
