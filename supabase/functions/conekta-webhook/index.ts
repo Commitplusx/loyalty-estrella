@@ -173,15 +173,16 @@ serve(async (req) => {
       const numeroRestaurante = "52" + restTelefono.replace(/\D/g, '')
       const montoStr = montoTotal ? ` ($${montoTotal.toFixed(2)} MXN)` : ''
       const mensajeRest = [
-        `🎉 *¡Tienen un nuevo pedido pagado!* 🎉`,
-        `¡Hola *${restauranteNombre}*! El pago en línea ya fue confirmado con éxito${montoStr}. Todo listo por parte del cliente.`,
+        `🔔 *NUEVO PEDIDO CONFIRMADO* 🔔`,
+        `Hola *${restauranteNombre}*,`,
+        `Se ha recibido y pagado un nuevo pedido en línea${montoStr}.`,
         ``,
-        `*🛍️ Ticket Web:* #${pedidoId}`,
-        `*👤 Cliente:* ${sanitizar(pedidoData.cliente_nombre || '', 100)}`,
-        `*📝 Detalles:*`,
+        `🧾 *Ticket:* #${pedidoId}`,
+        `👤 *Cliente:* ${sanitizar(pedidoData.cliente_nombre || 'Cliente web', 100)}`,
+        `📝 *Pedido:*`,
         sanitizar(pedidoData.descripcion || 'Consulta los detalles en tu panel.', 1000),
         ``,
-        `¡Manos a la obra, por favor comiencen a prepararlo! 👨‍🍳🚀`
+        `👨‍🍳 _Por favor, comiencen a prepararlo. ¡Mucho éxito!_`
       ].join('\n')
 
       try {
@@ -193,7 +194,7 @@ serve(async (req) => {
         const adminPhoneRaw = ADMIN_PHONES_ENV.split(',')[0]?.replace(/\D/g, '').slice(-10)
         if (adminPhoneRaw) {
           const numeroAdmin = "52" + adminPhoneRaw
-          const mensajeAdmin = `👑 *COPIA ADMIN* 👑\n\n` + mensajeRest
+          const mensajeAdmin = `👁️ *VISTA ADMIN* | Pedido Pagado\n\n` + mensajeRest
           await sendWA(numeroAdmin, mensajeAdmin)
           console.log(`[${requestId}] 📲 Copia de WhatsApp enviada al admin: ${numeroAdmin}`)
         }
