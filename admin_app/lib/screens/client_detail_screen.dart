@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:go_router/go_router.dart';
+import '../core/ui_helpers.dart';
 import '../services/cliente_service.dart';
 import '../models/cliente_model.dart';
 import '../core/supabase_config.dart';
@@ -96,27 +97,13 @@ class ClientDetailScreen extends ConsumerWidget {
               }
             },
             onDelete: () async {
-              final confirm = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  backgroundColor: Theme.of(context).cardColor,
-                  title: Text('Eliminar Cliente', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
-                  content: Text(
-                    '¿Estás seguro de que deseas eliminar permanentemente a este cliente y todo su historial de puntos?',
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: Text('Cancelar', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE11D48)),
-                      child: Text('Sí, eliminar', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
-                    ),
-                  ],
-                ),
+              final confirm = await PremiumBottomSheet.showConfirm(
+                context,
+                title: 'Eliminar Cliente',
+                content: '¿Estás seguro de que deseas eliminar permanentemente a este cliente y todo su historial de puntos?',
+                confirmText: 'Sí, eliminar',
+                cancelText: 'Cancelar',
+                isDestructive: true,
               );
 
               if (confirm == true) {
@@ -610,36 +597,14 @@ class _ClienteDetail extends StatelessWidget {
   }
 
   Future<void> _mostrarDialogoCosto(BuildContext context) async {
-    final ctrl = TextEditingController(text: (cliente.costoEnvio ?? 0) > 0 ? cliente.costoEnvio.toString() : '');
-    final val = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(context).cardColor,
-        title: Text('Costo de Envío', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
-        content: TextField(
-          controller: ctrl,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-          decoration: InputDecoration(
-            labelText: 'Monto (\$)',
-            hintText: 'Ej: 30.00',
-            hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38)),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancelar', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF60A5FA)),
-            child: Text('Guardar'),
-          ),
-        ],
-      ),
+    final val = await PremiumBottomSheet.showInput(
+      context,
+      title: 'Costo de Envío',
+      initialValue: (cliente.costoEnvio ?? 0) > 0 ? cliente.costoEnvio.toString() : '',
+      hintText: 'Monto (\$) Ej: 30.00',
+      confirmText: 'Guardar',
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
     );
-    ctrl.dispose();
 
     if (val != null) {
       final monto = double.tryParse(val) ?? 0.0;
@@ -648,44 +613,15 @@ class _ClienteDetail extends StatelessWidget {
   }
 
   Future<void> _mostrarDialogoNotas(BuildContext context) async {
-    final ctrl = TextEditingController(text: cliente.notasCrm);
-    final val = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(context).cardColor,
-        title: Row(
-          children: [
-            Icon(Icons.auto_awesome_rounded, color: const Color(0xFF8B5CF6)),
-            SizedBox(width: 8),
-            Text('Programar Bot', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
-          ],
-        ),
-        content: TextField(
-          controller: ctrl,
-          maxLines: 4,
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-          decoration: InputDecoration(
-            labelText: 'Instrucciones para la IA',
-            hintText: 'Ej: "Este cliente es foráneo, siempre se recoge en la terminal de ADO. No le preguntes la dirección, asume que es ahí."',
-            hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38)),
-            helperText: 'El bot leerá esto antes de contestarle al cliente.',
-            helperMaxLines: 2,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancelar', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
-          ),
-            ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6)),
-            child: Text('Inyectar al Bot', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
+    final val = await PremiumBottomSheet.showInput(
+      context,
+      title: 'Programar Bot',
+      content: 'El bot leerá esto antes de contestarle al cliente.',
+      initialValue: cliente.notasCrm,
+      hintText: 'Ej: "Siempre recoge en la terminal..."',
+      confirmText: 'Inyectar al Bot',
+      maxLines: 4,
     );
-    ctrl.dispose();
 
     if (val != null) {
       onEditNotas(val);
@@ -693,55 +629,14 @@ class _ClienteDetail extends StatelessWidget {
   }
 
   Future<void> _mostrarDialogoCanjeVip(BuildContext context) async {
-    final ctrl = TextEditingController();
-    final val = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(context).cardColor,
-        title: Row(
-          children: [
-            const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFFF59E0B)),
-            const SizedBox(width: 8),
-            Text('Canjear Saldo VIP', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Saldo actual: \$${cliente.saldoBilletera.toStringAsFixed(2)}',
-              style: TextStyle(color: const Color(0xFFF59E0B), fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ctrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-              decoration: InputDecoration(
-                labelText: 'Monto a canjear (\$)',
-                hintText: 'Ej: 45.00 para un envío gratis',
-                hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38)),
-                prefixText: '\$ ',
-                prefixStyle: const TextStyle(color: Color(0xFFF59E0B), fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancelar', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF59E0B), foregroundColor: Colors.white),
-            child: const Text('Canjear'),
-          ),
-        ],
-      ),
+    final val = await PremiumBottomSheet.showInput(
+      context,
+      title: 'Canjear Saldo VIP',
+      content: 'Saldo actual: \$${cliente.saldoBilletera.toStringAsFixed(2)}',
+      hintText: 'Monto a canjear (\$) Ej: 45.00',
+      confirmText: 'Canjear',
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
     );
-    ctrl.dispose();
 
     if (val != null) {
       final monto = double.tryParse(val);

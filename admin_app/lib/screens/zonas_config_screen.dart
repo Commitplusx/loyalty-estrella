@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../services/zonas_service.dart';
+import '../core/ui_helpers.dart';
 
 class ZonasConfigScreen extends ConsumerStatefulWidget {
   const ZonasConfigScreen({super.key});
@@ -170,16 +171,13 @@ class _ZonasConfigScreenState extends ConsumerState<ZonasConfigScreen> {
   }
 
   Future<void> _confirmarBorrado(String id) async {
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('¿Eliminar zona?'),
-        content: const Text('El bot dejará de usar esta tarifa especial.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar', style: TextStyle(color: Colors.red))),
-        ],
-      ),
+    final confirmar = await PremiumBottomSheet.showConfirm(
+      context,
+      title: '¿Eliminar zona?',
+      content: 'El bot dejará de usar esta tarifa especial.',
+      confirmText: 'Eliminar',
+      cancelText: 'Cancelar',
+      isDestructive: true,
     );
 
     if (confirmar == true) {
@@ -328,26 +326,17 @@ class _NuevaZonaSheetState extends ConsumerState<_NuevaZonaSheet> {
     );
   }
 
-  void _dialogoNuevaColoniaMaster() {
-    final ctrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Nueva Colonia Maestro'),
-        content: TextField(controller: ctrl, decoration: const InputDecoration(labelText: 'Nombre de la Colonia (ej: Centro)')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () async {
-              if (ctrl.text.trim().isEmpty) return;
-              await ref.read(zonasServiceProvider).createColonia(ctrl.text.trim());
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Registrar'),
-          ),
-        ],
-      ),
+  Future<void> _dialogoNuevaColoniaMaster() async {
+    final val = await PremiumBottomSheet.showInput(
+      context,
+      title: 'Nueva Colonia Maestro',
+      hintText: 'Nombre de la Colonia (ej: Centro)',
+      confirmText: 'Registrar',
     );
+
+    if (val != null && val.trim().isNotEmpty) {
+      await ref.read(zonasServiceProvider).createColonia(val.trim());
+    }
   }
 
   void _guardar() async {

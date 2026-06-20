@@ -859,9 +859,12 @@ export async function handleButtonEvent(
       const rNum = Math.floor(1000 + Math.random() * 9000);
       const genPassword = `Estrella${rNum}*`;
 
+      // EMAIL CANÓNICO: siempre derivado del teléfono, garantiza que el login del portal funcione
+      const authEmail = `aliado_${restTel}@app-estrella.shop`;
+
       // Crear Usuario en Auth
       const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
-        email: sol.correo,
+        email: authEmail,
         password: genPassword,
         email_confirm: true
       })
@@ -871,10 +874,8 @@ export async function handleButtonEvent(
 
       if (authErr) {
         if (authErr.message.includes('already been registered') || authErr.message.includes('already exists')) {
-           await sendWA(fromPhone, `⚠️ El correo ${sol.correo} ya está registrado. Aprobaremos el perfil de todos modos en la BD, pero dile al cliente que si usa la app web deberá iniciar sesión con su contraseña anterior o recuperarla.`)
            isAuthCreated = false;
-           // Obtener el ID del usuario existente usando la función RPC
-           const { data: existingId } = await supabase.rpc('get_user_id_by_email', { email_to_search: sol.correo });
+           const { data: existingId } = await supabase.rpc('get_user_id_by_email', { email_to_search: authEmail });
            adminId = existingId;
         } else {
            await sendWA(fromPhone, `❌ Error al crear usuario en Auth: ${authErr.message}`)
@@ -882,21 +883,29 @@ export async function handleButtonEvent(
         }
       }
 
+      // Generar slug único (mismo algoritmo que admin-approval)
+      const baseSlug = sol.nombre_restaurante.toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+      const finalSlug = `${baseSlug}-${restTel.slice(-4)}`
+
       // Insertar en la tabla restaurantes
       const { error: insertErr } = await supabase.from('restaurantes').insert({
         nombre: sol.nombre_restaurante,
         telefono: sol.telefono,
-        direccion: sol.direccion,
+        direccion: sol.direccion || null,
         activo: true,
         programa_lealtad_activo: true,
+        slug: finalSlug,
+        correo: sol.correo || null,  // correo real de contacto (distinto al email de Auth)
         admin_id: adminId
       })
 
-      if (insertErr && insertErr.code !== '23505') { // Ignorar duplicados de teléfono (si ya existe, lo actualizamos de estado)
+      if (insertErr && insertErr.code !== '23505') {
          await sendWA(fromPhone, `❌ Error al insertar el restaurante: ${insertErr.message}`)
          return new Response('OK', { status: 200 })
       } else if (insertErr && insertErr.code === '23505') {
-         await supabase.from('restaurantes').update({ activo: true, programa_lealtad_activo: true }).eq('telefono', sol.telefono)
+         await supabase.from('restaurantes').update({ activo: true, programa_lealtad_activo: true, slug: finalSlug }).eq('telefono', sol.telefono)
       }
 
       // Actualizar estado de solicitud
@@ -904,9 +913,10 @@ export async function handleButtonEvent(
 
       await sendWA(fromPhone, `✅ Restaurante *${sol.nombre_restaurante}* aprobado. Se le enviarán sus accesos por WA.`)
 
-      let msgCredenciales = `🎉 *¡Felicidades, ${sol.encargado}! Tu restaurante ha sido APROBADO.*\n\nYa puedes gestionar todo como Aliado enviándonos la palabra *Menú* o *Hola* por este mismo chat.`;
+      let msgCredenciales = `🎉 *¡Felicidades, ${sol.encargado || sol.nombre_restaurante}! Tu restaurante ha sido APROBADO.*\n\nYa puedes gestionar todo como Aliado enviándonos la palabra *Menú* o *Hola* por este mismo chat.`;
       if (isAuthCreated) {
-        msgCredenciales += `\n\nPara administrar tu menú e información, ingresa a:\n🌐 *https://restaurantes-app-estrella.shop*\n\n_(Tus credenciales para la plataforma web son:_ Correo: ${sol.correo} _/ Clave:_ ${genPassword}_)_`;
+        // Las credenciales usan el teléfono como usuario (no el correo real)
+        msgCredenciales += `\n\nPara administrar tu menú e información, ingresa a:\n🌐 *https://restaurantes-app-estrella.shop*\n\n_(Usuario: tu número de teléfono *${restTel}* / Clave: ${genPassword})_`;
       }
       await sendWA(`52${restTel}`, msgCredenciales)
       
@@ -968,7 +978,7 @@ export async function handleButtonEvent(
       
       await sendWA(fromPhone, `✅ Restaurante *${restInfo.nombreRest}* aprobado y registrado en el sistema.`)
       
-      const menuUrl = `https://app-estrella.shop/menu/${finalSlug}`;
+      const menuUrl = `https://restaurantes-app-estrella.shop/menu/${finalSlug}`;
       const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(menuUrl)}&size=500&margin=2`;
       
       const { sendWAImage } = await import('./whatsapp.ts');

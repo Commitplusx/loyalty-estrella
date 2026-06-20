@@ -3,10 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
-  // Brand Core
-  static const orange = Color(0xFFFF6B2B);
-  static const amber = Color(0xFFFF9500);
-  static const orangeGlow = Color(0x66FF6B2B); // 40% opacity for glow effects
+  // Brand Core - Estrella Red
+  static const brandRed = Color(0xFFC71E24);
+  static const brandLightRed = Color(0xFFE53935);
+  static const brandRedGlow = Color(0x66C71E24);
 
   // Dark Mode - Deep Midnight
   static const darkBg = Color(0xFF070711);
@@ -29,13 +29,13 @@ class AppColors {
 
 class AppGradients {
   static const brand = LinearGradient(
-    colors: [AppColors.orange, AppColors.amber],
+    colors: [AppColors.brandRed, AppColors.brandLightRed],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const brandVertical = LinearGradient(
-    colors: [AppColors.orange, AppColors.amber],
+    colors: [AppColors.brandRed, AppColors.brandLightRed],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
@@ -77,8 +77,8 @@ class AppTheme {
       foregroundColor: Colors.white,
       elevation: 0,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      textStyle: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 0.2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      textStyle: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 0.5),
     ),
   );
 
@@ -86,18 +86,18 @@ class AppTheme {
   static InputDecorationTheme _inputTheme(Color surface, Color border, Color primary) => InputDecorationTheme(
     filled: true,
     fillColor: surface,
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: border)),
-    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: border)),
-    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: primary, width: 2)),
-    errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.danger)),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: border)),
+    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: border)),
+    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: primary, width: 2)),
+    errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.danger)),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
   );
 
   // ---------------------------------------------------------------------------
-  // LIGHT THEME
+  // LIGHT THEME (Clean & Crisp)
   // ---------------------------------------------------------------------------
   static ThemeData light() {
-    const bg = Color(0xFFF8FAFC); // Very light blue-gray
+    const bg = Color(0xFFF4F6F8); // A very clean, slightly cooler gray for contrast
     const surface = Color(0xFFFFFFFF);
     const border = Color(0xFFE2E8F0);
     const textPrimary = Color(0xFF0F172A);
@@ -107,8 +107,8 @@ class AppTheme {
       useMaterial3: true,
       brightness: Brightness.light,
       colorScheme: const ColorScheme.light(
-        primary: AppColors.orange,
-        secondary: AppColors.amber,
+        primary: AppColors.brandRed,
+        secondary: AppColors.brandLightRed,
         surface: surface,
         onSurface: textPrimary,
         surfaceContainerHighest: border,
@@ -124,7 +124,7 @@ class AppTheme {
         elevation: 0,
         centerTitle: false,
         iconTheme: const IconThemeData(color: textPrimary),
-        titleTextStyle: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w700, color: textPrimary, letterSpacing: -0.5),
+        titleTextStyle: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w900, color: textPrimary, letterSpacing: -0.5),
         systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           statusBarIconBrightness: Brightness.dark,
@@ -133,24 +133,24 @@ class AppTheme {
       ),
       cardTheme: CardThemeData(
         color: surface,
-        elevation: 2,
-        shadowColor: Colors.black.withOpacity(0.05),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: border, width: 1)),
+        elevation: 10, // Gives the card a nice floating effect
+        shadowColor: Colors.black.withOpacity(0.08),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: BorderSide.none), // Removed harsh borders for clean look
       ),
-      inputDecorationTheme: _inputTheme(surface, border, AppColors.orange),
-      elevatedButtonTheme: _buttonTheme(AppColors.orange),
+      inputDecorationTheme: _inputTheme(const Color(0xFFF8FAFC), border, AppColors.brandRed),
+      elevatedButtonTheme: _buttonTheme(AppColors.brandRed),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: surface,
-        selectedItemColor: AppColors.orange,
+        selectedItemColor: AppColors.brandRed,
         unselectedItemColor: textSecondary,
         type: BottomNavigationBarType.fixed,
-        elevation: 8,
+        elevation: 16, // Stronger shadow for the bottom nav
       ),
     );
   }
 
   // ---------------------------------------------------------------------------
-  // DARK THEME (Midnight)
+  // DARK THEME (Midnight Red)
   // ---------------------------------------------------------------------------
   static ThemeData dark() {
     const bg = AppColors.darkBg;
@@ -163,8 +163,8 @@ class AppTheme {
       useMaterial3: true,
       brightness: Brightness.dark,
       colorScheme: const ColorScheme.dark(
-        primary: AppColors.orange,
-        secondary: AppColors.amber,
+        primary: AppColors.brandRed,
+        secondary: AppColors.brandLightRed,
         surface: surface,
         onSurface: textPrimary,
         surfaceContainerHighest: border,
@@ -180,7 +180,7 @@ class AppTheme {
         elevation: 0,
         centerTitle: false,
         iconTheme: const IconThemeData(color: textPrimary),
-        titleTextStyle: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w700, color: textPrimary, letterSpacing: -0.5),
+        titleTextStyle: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w900, color: textPrimary, letterSpacing: -0.5),
         systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           statusBarIconBrightness: Brightness.light,
@@ -190,13 +190,13 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: surface,
         elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: border, width: 1)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: border, width: 1.5)),
       ),
-      inputDecorationTheme: _inputTheme(AppColors.darkSurface, border, AppColors.orange),
-      elevatedButtonTheme: _buttonTheme(AppColors.orange),
+      inputDecorationTheme: _inputTheme(AppColors.darkSurface, border, AppColors.brandRed),
+      elevatedButtonTheme: _buttonTheme(AppColors.brandRed),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: surface,
-        selectedItemColor: AppColors.orange,
+        selectedItemColor: AppColors.brandRed,
         unselectedItemColor: textSecondary,
         type: BottomNavigationBarType.fixed,
         elevation: 0,
@@ -205,11 +205,11 @@ class AppTheme {
   }
 
   // ---------------------------------------------------------------------------
-  // AMOLED THEME (Pure Black)
+  // AMOLED THEME (Pure Black & Red)
   // ---------------------------------------------------------------------------
   static ThemeData amoled() {
     const bg = Color(0xFF000000);
-    const surface = Color(0xFF090909);
+    const surface = Color(0xFF0A0A0A);
     const border = Color(0xFF1A1A1A);
     const textPrimary = Color(0xFFFFFFFF);
     const textSecondary = Color(0xFFAAAAAA);
@@ -218,8 +218,8 @@ class AppTheme {
       useMaterial3: true,
       brightness: Brightness.dark,
       colorScheme: const ColorScheme.dark(
-        primary: AppColors.orange,
-        secondary: AppColors.amber,
+        primary: AppColors.brandRed,
+        secondary: AppColors.brandLightRed,
         surface: surface,
         onSurface: textPrimary,
         surfaceContainerHighest: border,
@@ -235,7 +235,7 @@ class AppTheme {
         elevation: 0,
         centerTitle: false,
         iconTheme: const IconThemeData(color: textPrimary),
-        titleTextStyle: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w700, color: textPrimary, letterSpacing: -0.5),
+        titleTextStyle: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w900, color: textPrimary, letterSpacing: -0.5),
         systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           statusBarIconBrightness: Brightness.light,
@@ -245,13 +245,13 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: surface,
         elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: border, width: 1)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: border, width: 1.5)),
       ),
-      inputDecorationTheme: _inputTheme(surface, border, AppColors.orange),
-      elevatedButtonTheme: _buttonTheme(AppColors.orange),
+      inputDecorationTheme: _inputTheme(surface, border, AppColors.brandRed),
+      elevatedButtonTheme: _buttonTheme(AppColors.brandRed),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: bg,
-        selectedItemColor: AppColors.orange,
+        selectedItemColor: AppColors.brandRed,
         unselectedItemColor: textSecondary,
         type: BottomNavigationBarType.fixed,
         elevation: 0,

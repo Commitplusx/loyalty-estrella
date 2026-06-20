@@ -4,18 +4,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../services/cliente_service.dart';
 import '../services/pdf_service.dart';
 import '../services/repartidor_service.dart';
 import '../services/gasto_service.dart';
+import '../services/dashboard_service.dart';
 import '../core/user_role.dart';
 import '../core/connectivity_provider.dart';
 import '../core/theme_provider.dart';
+import '../core/theme.dart';
 import 'pedidos_screen.dart';
 import 'main_shell.dart' show pendingSolicitudesProvider;
 
-final statsProvider = FutureProvider<Map<String, int>>((ref) async {
-  return ref.read(clienteServiceProvider).getStats();
+final statsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  return ref.read(dashboardServiceProvider).getDailyStats();
 });
 
 final chartDataProvider = FutureProvider<List<int>>((ref) async {
@@ -104,7 +107,13 @@ class DashboardScreen extends ConsumerWidget {
                   
                   // ── Hero Vital Stats ──
                   _VitalStatsCard(statsAsync: statsAsync, isAdmin: isAdmin),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
+
+                  // ── Weekly Activity Chart ──
+                  if (isAdmin) ...[
+                    _ActivityChart(chartDataAsync: ref.watch(chartDataProvider)),
+                    const SizedBox(height: 32),
+                  ],
 
                   // ── Bento Box Grid ──
                   if (isAdmin) ...[
@@ -206,7 +215,7 @@ class _ThemeSwitcher extends ConsumerWidget {
 }
 
 class _VitalStatsCard extends StatelessWidget {
-  final AsyncValue<Map<String, int>> statsAsync;
+  final AsyncValue<Map<String, dynamic>> statsAsync;
   final bool isAdmin;
 
   const _VitalStatsCard({required this.statsAsync, required this.isAdmin});
@@ -217,15 +226,11 @@ class _VitalStatsCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)], // Modern Deep Blue
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: AppGradients.brand,
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF2563EB).withOpacity(0.3),
+            color: AppColors.brandRed.withOpacity(0.3),
             blurRadius: 24,
             offset: const Offset(0, 12),
           ),
@@ -250,7 +255,7 @@ class _VitalStatsCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 16),
                   const Text(
-                    'Envíos Hoy',
+                    'Servicios Hoy',
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 16,
@@ -261,7 +266,7 @@ class _VitalStatsCard extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                '${isAdmin ? stats['envios'] ?? 0 : stats['mis_envios_hoy'] ?? 0}',
+                '${stats['servicios'] ?? 0}',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 56,
@@ -273,9 +278,9 @@ class _VitalStatsCard extends StatelessWidget {
               const SizedBox(height: 24),
               Row(
                 children: [
-                  if (isAdmin) _MiniStat(label: 'Clientes Totales', value: '${stats['clientes'] ?? 0}'),
+                  if (isAdmin) _MiniStat(label: 'Ingresos Hoy', value: '\$${(stats['ganancias'] ?? 0.0).toStringAsFixed(2)}'),
                   if (isAdmin) const SizedBox(width: 24),
-                  _MiniStat(label: 'Envíos Gratis', value: '${stats['gratis'] ?? 0}'),
+                  _MiniStat(label: 'Gratis Hoy', value: '${stats['gratis'] ?? 0}'),
                 ],
               ),
             ],
@@ -318,57 +323,104 @@ class _BentoGrid extends ConsumerWidget {
     final pendingAsync = ref.watch(pendingSolicitudesProvider);
     final pendingCount = pendingAsync.valueOrNull ?? 0;
 
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 16,
-      crossAxisSpacing: 16,
-      childAspectRatio: 1.3,
-      padding: EdgeInsets.zero,
+    return Column(
       children: [
-        _BentoItem(
-          title: 'Mapa',
-          subtitle: 'Rastreo en vivo',
-          icon: Icons.map_rounded,
-          color: const Color(0xFF10B981),
-          onTap: () => context.push('/map'),
+        // Fila 1: Asimétrica (Mapa grande, Aliados pequeño)
+        Row(
+          children: [
+            Expanded(
+              flex: 5,
+              child: SizedBox(
+                height: 160,
+                child: _BentoItem(
+                  title: 'Mapa',
+                  subtitle: 'Rastreo de flota en vivo',
+                  icon: Icons.map_rounded,
+                  color: const Color(0xFF10B981),
+                  onTap: () => context.push('/map'),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              flex: 4,
+              child: SizedBox(
+                height: 160,
+                child: _BentoItem(
+                  title: 'Aliados',
+                  subtitle: pendingCount > 0 ? '$pendingCount pendientes' : 'Gestión B2B',
+                  icon: Icons.storefront_rounded,
+                  color: const Color(0xFFF97316),
+                  badgeCount: pendingCount,
+                  onTap: () => context.go('/solicitudes'),
+                ),
+              ),
+            ),
+          ],
         ),
-        _BentoItem(
-          title: 'Aliados',
-          subtitle: pendingCount > 0 ? '$pendingCount pendientes' : 'Gestión B2B',
-          icon: Icons.storefront_rounded,
-          color: const Color(0xFFF97316),
-          badgeCount: pendingCount,
-          onTap: () => context.go('/solicitudes'),
+        const SizedBox(height: 16),
+        // Fila 2: Simétrica
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 140,
+                child: _BentoItem(
+                  title: 'Gastos',
+                  subtitle: 'Finanzas flota',
+                  icon: Icons.receipt_long_rounded,
+                  color: const Color(0xFF8B5CF6),
+                  onTap: () => context.go('/gastos'),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: SizedBox(
+                height: 140,
+                child: _BentoItem(
+                  title: 'Líderes',
+                  subtitle: 'Ranking',
+                  icon: Icons.emoji_events_rounded,
+                  color: const Color(0xFFF59E0B),
+                  onTap: () => context.push('/leaderboard'),
+                ),
+              ),
+            ),
+          ],
         ),
-        _BentoItem(
-          title: 'Gastos',
-          subtitle: 'Finanzas flota',
-          icon: Icons.receipt_long_rounded,
-          color: const Color(0xFF8B5CF6),
-          onTap: () => context.go('/gastos'),
-        ),
-        _BentoItem(
-          title: 'Líderes',
-          subtitle: 'Ranking',
-          icon: Icons.emoji_events_rounded,
-          color: const Color(0xFFF59E0B),
-          onTap: () => context.push('/leaderboard'),
-        ),
-        _BentoItem(
-          title: 'Corte Hoy',
-          subtitle: 'Imprimir PDF',
-          icon: Icons.print_rounded,
-          color: Theme.of(context).colorScheme.error,
-          onTap: () => _printCorte(context, ref),
-        ),
-        _BentoItem(
-          title: 'Mi Servicio',
-          subtitle: 'Registrar',
-          icon: Icons.two_wheeler_rounded,
-          color: const Color(0xFF06B6D4),
-          onTap: () => _agregarMiServicio(context, ref),
+        const SizedBox(height: 16),
+        // Fila 3: Asimétrica inversa (Mi Servicio pequeño, Corte grande)
+        Row(
+          children: [
+            Expanded(
+              flex: 4,
+              child: SizedBox(
+                height: 140,
+                child: _BentoItem(
+                  title: 'Mi Servicio',
+                  subtitle: 'Registrar',
+                  icon: Icons.two_wheeler_rounded,
+                  color: const Color(0xFF06B6D4),
+                  onTap: () => _agregarMiServicio(context, ref),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              flex: 5,
+              child: SizedBox(
+                height: 140,
+                child: _BentoItem(
+                  title: 'Corte Hoy',
+                  subtitle: 'Generar e Imprimir PDF',
+                  icon: Icons.print_rounded,
+                  color: Theme.of(context).colorScheme.error,
+                  onTap: () => _printCorte(context, ref),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -582,6 +634,122 @@ class _BentoItem extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ActivityChart extends StatelessWidget {
+  final AsyncValue<List<int>> chartDataAsync;
+
+  const _ActivityChart({required this.chartDataAsync});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      height: 200,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Actividad Semanal',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: cs.onSurface,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              Icon(Icons.bar_chart_rounded, color: cs.primary, size: 20),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: chartDataAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Error: $e')),
+              data: (data) {
+                if (data.isEmpty || data.every((e) => e == 0)) {
+                  return Center(
+                    child: Text('Aún no hay datos para esta semana', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+                  );
+                }
+
+                final maxVal = data.reduce((curr, next) => curr > next ? curr : next).toDouble();
+                final days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+                return BarChart(
+                  BarChartData(
+                    alignment: BarChartAlignment.spaceAround,
+                    maxY: maxVal == 0 ? 1 : maxVal * 1.2,
+                    barTouchData: BarTouchData(enabled: false),
+                    titlesData: FlTitlesData(
+                      show: true,
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          getTitlesWidget: (value, meta) {
+                            if (value < 0 || value >= days.length) return const SizedBox();
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Text(
+                                days[value.toInt()],
+                                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 10, fontWeight: FontWeight.bold),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    ),
+                    gridData: const FlGridData(show: false),
+                    borderData: FlBorderData(show: false),
+                    barGroups: List.generate(data.length, (i) {
+                      return BarChartGroupData(
+                        x: i,
+                        barRods: [
+                          BarChartRodData(
+                            toY: data[i].toDouble(),
+                            color: cs.primary,
+                            width: 12,
+                            borderRadius: BorderRadius.circular(6),
+                            backDrawRodData: BackgroundBarChartRodData(
+                              show: true,
+                              toY: maxVal == 0 ? 1 : maxVal * 1.2,
+                              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+                            ),
+                          ),
+                        ],
+                      );
+                    }),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -11,6 +11,10 @@ import 'package:image_picker/image_picker.dart';
 import '../models/pedido_model.dart';
 import '../services/pedido_service.dart';
 import '../core/user_role.dart';
+import '../services/repartidor_service.dart';
+import '../services/gasto_service.dart';
+import '../core/ui_helpers.dart';
+import 'package:flutter_map/flutter_map.dart';
 
 final _pedidoProvider = FutureProvider.autoDispose.family<PedidoModel?, String>(
   (ref, id) => ref.read(pedidoServiceProvider).getPedido(id),
@@ -68,33 +72,12 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
     final theme = Theme.of(context);
     final color = _estadoColor(siguiente);
 
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: theme.colorScheme.surface,
-        title: Text(
-          widget.pedido.siguienteEstadoLabel ?? 'Confirmar',
-          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        content: Text(
-          '¿Confirmar cambio de estado a "${_estadoLabel(siguiente)}"?',
-          style: theme.textTheme.bodyMedium,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancelar', style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6))),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: color,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Confirmar'),
-          ),
-        ],
-      ),
+    final confirm = await PremiumBottomSheet.showConfirm(
+      context,
+      title: widget.pedido.siguienteEstadoLabel ?? 'Confirmar',
+      content: '¿Confirmar cambio de estado a "${_estadoLabel(siguiente)}"?',
+      confirmText: 'Confirmar',
+      cancelText: 'Cancelar',
     );
 
     if (confirm != true) return;
@@ -146,34 +129,58 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
     final sb = Supabase.instance.client;
     
     setState(() => _loading = true);
-    // Solo traemos repartidores que ya tienen un user_id (cuenta en auth.users)
-    final data = await sb.from('repartidores').select('user_id, nombre').not('user_id', 'is', null).eq('activo', true);
+    // Traemos TODOS los repartidores activos (con y sin cuenta auth)
+    final data = await sb.from('repartidores').select('id, user_id, nombre').eq('activo', true).order('nombre');
     setState(() => _loading = false);
 
     if (!mounted) return;
 
-    final repartidorElegido = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Reasignar Repartidor'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: data.length,
-            itemBuilder: (ctx, i) {
-              final rep = data[i];
-              return ListTile(
-                leading: const Icon(Icons.two_wheeler),
-                title: Text(rep['nombre'] ?? 'Sin Nombre'),
-                onTap: () => Navigator.pop(ctx, rep),
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-        ],
+    final repartidorElegido = await PremiumBottomSheet.showCustom<Map<String, dynamic>>(
+      context,
+      title: 'Reasignar Repartidor',
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const BouncingScrollPhysics(),
+        itemCount: data.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (ctx, i) {
+          final rep = data[i];
+          final tieneCuenta = rep['user_id'] != null;
+          return ListTile(
+            enabled: tieneCuenta,
+            leading: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: tieneCuenta
+                    ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
+                    : Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                tieneCuenta ? Icons.two_wheeler_rounded : Icons.warning_amber_rounded,
+                color: tieneCuenta ? Theme.of(context).colorScheme.primary : Colors.orange,
+              ),
+            ),
+            title: Text(
+              rep['nombre'] ?? 'Sin Nombre',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: tieneCuenta ? null : Colors.grey,
+              ),
+            ),
+            subtitle: tieneCuenta
+                ? null
+                : const Text(
+                    'Debe hacer login en la app primero',
+                    style: TextStyle(fontSize: 11, color: Colors.orange),
+                  ),
+            trailing: tieneCuenta
+                ? const Icon(Icons.chevron_right_rounded)
+                : const Icon(Icons.lock_outline_rounded, color: Colors.orange, size: 18),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            onTap: tieneCuenta ? () => Navigator.pop(ctx, rep) : null,
+          );
+        },
       ),
     );
 
@@ -203,58 +210,76 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
     final isDark = theme.brightness == Brightness.dark;
     final isAdmin = ref.watch(isAdminProvider);
 
+    final minutosRetraso = DateTime.now().difference(pedido.createdAt).inMinutes;
+    final estaAtrasado = pedido.estado != 'entregado' && pedido.estado != 'cancelado' && minutosRetraso > 20;
+    
+    // Forzar color rojo si está pendiente o atrasado
+    final bannerColor = (pedido.estado == 'pendiente' || estaAtrasado) 
+        ? const Color(0xFFE11D48) 
+        : color;
+
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        // Estado visual
+        // Estado visual (Banner)
         Container(
-          padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                color.withOpacity(isDark ? 0.25 : 0.15), 
-                color.withOpacity(isDark ? 0.08 : 0.05)
+                bannerColor.withOpacity(isDark ? 0.25 : 0.15), 
+                bannerColor.withOpacity(isDark ? 0.08 : 0.05)
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: color.withOpacity(0.5), width: 1.5),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: bannerColor.withOpacity(0.5), width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: color.withOpacity(0.1),
+                color: bannerColor.withOpacity(0.1),
                 blurRadius: 15,
                 offset: const Offset(0, 8),
               )
             ],
           ),
-          child: Column(
+          child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.2),
+                  color: bannerColor.withOpacity(0.2),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(_estadoIcon(pedido.estado), color: color, size: 54),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                pedido.estadoLabel.toUpperCase(),
-                style: TextStyle(
-                  color: color,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
+                child: Icon(
+                  estaAtrasado ? Icons.warning_amber_rounded : _estadoIcon(pedido.estado), 
+                  color: bannerColor, 
+                  size: 32
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                _estadoSubtitulo(pedido.estado),
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontSize: 14,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      estaAtrasado ? '¡RETRASO DE ${minutosRetraso}M!' : pedido.estadoLabel.toUpperCase(),
+                      style: TextStyle(
+                        color: bannerColor,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      estaAtrasado ? 'Este pedido está tomando más tiempo del esperado.' : _estadoSubtitulo(pedido.estado),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -393,7 +418,7 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
             ),
           ),
 
-        const SizedBox(height: 30),
+        const SizedBox(height: 100), // Extra padding para que no tape el BottomNavBar
       ],
     );
   }

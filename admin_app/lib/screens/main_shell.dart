@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show SystemNavigator, SystemUiOverlayStyle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter/rendering.dart';
 import '../core/user_role.dart';
 import '../core/supabase_config.dart';
+import '../core/ui_helpers.dart';
 // Provider para contar solicitudes pendientes
 final pendingSolicitudesProvider = FutureProvider.autoDispose<int>((ref) async {
   final res = await supabase
@@ -14,12 +16,19 @@ final pendingSolicitudesProvider = FutureProvider.autoDispose<int>((ref) async {
   return (res as List).length;
 });
 
-class MainShell extends ConsumerWidget {
+class MainShell extends ConsumerStatefulWidget {
   final Widget child;
   const MainShell({super.key, required this.child});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends ConsumerState<MainShell> {
+  bool _isNavVisible = true;
+
+  @override
+  Widget build(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
     final isAdmin = ref.watch(isAdminProvider);
     final pendingAsync = isAdmin ? ref.watch(pendingSolicitudesProvider) : null;
@@ -53,39 +62,38 @@ class MainShell extends ConsumerWidget {
         canPop: false,
         onPopInvokedWithResult: (didPop, result) async {
           if (didPop) return;
-          final shouldExit = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              backgroundColor: Theme.of(context).cardTheme.color ?? Theme.of(context).colorScheme.surface,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: Text('¿Salir de la app?', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
-              content: Text('¿Estás seguro que quieres cerrar Estrella Delivery Admin?',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: Text('CANCELAR', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.error,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  child: Text('SALIR'),
-                ),
-              ],
-            ),
+          final shouldExit = await PremiumBottomSheet.showConfirm(
+            context,
+            title: '¿Salir de la app?',
+            content: '¿Estás seguro que quieres cerrar Estrella Delivery Admin?',
+            confirmText: 'SALIR',
+            cancelText: 'CANCELAR',
+            isDestructive: true,
           );
           if (shouldExit == true && context.mounted) SystemNavigator.pop();
         },
         child: Scaffold(
           extendBody: true,
-          body: child,
-          bottomNavigationBar: _PremiumNavBar(
-            tabs: tabs,
-            currentIndex: currentIndex,
-            onTap: (i) => context.go(tabs[i].route),
+          body: NotificationListener<UserScrollNotification>(
+            onNotification: (notification) {
+              if (notification.direction == ScrollDirection.forward) {
+                if (!_isNavVisible) setState(() => _isNavVisible = true);
+              } else if (notification.direction == ScrollDirection.reverse) {
+                if (_isNavVisible) setState(() => _isNavVisible = false);
+              }
+              return false; // Permitir que otros listeners escuchen
+            },
+            child: widget.child,
+          ),
+          bottomNavigationBar: AnimatedSlide(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            offset: _isNavVisible ? Offset.zero : const Offset(0, 1.5),
+            child: _PremiumNavBar(
+              tabs: tabs,
+              currentIndex: currentIndex,
+              onTap: (i) => context.go(tabs[i].route),
+            ),
           ),
         ),
       ),

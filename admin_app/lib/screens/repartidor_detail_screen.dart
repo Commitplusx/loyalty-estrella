@@ -9,8 +9,10 @@ import 'repartidores_screen.dart';
 import '../services/repartidor_service.dart';
 import '../services/gasto_service.dart';
 import '../services/pedido_service.dart';
+import '../core/user_role.dart';
+import '../core/ui_helpers.dart';
 
-final repartidorDetailProvider = FutureProvider.family.autoDispose((ref, String id) async {
+final repartidorDetailProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, id) async {
   final reps = await ref.read(repartidorServiceProvider).getRepartidores();
   return reps.firstWhere((r) => r['id'].toString() == id, orElse: () => {});
 });
@@ -313,74 +315,85 @@ class _RepartidorDetailScreenState extends ConsumerState<RepartidorDetailScreen>
   // ── Hacer Cuentas / Corte ─────────────────────────────────────────────────
   void _mostrarCuentas(BuildContext context, String nombre, double total, int cant) {
     final isAdm = nombre.toUpperCase() == 'ADMIN';
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Row(children: [
-          const Icon(Icons.calculate_rounded, color: Color(0xFF11998E), size: 28),
-          const SizedBox(width: 12),
-          Text(isAdm ? 'Liquidación Empresa' : 'Corte de Caja', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        ]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(isAdm ? 'Resumen de servicios propios' : 'Resumen para $nombre',
-                style: const TextStyle(color: Colors.white54, fontSize: 13)),
-            const SizedBox(height: 20),
-            _infoRow('Envíos Finalizados', cant.toString()),
-            const Divider(color: Colors.white12),
-            _infoRow(isAdm ? 'Generado' : 'Total en Efectivo', '\$${total.toStringAsFixed(2)}', highlight: true),
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFF11998E).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF11998E).withOpacity(0.2)),
-              ),
-              child: Text(
-                isAdm
-                    ? 'Al cerrar turno, estos servicios se marcarán como auditados.'
-                    : 'Entrega este monto al administrador para liquidar el turno.',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF11998E), fontSize: 12),
-              ),
+    PremiumBottomSheet.showCustom<void>(
+      context,
+      title: isAdm ? 'Liquidación Empresa' : 'Corte de Caja',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(isAdm ? 'Resumen de servicios propios' : 'Resumen para $nombre',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
+          const SizedBox(height: 20),
+          _infoRow('Envíos Finalizados', cant.toString(), context),
+          Divider(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1)),
+          _infoRow(isAdm ? 'Generado' : 'Total en Efectivo', '\$${total.toStringAsFixed(2)}', context, highlight: true),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF11998E).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF11998E).withOpacity(0.2)),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCELAR', style: TextStyle(color: Colors.white38))),
-          FilledButton(
-            onPressed: () async {
-              final fecha = DateFormat('yyyy-MM-dd').format(DateTime.now());
-              final ok = await ref.read(repartidorServiceProvider).cerrarTurno(widget.repartidorId, fecha);
-              if (ok && ctx.mounted) {
-                Navigator.pop(ctx);
-                ref.invalidate(historialFiltradoProvider(widget.repartidorId));
-                ref.invalidate(cuadreProvider);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Turno liquidado y cerrado correctamente')));
-              }
-            },
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE11D48)),
-            child: const Text('LIQUIDAR Y CERRAR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: Text(
+              isAdm
+                  ? 'Al cerrar turno, estos servicios se marcarán como auditados.'
+                  : 'Entrega este monto al administrador para liquidar el turno.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Color(0xFF11998E), fontSize: 12),
+            ),
+          ),
+          const SizedBox(height: 32),
+          Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  child: Text('CANCELAR', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () async {
+                    final fecha = DateFormat('yyyy-MM-dd').format(DateTime.now());
+                    final ok = await ref.read(repartidorServiceProvider).cerrarTurno(widget.repartidorId, fecha);
+                    if (ok && context.mounted) {
+                      Navigator.pop(context);
+                      ref.invalidate(historialFiltradoProvider(widget.repartidorId));
+                      ref.invalidate(cuadreProvider);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Turno liquidado y cerrado correctamente')));
+                    }
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFE11D48),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  child: const Text('LIQUIDAR Y CERRAR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _infoRow(String label, String value, {bool highlight = false}) {
+  Widget _infoRow(String label, String value, BuildContext context, {bool highlight = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
           Text(value,
               style: TextStyle(
-                color: highlight ? const Color(0xFF38EF7D) : Colors.white,
+                color: highlight ? const Color(0xFF38EF7D) : Theme.of(context).colorScheme.onSurface,
                 fontSize: highlight ? 22 : 15,
                 fontWeight: FontWeight.bold,
               )),
@@ -394,44 +407,65 @@ class _RepartidorDetailScreenState extends ConsumerState<RepartidorDetailScreen>
     String? tempId = currentId;
     final onSurface = Theme.of(context).colorScheme.onSurface;
 
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(context).cardColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Text('Asignar Vehículo', style: TextStyle(color: onSurface, fontWeight: FontWeight.bold)),
-        content: StatefulBuilder(
-          builder: (ctx, setSt) => DropdownButtonFormField<String?>(
-            value: tempId,
-            dropdownColor: Theme.of(context).cardColor,
-            style: TextStyle(color: onSurface),
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: onSurface.withValues(alpha: 0.05),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+    await PremiumBottomSheet.showCustom<void>(
+      context,
+      title: 'Asignar Vehículo',
+      child: StatefulBuilder(
+        builder: (ctx, setSt) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DropdownButtonFormField<String?>(
+              value: tempId,
+              dropdownColor: Theme.of(context).cardColor,
+              style: TextStyle(color: onSurface),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: onSurface.withValues(alpha: 0.05),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              ),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('Ninguno')),
+                ...motos.map((m) => DropdownMenuItem(value: m['id'].toString(), child: Text('${m['alias'] ?? m['placa']}'))),
+              ],
+              onChanged: (val) => setSt(() => tempId = val),
             ),
-            items: [
-              const DropdownMenuItem(value: null, child: Text('Ninguno')),
-              ...motos.map((m) => DropdownMenuItem(value: m['id'].toString(), child: Text('${m['alias'] ?? m['placa']}'))),
-            ],
-            onChanged: (val) => setSt(() => tempId = val),
-          ),
+            const SizedBox(height: 32),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: Text('CANCELAR', style: TextStyle(color: onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () async {
+                      final ok = await ref.read(repartidorServiceProvider).assignMoto(widget.repartidorId, tempId);
+                      if (ok && ctx.mounted) {
+                        Navigator.pop(ctx);
+                        ref.invalidate(repartidorDetailProvider(widget.repartidorId));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vehículo asignado correctamente')));
+                      }
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF6B35),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: const Text('ASIGNAR', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('CANCELAR', style: TextStyle(color: onSurface.withValues(alpha: 0.3)))),
-          FilledButton(
-            onPressed: () async {
-              final ok = await ref.read(repartidorServiceProvider).assignMoto(widget.repartidorId, tempId);
-              if (ok && ctx.mounted) {
-                Navigator.pop(ctx);
-                ref.invalidate(repartidorDetailProvider(widget.repartidorId));
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vehículo asignado correctamente')));
-              }
-            },
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF6B35)),
-            child: const Text('ASIGNAR', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
       ),
     );
   }

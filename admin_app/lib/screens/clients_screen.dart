@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../services/cliente_service.dart';
 import '../models/cliente_model.dart';
+import '../core/ui_helpers.dart';
 
 final clientesProvider = FutureProvider.autoDispose.family<List<ClienteModel>, String>(
   (ref, busqueda) async {
@@ -32,80 +33,95 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
     final nomCtrl = TextEditingController();
     bool loading = false;
 
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          backgroundColor: Theme.of(context).cardColor,
-          title: Text('Registro Express', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: telCtrl,
-                keyboardType: TextInputType.phone,
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-                decoration: InputDecoration(
-                  labelText: 'Teléfono',
-                  labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
-                  prefixIcon: Icon(Icons.phone_rounded, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
-                ),
+    await PremiumBottomSheet.showCustom<void>(
+      context,
+      title: 'Registro Express',
+      child: StatefulBuilder(
+        builder: (ctx, setState) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: telCtrl,
+              keyboardType: TextInputType.phone,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+              decoration: InputDecoration(
+                labelText: 'Teléfono',
+                labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                prefixIcon: Icon(Icons.phone_rounded, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
               ),
-              SizedBox(height: 12),
-              TextField(
-                controller: nomCtrl,
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-                decoration: InputDecoration(
-                  labelText: 'Nombre (opcional)',
-                  labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
-                  prefixIcon: Icon(Icons.person_rounded, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: loading ? null : () => Navigator.pop(ctx),
-              child: Text('Cancelar', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
             ),
-            ElevatedButton(
-              onPressed: loading
-                  ? null
-                  : () async {
-                      if (telCtrl.text.isEmpty) return;
-                      setState(() => loading = true);
-                      final cleanTel = telCtrl.text.replaceAll(RegExp(r'\D'), '');
-                      final res = await ref
-                          .read(clienteServiceProvider)
-                          .registroExpress(cleanTel, nomCtrl.text.trim());
-                      
-                      if (res['success'] == true) {
-                        if (!ctx.mounted) return;
-                        Navigator.pop(ctx);
-                        ref.invalidate(clientesProvider(_busqueda));
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('✅ Cliente Registrado: ${res['qr_code']}'),
-                            backgroundColor: const Color(0xFF11998E),
-                          ),
-                        );
-                      } else {
-                        setState(() => loading = false);
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Error: ${res['message']}'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B35)),
-              child: loading
-                  ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onSurface))
-                  : Text('Registrar'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nomCtrl,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+              decoration: InputDecoration(
+                labelText: 'Nombre (opcional)',
+                labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                prefixIcon: Icon(Icons.person_rounded, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+            const SizedBox(height: 32),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: loading ? null : () => Navigator.pop(ctx),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: Text('Cancelar', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: loading
+                        ? null
+                        : () async {
+                            if (telCtrl.text.isEmpty) return;
+                            setState(() => loading = true);
+                            final cleanTel = telCtrl.text.replaceAll(RegExp(r'\D'), '');
+                            final res = await ref
+                                .read(clienteServiceProvider)
+                                .registroExpress(cleanTel, nomCtrl.text.trim());
+                            
+                            if (res['success'] == true) {
+                              if (!ctx.mounted) return;
+                              Navigator.pop(ctx);
+                              ref.invalidate(clientesProvider(_busqueda));
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('✅ Cliente Registrado: ${res['qr_code']}'),
+                                  backgroundColor: const Color(0xFF11998E),
+                                ),
+                              );
+                            } else {
+                              setState(() => loading = false);
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error: ${res['message']}'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF6B35),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: loading
+                        ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onPrimary))
+                        : const Text('Registrar', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

@@ -33,8 +33,8 @@ Deno.serve(async (req: Request) => {
 
   // ── CRON JOBS INTERNOS ──
   const cronAuth   = req.headers.get('x-cron-auth')
-  const cronSecret = Deno.env.get('CRON_SECRET') ?? 'ESTRELLA_CRON_SECRET_123'
-  if (cronAuth === cronSecret || cronAuth === 'ESTRELLA_CRON_SECRET_123') {
+  const cronSecret = Deno.env.get('CRON_SECRET')
+  if (cronSecret && cronAuth === cronSecret) {
     try {
       const body     = JSON.parse(await req.text())
       const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
@@ -53,16 +53,14 @@ Deno.serve(async (req: Request) => {
 
   if (appSecret) {
     const signature = req.headers.get('x-hub-signature-256')
-    if (!signature && !bodyText.includes('9990000001')) return new Response('Unauthorized', { status: 401 })
+    if (!signature) return new Response('Unauthorized', { status: 401 })
     
-    let isValid = true
-    if (!bodyText.includes('9990000001')) {
-      const encoder  = new TextEncoder()
-      const key      = await crypto.subtle.importKey('raw', encoder.encode(appSecret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
-      const sigHex   = signature?.replace('sha256=', '') || ''
-      const sigBytes = new Uint8Array(sigHex.match(/.{1,2}/g)?.map((b: string) => parseInt(b, 16)) || [])
-      isValid  = await crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(bodyText))
-    }
+    const encoder  = new TextEncoder()
+    const key      = await crypto.subtle.importKey('raw', encoder.encode(appSecret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
+    const sigHex   = signature?.replace('sha256=', '') || ''
+    const sigBytes = new Uint8Array(sigHex.match(/.{1,2}/g)?.map((b: string) => parseInt(b, 16)) || [])
+    const isValid  = await crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(bodyText))
+    
     if (!isValid) return new Response('Unauthorized', { status: 401 })
   } else {
     console.warn('WHATSAPP_APP_SECRET no configurado.')
@@ -316,6 +314,12 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 1. BOTONES ──
+    if (msgType === 'interactive' && msg.interactive?.type === 'nfm_reply') {
+      const { handleFlowReply } = await import('./restaurant-b2b-handler.ts')
+      const res = await handleFlowReply(supabase, fromPhone, from10, msg.interactive.nfm_reply, cachedRestData)
+      if (res) return await exitSafely(res)
+    }
+
     if (msgType === 'interactive' || msgType === 'button') {
       // Bug 6 fix: restaurantes registrados deben ir al B2B handler PRIMERO
       // porque sus botones (REST_MENU_*) no existen en button-handler.ts

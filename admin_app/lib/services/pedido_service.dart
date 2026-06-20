@@ -131,16 +131,19 @@ class PedidoService {
       }
     }
 
-    // 2. Retry Logic Exponencial (Inmune a intermitencias de 4G)
+        // 2. Retry Logic Exponencial (Inmune a intermitencias de 4G)
     while (attempts < 3 && !success) {
       try {
         attempts++;
+        final user = supabase.auth.currentUser;
+        
         await supabase
             .from('pedidos')
             .update({
               'estado': nuevoEstado,
               if (nuevoEstado == 'entregado' && currentPos != null) 'lat_entrega': currentPos.latitude,
               if (nuevoEstado == 'entregado' && currentPos != null) 'lng_entrega': currentPos.longitude,
+              if (nuevoEstado == 'asignado' && user != null) 'repartidor_id': user.id,
             })
             .eq('id', pedidoId);
 
@@ -161,6 +164,16 @@ class PedidoService {
     }
 
     if (success) {
+      // Registrar log local
+      try {
+        await supabase.from('pedido_logs').insert({
+          'pedido_id': pedidoId,
+          'accion': 'ESTADO_CAMBIADO',
+          'detalles': 'Estado cambiado a $nuevoEstado',
+          'actor_id': supabase.auth.currentUser?.id,
+        });
+      } catch (_) {}
+
       // 3. Notificación Fire & Forget
       _notificar(pedidoId: pedidoId, tipo: nuevoEstado);
       return true;
@@ -180,6 +193,15 @@ class PedidoService {
             'estado': 'asignado',
           })
           .eq('id', pedidoId);
+
+      try {
+        await supabase.from('pedido_logs').insert({
+          'pedido_id': pedidoId,
+          'accion': 'REASIGNADO',
+          'detalles': 'Pedido reasignado al repartidor $nuevoRepartidorId',
+          'actor_id': supabase.auth.currentUser?.id,
+        });
+      } catch (_) {}
 
       _notificar(pedidoId: pedidoId, tipo: 'asignacion');
       return true;

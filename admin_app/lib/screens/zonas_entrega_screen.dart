@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/supabase_config.dart';
+import '../core/ui_helpers.dart';
 import '../core/theme.dart';
 
 // ── Modelo ────────────────────────────────────────────────────────────────────
@@ -353,20 +354,13 @@ class _ZonaCardState extends ConsumerState<_ZonaCard> {
         widget.onChanged();
         break;
       case 'delete':
-        final ok = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('¿Eliminar zona?'),
-            content: Text('Se eliminará "${_capitalize(zona.nombre)}" y todas sus colonias. El bot dejará de usarla.'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-              FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Eliminar'),
-              ),
-            ],
-          ),
+        final ok = await PremiumBottomSheet.showConfirm(
+          context,
+          title: '¿Eliminar zona?',
+          content: 'Se eliminará "${_capitalize(zona.nombre)}" y todas sus colonias. El bot dejará de usarla.',
+          confirmText: 'Eliminar',
+          cancelText: 'Cancelar',
+          isDestructive: true,
         );
         if (ok == true) {
           await supabase.from('zonas_entrega').delete().eq('id', zona.id);
@@ -377,26 +371,11 @@ class _ZonaCardState extends ConsumerState<_ZonaCard> {
   }
 
   Future<void> _agregarColonia(ZonaEntrega zona) async {
-    final ctrl = TextEditingController();
-    final nuevaColonia = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Agregar colonia a ${_capitalize(zona.nombre)}'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Nombre de la colonia',
-            hintText: 'ej: San Sebastián',
-          ),
-          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Agregar')),
-        ],
-      ),
+    final nuevaColonia = await PremiumBottomSheet.showInput(
+      context,
+      title: 'Agregar colonia a ${_capitalize(zona.nombre)}',
+      hintText: 'ej: San Sebastián',
+      confirmText: 'Agregar',
     );
 
     if (nuevaColonia == null || nuevaColonia.isEmpty) return;
@@ -410,20 +389,13 @@ class _ZonaCardState extends ConsumerState<_ZonaCard> {
   }
 
   Future<void> _eliminarColonia(ZonaEntrega zona, String colonia) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('¿Eliminar colonia?'),
-        content: Text('Se quitará "$colonia" de la zona ${_capitalize(zona.nombre)}.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Eliminar'),
-          ),
-        ],
-      ),
+    final ok = await PremiumBottomSheet.showConfirm(
+      context,
+      title: '¿Eliminar colonia?',
+      content: 'Se quitará "$colonia" de la zona ${_capitalize(zona.nombre)}.',
+      confirmText: 'Eliminar',
+      cancelText: 'Cancelar',
+      isDestructive: true,
     );
     if (ok != true) return;
 

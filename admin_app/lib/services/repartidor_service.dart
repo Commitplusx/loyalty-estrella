@@ -6,11 +6,20 @@ import 'sync_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/cache_helper.dart';
+
 
 final repartidorServiceProvider = Provider((ref) => RepartidorService());
 
-final restaurantesProvider = FutureProvider.autoDispose((ref) {
-  return ref.read(repartidorServiceProvider).getRestaurantes();
+final restaurantesProvider = StreamProvider.autoDispose<List<Map<String, dynamic>>>((ref) async* {
+  const cacheKey = 'restaurantes_list';
+
+  final cached = await CacheHelper.getList(cacheKey);
+  if (cached != null) yield cached;
+
+  final networkData = await ref.read(repartidorServiceProvider).getRestaurantes();
+  await CacheHelper.saveList(cacheKey, networkData);
+  yield networkData;
 });
 
 class RepartidorService {
@@ -126,15 +135,26 @@ class RepartidorService {
 
   Future<String?> addRepartidor(String nombre, String? telefono, String? alias) async {
     try {
-      await supabase.from('repartidores').insert({
-        'nombre': nombre,
-        'telefono': telefono,
-        'alias': alias,
-        'activo': true,
-      });
+      final res = await supabase.functions.invoke(
+        'admin-create-user',
+        body: {
+          'type': 'repartidor',
+          'nombre': nombre,
+          'telefono': telefono,
+          'alias': alias,
+        },
+      );
+
+      if (res.status != 200) {
+        return 'Error del servidor: ${res.status}';
+      }
+
       return null;
     } catch (e) {
-      return e.toString();
+      if (e.toString().contains('FunctionException')) {
+        return 'Error creando repartidor en el servidor.';
+      }
+      return 'Error: $e';
     }
   }
 
@@ -157,15 +177,27 @@ class RepartidorService {
     }
   }
 
+  Future<bool> updateEstado(String repartidorId, String estado) async {
+    try {
+      await supabase.from('repartidores').update({'estado_actividad': estado}).eq('id', repartidorId);
+      return true;
+    } catch (e) {
+      debugPrint('Error updateEstado: $e');
+      return false;
+    }
+  }
+
   // ── Servicios ─────────────────────────────────────────────────────────
-  Future<List<Map<String, dynamic>>> getServicios({String? repartidorId, DateTime? fecha}) async {
-    final fechaStr = (fecha ?? DateTime.now()).toIso8601String().split('T')[0];
+  Future<List<Map<String, dynamic>>> getServicios({String? repartidorId, DateTime? fechaInicio, DateTime? fechaFin}) async {
+    final startStr = (fechaInicio ?? DateTime.now()).toIso8601String().split('T')[0];
+    final endStr = (fechaFin ?? fechaInicio ?? DateTime.now()).toIso8601String().split('T')[0];
     
     // 1. Fetch from servicios_repartidor
     var queryServicios = supabase
         .from('servicios_repartidor')
-        .select('*, repartidores(nombre, alias), clientes(nombre), restaurantes(nombre)')
-        .eq('turno_fecha', fechaStr)
+        .select('*, repartidores(nombre, alias, estado_actividad), clientes(nombre), restaurantes(nombre)')
+        .filter('turno_fecha', 'gte', startStr)
+        .filter('turno_fecha', 'lte', endStr)
         .eq('liquidado', false);
     if (repartidorId != null) queryServicios = queryServicios.eq('repartidor_id', repartidorId);
     
@@ -173,13 +205,14 @@ class RepartidorService {
     final List<Map<String, dynamic>> combined = List<Map<String, dynamic>>.from(dataServicios);
 
     // 2. Fetch from pedidos (WhatsApp / Bot)
-    // Map pedidos to match servicios_repartidor structure
     var queryPedidos = supabase
         .from('pedidos')
-        .select('*, repartidores:repartidor_id(nombre, alias)')
-        .filter('created_at', 'gte', '${fechaStr}T00:00:00')
-        .filter('created_at', 'lte', '${fechaStr}T23:59:59')
-        .eq('estado', 'entregado'); // Only delivered orders count for cashout
+        .select('*, repartidores:repartidor_id(nombre, alias, estado_actividad)')
+        .filter('created_at', 'gte', '${startStr}T00:00:00')
+        .filter('created_at', 'lte', '${endStr}T23:59:59')
+        .eq('estado', 'entregado') // Solo los entregados
+        .eq('liquidado', false); // Agregamos filtro de liquidado para pedidos
+
     
     if (repartidorId != null) {
       // Find the user_id if we only have repartidorId
@@ -207,7 +240,7 @@ class RepartidorService {
         'tipo_servicio': 'cliente',
         'notas': p['direccion'],
         'creado_en': p['created_at'],
-        'turno_fecha': fechaStr,
+        'turno_fecha': p['created_at'].toString().split('T')[0],
         'estado': 'completado',
         'es_bot': true,
         'repartidores': p['repartidores'],
@@ -355,6 +388,33 @@ class RepartidorService {
     }
   }
 
+  Future<bool> liquidarCorte(String repartidorId, String fechaInicio, String fechaFin) async {
+    try {
+      // 1. Marcar servicios como liquidados
+      await supabase
+          .from('servicios_repartidor')
+          .update({'liquidado': true})
+          .eq('repartidor_id', repartidorId)
+          .filter('turno_fecha', 'gte', fechaInicio)
+          .filter('turno_fecha', 'lte', fechaFin);
+
+      // 2. Marcar pedidos como liquidados
+      final rep = await supabase.from('repartidores').select('user_id').eq('id', repartidorId).maybeSingle();
+      if (rep != null && rep['user_id'] != null) {
+        await supabase
+            .from('pedidos')
+            .update({'liquidado': true})
+            .eq('repartidor_id', rep['user_id'])
+            .filter('created_at', 'gte', '${fechaInicio}T00:00:00')
+            .filter('created_at', 'lte', '${fechaFin}T23:59:59');
+      }
+      return true;
+    } catch (e) {
+      debugPrint('Error en liquidarCorte: $e');
+      return false;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getResumenSemanal() async {
     try {
       // Usamos la vista que creamos
@@ -367,23 +427,28 @@ class RepartidorService {
   }
 
   // ── Cuadre / Corte ────────────────────────────────────────────────────
-  Future<List<Map<String, dynamic>>> getCuadre({DateTime? fecha}) async {
-    final fechaStr = (fecha ?? DateTime.now()).toIso8601String().split('T')[0];
+  Future<List<Map<String, dynamic>>> getCuadre({DateTime? fechaInicio, DateTime? fechaFin}) async {
+    final startStr = (fechaInicio ?? DateTime.now()).toIso8601String().split('T')[0];
+    final endStr = (fechaFin ?? fechaInicio ?? DateTime.now()).toIso8601String().split('T')[0];
+    
     final data = await supabase
         .from('cuadre_repartidores')
         .select('*')
-        .eq('turno_fecha', fechaStr)
+        .filter('turno_fecha', 'gte', startStr)
+        .filter('turno_fecha', 'lte', endStr)
         .order('repartidor');
     return List<Map<String, dynamic>>.from(data);
   }
 
-  /// Devuelve el cuadre del DÍA ACTUAL solo para un repartidor específico.
-  Future<List<Map<String, dynamic>>> getCuadrePorRepartidor(String repartidorId, {DateTime? fecha}) async {
-    final fechaStr = (fecha ?? DateTime.now()).toIso8601String().split('T')[0];
+  Future<List<Map<String, dynamic>>> getCuadrePorRepartidor(String repartidorId, {DateTime? fechaInicio, DateTime? fechaFin}) async {
+    final startStr = (fechaInicio ?? DateTime.now()).toIso8601String().split('T')[0];
+    final endStr = (fechaFin ?? fechaInicio ?? DateTime.now()).toIso8601String().split('T')[0];
+    
     final data = await supabase
         .from('cuadre_repartidores')
         .select('*')
-        .eq('turno_fecha', fechaStr)
+        .filter('turno_fecha', 'gte', startStr)
+        .filter('turno_fecha', 'lte', endStr)
         .eq('repartidor_id', repartidorId)
         .order('repartidor');
     return List<Map<String, dynamic>>.from(data);

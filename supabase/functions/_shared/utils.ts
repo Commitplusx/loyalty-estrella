@@ -3,6 +3,11 @@
 // ══════════════════════════════════════════════════════════════════════════════
 // Elimina código duplicado entre whatsapp-bot y notificar-whatsapp.
 
+export const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
 /** Extrae los últimos 10 dígitos de un teléfono (estándar MX) */
 export function extract10Digits(phone: string): string {
   return phone.replace(/\D/g, '').slice(-10)
@@ -256,4 +261,83 @@ export function normalizarAbreviaturas(texto: string): string {
   norm = norm.replace(/\bctra\b/g, "carretera");
   norm = norm.replace(/\bcarr\b/g, "carretera");
   return norm.trim();
+}
+
+// ─── RATE LIMITING ───────────────────────────────────────────────────────────
+/**
+ * Rate limiter distribuido usando la tabla otp_codes como almacén de contadores.
+ * Estrategia: Ventana deslizante de 60 segundos.
+ * @param supabase - Cliente Supabase con service role
+ * @param key - Identificador único (ej: 'otp:5219631234567', 'canjear:5219631234567')
+ * @param maxRequests - Máximo de requests permitidos en la ventana
+ * @param windowSeconds - Duración de la ventana en segundos (default: 60)
+ * @returns { allowed: boolean, remaining: number, resetAt: string }
+ */
+export async function rateLimit(
+  supabase: any,
+  key: string,
+  maxRequests: number,
+  windowSeconds: number = 60
+): Promise<{ allowed: boolean; remaining: number; resetAt: string }> {
+  const windowStart = new Date(Date.now() - windowSeconds * 1000).toISOString()
+  const windowEnd = new Date(Date.now() + windowSeconds * 1000).toISOString()
+  const rlKey = `rl:${key}`
+
+  // Contar requests recientes en la ventana
+  const { count } = await supabase
+    .from('rate_limit_log')
+    .select('*', { count: 'exact', head: true })
+    .eq('key', rlKey)
+    .gte('created_at', windowStart)
+
+  const currentCount = count ?? 0
+
+  if (currentCount >= maxRequests) {
+    return {
+      allowed: false,
+      remaining: 0,
+      resetAt: windowEnd
+    }
+  }
+
+  // Registrar este request
+  await supabase.from('rate_limit_log').insert({ key: rlKey })
+
+  // Limpiar registros viejos (en background, no bloquea)
+  supabase.from('rate_limit_log')
+    .delete()
+    .lt('created_at', new Date(Date.now() - windowSeconds * 2 * 1000).toISOString())
+    .then(() => {}).catch(() => {})
+
+  return {
+    allowed: true,
+    remaining: maxRequests - currentCount - 1,
+    resetAt: windowEnd
+  }
+}
+
+// ─── CORS RESTRINGIDO ────────────────────────────────────────────────────────
+export function getCorsHeaders(req: Request): Record<string, string> {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  }
+}
+
+/**
+ * Respuesta de Rate Limit (429 Too Many Requests)
+ */
+export function rateLimitResponse(corsHeaders: Record<string, string>, resetAt: string): Response {
+  return new Response(
+    JSON.stringify({ error: 'Demasiadas solicitudes. Intenta en un momento.', resetAt }),
+    {
+      status: 429,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+        'Retry-After': '60'
+      }
+    }
+  )
 }

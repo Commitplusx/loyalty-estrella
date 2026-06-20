@@ -72,7 +72,7 @@ async function handleRegistrationFlow(
       history: [next],
       updated_at: new Date().toISOString()
     })
-    console.log(`💾 [RegSM] step=${next.step} | nombre="${next.nombre}" | colonia="${next.colonia}" | dir="${next.direccion}"`)
+      console.log(`💾 [RegSM] step=${next.step} | ID=${from10.slice(-4)}`)
   }
 
   const showConfirmation = async (coloniaFinal: string, dirFinal: string, latFinal?: number, lngFinal?: number) => {
@@ -316,6 +316,11 @@ serve(async (req: Request) => {
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
 
   try {
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader || authHeader.replace('Bearer ', '').trim() !== SUPABASE_KEY) {
+      return new Response('Unauthorized', { status: 401 })
+    }
+
     const {
       fromPhone, from10, texto,
       isRepartidor, repartidorInfo,
@@ -324,7 +329,7 @@ serve(async (req: Request) => {
     } = await req.json()
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
-    console.log(`🤖 [whatsapp-ai] ${fromPhone} | registrado=${!!clienteCtx} | step=${regState?.step ?? 0}`)
+    console.log(`🤖 [whatsapp-ai] ${from10.slice(0,3)}***${from10.slice(-3)} | registrado=${!!clienteCtx} | step=${regState?.step ?? 0}`)
 
     // ── CLIENTE NO REGISTRADO → Máquina de estados (sin IA, sin loops) ──────
     if (!clienteCtx) {
@@ -379,13 +384,20 @@ serve(async (req: Request) => {
 
     if (accion === 'REGISTRAR_RESTAURANTE') {
       const nombreRest = d?.nombre_restaurante?.trim()
-      const correo = d?.correo?.trim()
-      // BUG-09 fix: validar antes de insertar
-      if (!nombreRest || !correo || !correo.includes('@')) {
-        await sendWA(fromPhone, `⚠️ Para registrar el restaurante necesito su *nombre* y un *correo electrónico válido*.`)
+      // El correo es de CONTACTO únicamente — el email de Auth se construye desde el teléfono
+      // en admin-approval. No es obligatorio, pero si se proporciona se guarda.
+      const correoContacto = d?.correo?.trim() || null
+
+      if (!nombreRest) {
+        await sendWA(fromPhone, `⚠️ Para registrar el restaurante necesito al menos el *nombre del negocio*.`)
         return new Response('OK', { status: 200 })
       }
-      const { error: restErr } = await supabase.from('restaurantes_solicitudes').insert({ nombre_restaurante: nombreRest, correo, telefono: from10 })
+
+      const { error: restErr } = await supabase.from('restaurantes_solicitudes').insert({
+        nombre_restaurante: nombreRest,
+        correo: correoContacto,  // correo de contacto real (opcional)
+        telefono: from10
+      })
       if (restErr) {
         console.error('[REST_SOL] Error insertando:', restErr)
         await sendWA(fromPhone, `❌ Hubo un error guardando tu solicitud. Inténtalo en un momento.`)
@@ -396,12 +408,13 @@ serve(async (req: Request) => {
       const functionUrl = `${SUPABASE_URL}/functions/v1/admin-approval`
       const secret = Deno.env.get('ADMIN_APPROVAL_SECRET') || ''
       if (admin10) {
-        await sendWA(`52${admin10}`, `🔔 *Nueva Solicitud de Restaurante*\nNombre: ${nombreRest}\nCorreo: ${correo}\nTel: wa.me/52${from10}`)
+        await sendWA(`52${admin10}`, `🔔 *Nueva Solicitud de Restaurante*\nNombre: ${nombreRest}\nTel: wa.me/52${from10}${correoContacto ? `\nContacto: ${correoContacto}` : ''}`)
         await sendWA(`52${admin10}`, `✅ ${functionUrl}?action=accept&tel=${from10}&secret=${secret}`)
         await sendWA(`52${admin10}`, `❌ ${functionUrl}?action=reject&tel=${from10}&secret=${secret}`)
       }
       await sendWA(fromPhone, `🎉 Solicitud enviada. Te confirmamos pronto. ✉️`)
       await supabase.from('bot_memory').delete().eq('phone', from10)
+
     } else if (accion === 'SOLICITAR_REGISTRO') {
       const { sendInteractiveFlow } = await import('../whatsapp-bot/whatsapp.ts')
       const flowToken = JSON.stringify({ phone: fromPhone })

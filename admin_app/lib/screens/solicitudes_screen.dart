@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_config.dart';
 import 'main_shell.dart' show pendingSolicitudesProvider;
+import '../core/ui_helpers.dart';
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 final solicitudesProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
@@ -199,32 +200,15 @@ class _SolicitudesScreenState extends ConsumerState<SolicitudesScreen> {
 
   Future<void> _confirm(Map<String, dynamic> sol, bool accept) async {
     final nombre = sol['nombre_restaurante'] ?? '';
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(context).cardTheme.color ?? Theme.of(context).colorScheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(accept ? '¿Aprobar solicitud?' : '¿Rechazar solicitud?'),
-        content: Text(
-          accept
-              ? 'Se creará el acceso para "$nombre" y recibirán sus credenciales.'
-              : 'Se notificará a "$nombre" que su solicitud fue rechazada.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: accept ? const Color(0xFF10B981) : Theme.of(context).colorScheme.error,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(accept ? 'Aprobar' : 'Rechazar'),
-          ),
-        ],
-      ),
+    final confirmed = await PremiumBottomSheet.showConfirm(
+      context,
+      title: accept ? '¿Aprobar solicitud?' : '¿Rechazar solicitud?',
+      content: accept
+          ? 'Se creará el acceso para "$nombre" y recibirán sus credenciales.'
+          : 'Se notificará a "$nombre" que su solicitud fue rechazada.',
+      confirmText: accept ? 'Aprobar' : 'Rechazar',
+      cancelText: 'Cancelar',
+      isDestructive: !accept,
     );
     if (confirmed == true) _handle(sol, accept);
   }

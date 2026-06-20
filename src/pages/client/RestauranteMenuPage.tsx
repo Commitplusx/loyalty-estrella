@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, MessageCircle, Store, ExternalLink } from 'lucide-react';
+import { ChevronLeft, MessageCircle, Share, Clock, MapPin, Search } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { motion } from 'framer-motion';
 import { useSchedule } from '@/hooks/useSchedule';
 
 export function RestauranteMenuPage() {
@@ -44,72 +44,128 @@ export function RestauranteMenuPage() {
     window.open(url, '_blank');
   };
 
-  if (loading) return <div className="text-center py-20 text-muted-foreground">Cargando menú...</div>;
+  if (loading) return (
+    <div className="min-h-screen bg-background pb-24">
+      {/* Header Skeleton */}
+      <header className="sticky top-0 z-50 bg-background/80 border-b">
+        <div className="max-w-xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="shimmer h-10 w-10 rounded-full" />
+            <div className="shimmer h-6 w-32 rounded-md hidden sm:block" />
+          </div>
+          <div className="shimmer h-9 w-20 rounded-md" />
+        </div>
+      </header>
+
+      {/* Portada Skeleton */}
+      <div className="border-b py-8 px-4 flex flex-col items-center">
+        <div className="w-20 h-20 rounded-2xl shimmer mb-4" />
+        <div className="shimmer h-8 w-48 rounded-lg mb-3" />
+        <div className="shimmer h-4 w-64 rounded-md" />
+      </div>
+
+      {/* Menu List Skeleton */}
+      <main className="max-w-xl mx-auto p-4 space-y-8 mt-4">
+        {[1, 2].map(cat => (
+          <div key={cat} className="space-y-4">
+            <div className="shimmer h-7 w-40 rounded-lg" />
+            <div className="grid gap-4">
+              {[1, 2, 3].map(item => (
+                <div key={item} className="h-[100px] rounded-xl border border-border/50 flex p-3 gap-4">
+                  <div className="flex-1 flex flex-col gap-2">
+                    <div className="shimmer h-5 w-3/4 rounded-md" />
+                    <div className="shimmer h-3 w-full rounded-md" />
+                  </div>
+                  <div className="shimmer w-20 h-20 rounded-lg shrink-0" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </main>
+    </div>
+  );
   if (!restaurante) return <div className="text-center py-20">Restaurante no encontrado.</div>;
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b">
-        <div className="max-w-xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="rounded-full">
-              <ChevronLeft className="w-6 h-6" />
-            </Button>
-            <h1 className="text-xl font-bold truncate max-w-[200px]">{restaurante.nombre}</h1>
-          </div>
-          <Button variant="outline" size="sm" onClick={handlePedir} className="gap-2 text-green-600 border-green-200 hover:bg-green-50 dark:hover:bg-green-950/30">
-            <MessageCircle className="w-4 h-4" />
-            Pedir
+      {/* Header flotante sobre la imagen */}
+      <header className="fixed top-0 left-0 right-0 z-50 transition-colors duration-300 bg-transparent">
+        <div className="max-w-xl mx-auto px-4 h-16 flex items-center justify-between" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <Button variant="secondary" size="icon" onClick={() => navigate(-1)} className="rounded-full bg-white/80 dark:bg-black/50 backdrop-blur-md shadow-sm">
+            <ChevronLeft className="w-6 h-6" />
+          </Button>
+          <Button variant="secondary" size="icon" className="rounded-full bg-white/80 dark:bg-black/50 backdrop-blur-md shadow-sm">
+            <Share className="w-5 h-5" />
           </Button>
         </div>
       </header>
 
-      {/* Portada */}
-      <div className="bg-gradient-to-br from-orange-100 to-orange-50 dark:from-orange-950/30 dark:to-background border-b py-8 px-4 text-center">
-        <div className="w-20 h-20 mx-auto bg-white dark:bg-zinc-800 rounded-2xl shadow-lg flex items-center justify-center mb-4">
-          <Store className="w-10 h-10 text-orange-500" />
+      {/* Portada Full Bleed */}
+      <div className="relative w-full h-64 sm:h-80 bg-slate-200 dark:bg-zinc-800">
+        {restaurante.foto_fachada_url && (
+          <img src={restaurante.foto_fachada_url} alt={restaurante.nombre} className="w-full h-full object-cover" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+        <div className="absolute bottom-0 left-0 right-0 p-5 text-white max-w-xl mx-auto">
+          <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight mb-2">{restaurante.nombre}</h1>
+          <div className="flex flex-wrap items-center gap-3 text-sm font-medium opacity-90">
+            <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> 20-35 min</span>
+            <span>•</span>
+            <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> A 2.4 km</span>
+            <span>•</span>
+            <span className="font-bold text-orange-400">4.8 ⭐️</span>
+          </div>
         </div>
-        <h2 className="text-2xl font-bold mb-2">Menú Digital</h2>
-        <p className="text-muted-foreground text-sm max-w-sm mx-auto">
-          Explora los platillos de {restaurante.nombre}. Arma tu pedido y envíalo directo por WhatsApp.
-        </p>
+      </div>
+
+      {/* Sticky Categories */}
+      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b shadow-sm" style={{ paddingTop: 'calc(4rem + env(safe-area-inset-top))' }}>
+        <div className="max-w-xl mx-auto flex overflow-x-auto hide-scrollbar px-4 py-3 gap-2">
+          {categorias.map(cat => (
+            <button key={cat.id} className="whitespace-nowrap px-4 py-2 bg-slate-100 dark:bg-zinc-800 text-foreground font-bold text-sm rounded-full active:scale-95 transition-transform shrink-0">
+              {cat.emoji} {cat.nombre}
+            </button>
+          ))}
+        </div>
       </div>
 
       <main className="max-w-xl mx-auto p-4 space-y-8 mt-4">
         {categorias.length === 0 ? (
           <p className="text-center text-muted-foreground py-10">Este restaurante aún no ha subido su menú.</p>
         ) : (
-          categorias.map(cat => {
+          categorias.map((cat, catIdx) => {
             const catItems = items.filter(i => i.categoria_id === cat.id);
             if (catItems.length === 0) return null;
             return (
-              <div key={cat.id} className="space-y-4">
-                <h3 className="text-xl font-bold flex items-center gap-2">
-                  <span>{cat.emoji}</span> {cat.nombre}
+              <div key={cat.id} className="space-y-4 pt-4 scroll-mt-24">
+                <h3 className="text-2xl font-extrabold flex items-center gap-2">
+                  {cat.nombre}
                 </h3>
-                <div className="grid gap-4">
-                  {catItems.map(item => (
-                    <Card key={item.id} className="overflow-hidden border-border/50 hover:border-orange-200 transition-colors">
-                      <div className="flex p-3 gap-4">
-                        <div className="flex-1 space-y-1">
-                          <div className="flex items-start justify-between">
-                            <h4 className="font-bold text-base leading-tight">{item.nombre}</h4>
-                            <span className="font-bold text-orange-600 dark:text-orange-400 whitespace-nowrap ml-2">
-                              ${item.precio.toFixed(2)}
-                            </span>
-                          </div>
-                          {item.descripcion && (
-                            <p className="text-sm text-muted-foreground line-clamp-2">{item.descripcion}</p>
-                          )}
-                        </div>
-                        {item.foto_url && (
-                          <div className="w-20 h-20 rounded-lg overflow-hidden shrink-0 bg-muted">
-                            <img src={item.foto_url} alt={item.nombre} className="w-full h-full object-cover" />
-                          </div>
+                <div className="grid gap-0 sm:gap-4 divide-y sm:divide-y-0">
+                  {catItems.map((item, i) => (
+                    <motion.div 
+                      key={item.id} 
+                      initial={{ opacity: 0, y: 15 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: (catIdx * 0.1) + (i * 0.05), duration: 0.4 }}
+                      className="flex p-4 gap-4 bg-white sm:rounded-2xl sm:border sm:border-gray-100 dark:bg-card dark:sm:border-gray-800 -mx-4 sm:mx-0 active:bg-slate-50 transition-colors"
+                    >
+                      <div className="flex-1 space-y-1">
+                        <h4 className="font-bold text-base leading-tight text-gray-900 dark:text-white">{item.nombre}</h4>
+                        {item.descripcion && (
+                          <p className="text-sm text-gray-500 line-clamp-2 mt-1">{item.descripcion}</p>
                         )}
+                        <p className="font-bold text-gray-900 dark:text-white mt-2">
+                          ${item.precio.toFixed(2)}
+                        </p>
                       </div>
-                    </Card>
+                      {item.foto_url ? (
+                        <div className="w-28 h-28 rounded-xl overflow-hidden shrink-0 bg-slate-100 shadow-sm">
+                          <img src={item.foto_url} alt={item.nombre} className="w-full h-full object-cover" />
+                        </div>
+                      ) : null}
+                    </motion.div>
                   ))}
                 </div>
               </div>

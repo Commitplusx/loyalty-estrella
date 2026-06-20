@@ -33,6 +33,17 @@ serve(async (req) => {
   }
 
   try {
+    const authHeader = req.headers.get('Authorization')
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    
+    // Auth Check
+    if (!authHeader || authHeader.replace('Bearer ', '').trim() !== serviceRoleKey) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
     const { kmlText } = await req.json();
 
     if (!kmlText) {

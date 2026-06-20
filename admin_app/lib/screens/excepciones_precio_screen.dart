@@ -5,6 +5,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/supabase_config.dart';
+import '../core/ui_helpers.dart';
+
+final filtroBusquedaProvider = StateProvider<String>((ref) => '');
 
 // ── Modelo ────────────────────────────────────────────────────────────────────
 class ExcepcionPrecio {
@@ -347,20 +350,13 @@ class _ExcepcionCard extends StatelessWidget {
         onChanged();
         break;
       case 'delete':
-        final ok = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('¿Eliminar excepción?'),
-            content: Text('Se eliminará la regla para "${exc.coloniaTex}". El bot usará cálculo automático.'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-              FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Eliminar'),
-              ),
-            ],
-          ),
+        final ok = await PremiumBottomSheet.showConfirm(
+          context,
+          title: '¿Eliminar excepción?',
+          content: 'Se eliminará la regla para "${exc.coloniaTex}". El bot usará cálculo automático.',
+          confirmText: 'Eliminar',
+          cancelText: 'Cancelar',
+          isDestructive: true,
         );
         if (ok == true) {
           await supabase.from('excepciones_precio').delete().eq('id', exc.id);

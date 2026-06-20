@@ -101,17 +101,19 @@ export async function handleRestaurantCommand(
 
   const isInteractive = msgType === 'interactive' || msgType === 'button'
   const textBody = msgType === 'text' ? (msg.text?.body as string).trim().toLowerCase() : ''
-  const buttonId = isInteractive ? (msg.interactive?.button_reply?.id || msg.interactive?.list_reply?.id || msg.button?.payload || msg.button?.text) as string : ''
+  const buttonId = isInteractive ? ((msg.interactive?.button_reply?.id || msg.interactive?.list_reply?.id || msg.button?.payload || msg.button?.text) as string || '') : ''
 
   if (!permitido) {
-    if (textBody === 'hola' || textBody === 'menu' || textBody === '/ayuda' || isInteractive) {
+    const loyaltyActions = ['REST_MENU_AFILIAR', 'REST_MENU_PUNTOS', 'REST_MENU_CANJEAR', 'REST_MENU_INFO', 'REST_MENU_REGALAR', 'REST_MENU_BROADCAST', 'REST_MENU_HISTORIAL', 'REST_MENU_RESUMEN']
+    const isLoyaltyButton = isInteractive && (loyaltyActions.includes(buttonId) || buttonId.startsWith('RFAST_'))
+    // Un texto que empieza con http o { generalmente es un QR escaneado para sumar puntos
+    const isQRText = msgType === 'text' && (textBody.startsWith('http') || textBody.startsWith('{'))
+
+    if (isLoyaltyButton || isQRText) {
       await sendWA(fromPhone, `🔒 Tu restaurante aún no tiene activo el programa de lealtad.\n\nContacta a *Estrella Delivery* para activarlo y poder afiliar clientes. 🌟`)
+      return new Response('OK', { status: 200 })
     }
-    // Para cualquier otro mensaje de texto sin estado, respondemos igual
-    else if (msgType === 'text' && textBody) {
-      await sendWA(fromPhone, `⚠️ Tu restaurante aún no está registrado en el programa. Escribe *hola* para más información.`)
-    }
-    return new Response('OK', { status: 200 })
+    // Dejamos pasar 'hola', 'menu', '/ayuda', y 'REST_MENU_MOTO'
   }
 
   // 1. Manejo de Botones/Listas del Menú Principal
@@ -938,4 +940,60 @@ export async function handleRestaurantPhoto(
     await sendWA(fromPhone, `❌ Error inesperado al escanear. Escribe el número manualmente.`)
     return new Response('OK', { status: 200 })
   }
+}
+
+export async function handleFlowReply(
+  supabase: any,
+  fromPhone: string,
+  from10: string,
+  nfm_reply: any,
+  cachedRestData?: any
+): Promise<Response | null> {
+  const flowName = nfm_reply.name || '';
+  const flowData = (() => { try { return JSON.parse(nfm_reply.response_json || '{}') } catch { return {} } })();
+  
+  // Identificar el flujo ya sea por su nombre de sistema o por los campos únicos de su payload
+  if (flowName === 'SOLICITAR_MOTO' || flowName === 'flow_solicitar_moto_b2b' || (flowData.direccion && flowData.tiempo && flowData.telefono)) {
+    const { sendWA } = await import('./whatsapp.ts');
+    
+    if (!cachedRestData) {
+      await sendWA(fromPhone, `❌ No tienes un restaurante registrado para solicitar motos.`);
+      return new Response('OK', { status: 200 });
+    }
+
+    try {
+      const telefonoCliente = flowData.telefono;
+      const direccionEntrega = flowData.direccion;
+      const tiempoEstimado = flowData.tiempo;
+      
+      const ADMIN_PHONE = Deno.env.get('ADMIN_PHONE') || '9631539156';
+
+      // Insertar en la tabla de pedidos
+      const { error: errPedido } = await supabase.from('pedidos').insert({
+        restaurante: cachedRestData.nombre,
+        cliente_tel: telefonoCliente,
+        cliente_nombre: 'Cliente B2B (Moto Rápida)',
+        descripcion: `[MOTO B2B] Llevar a: ${direccionEntrega} | Listo: ${tiempoEstimado}`,
+        estado: 'pendiente',
+        origen: 'b2b_moto'
+      });
+
+      if (errPedido) throw errPedido;
+
+      await sendWA(fromPhone, `✅ ¡Tu solicitud de moto ha sido registrada!\n\nDirección: *${direccionEntrega}*\nUn repartidor pasará a recogerlo.`);
+      
+      // Notificar al admin
+      await sendWA(`52${ADMIN_PHONE}`, `🚨 *NUEVA MOTO B2B SOLICITADA* 🚨\nRestaurante: *${cachedRestData.nombre}*\nLlevar a: ${direccionEntrega}\nTiempo estimado: ${tiempoEstimado}\nTel. Cliente: ${telefonoCliente}\n\n👉 Abre tu App de Administrador para verla o reasignarla.`);
+
+      return new Response('OK', { status: 200 });
+    } catch (e) {
+      console.error('Error procesando Flow:', e);
+      const { sendWA } = await import('./whatsapp.ts');
+      await sendWA(fromPhone, `❌ Error al procesar tu solicitud. Por favor intenta de nuevo.`);
+      return new Response('OK', { status: 200 });
+    }
+  }
+
+  // Not handled here
+  return null;
 }

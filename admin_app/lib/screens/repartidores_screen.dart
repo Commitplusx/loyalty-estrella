@@ -8,6 +8,8 @@ import '../services/repartidor_service.dart';
 import '../services/gasto_service.dart'; // Necesitamos esto para los nombres de las motos
 import '../core/supabase_config.dart';
 import '../core/user_role.dart';
+import '../core/ui_helpers.dart';
+import '../core/cache_helper.dart';
 
 final myRepartidorIdProvider = FutureProvider.autoDispose<String?>((ref) async {
   final user = supabase.auth.currentUser;
@@ -15,25 +17,64 @@ final myRepartidorIdProvider = FutureProvider.autoDispose<String?>((ref) async {
   return ref.read(repartidorServiceProvider).getRepartidorIdByUserId(user.id);
 });
 
-final repartidoresProvider = FutureProvider.autoDispose((ref) {
-  return ref.read(repartidorServiceProvider).getRepartidores();
+enum DateFilter { hoy, ayer, semana, mes }
+
+final dateFilterProvider = StateProvider<DateFilter>((ref) => DateFilter.hoy);
+
+Map<String, DateTime?> _getDateRange(DateFilter filter) {
+  final now = DateTime.now();
+  switch (filter) {
+    case DateFilter.hoy:
+      return {'start': now, 'end': now};
+    case DateFilter.ayer:
+      final ayer = now.subtract(const Duration(days: 1));
+      return {'start': ayer, 'end': ayer};
+    case DateFilter.semana:
+      final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+      return {'start': startOfWeek, 'end': now};
+    case DateFilter.mes:
+      final startOfMonth = DateTime(now.year, now.month, 1);
+      return {'start': startOfMonth, 'end': now};
+  }
+}
+
+final repartidoresProvider = StreamProvider.autoDispose<List<Map<String, dynamic>>>((ref) async* {
+  const cacheKey = 'repartidores_list_full';
+
+  // 1. Mostrar caché primero
+  final cached = await CacheHelper.getList(cacheKey);
+  if (cached != null) yield cached;
+
+  // 2. Traer de la red
+  final networkData = await ref.read(repartidorServiceProvider).getRepartidores();
+
+  // 3. Guardar caché silenciosamente
+  await CacheHelper.saveList(cacheKey, networkData);
+
+  // 4. Emitir versión actualizada
+  yield networkData;
 });
 
 final serviciosHoyProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String?>((ref, repId) {
-  return ref.read(repartidorServiceProvider).getServicios(repartidorId: repId, fecha: DateTime.now());
+  final filter = ref.watch(dateFilterProvider);
+  final range = _getDateRange(filter);
+  return ref.read(repartidorServiceProvider).getServicios(repartidorId: repId, fechaInicio: range['start'], fechaFin: range['end']);
 });
 
 final cuadreProvider = FutureProvider.autoDispose((ref) async {
+  final filter = ref.watch(dateFilterProvider);
+  final range = _getDateRange(filter);
+  
   final isAdmin = ref.read(isAdminProvider);
   if (isAdmin) {
-    return ref.read(repartidorServiceProvider).getCuadre();
+    return ref.read(repartidorServiceProvider).getCuadre(fechaInicio: range['start'], fechaFin: range['end']);
   }
   // Repartidor: solo su propio cuadre
   final user = supabase.auth.currentUser;
   if (user == null) return <Map<String, dynamic>>[];
   final myRepId = await ref.read(repartidorServiceProvider).getRepartidorIdByUserId(user.id);
   if (myRepId == null) return <Map<String, dynamic>>[];
-  return ref.read(repartidorServiceProvider).getCuadrePorRepartidor(myRepId);
+  return ref.read(repartidorServiceProvider).getCuadrePorRepartidor(myRepId, fechaInicio: range['start'], fechaFin: range['end']);
 });
 
 final metaEnviosProvider = FutureProvider.autoDispose((ref) {
@@ -198,6 +239,22 @@ class _RepartidoresScreenState extends ConsumerState<RepartidoresScreen> with Si
       appBar: AppBar(
         title: const Text('Logística / Gestión'),
         actions: [
+          Consumer(
+            builder: (context, ref, _) {
+              final filter = ref.watch(dateFilterProvider);
+              return PopupMenuButton<DateFilter>(
+                initialValue: filter,
+                icon: const Icon(Icons.date_range_rounded),
+                onSelected: (val) => ref.read(dateFilterProvider.notifier).state = val,
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: DateFilter.hoy, child: Text('Hoy')),
+                  PopupMenuItem(value: DateFilter.ayer, child: Text('Ayer')),
+                  PopupMenuItem(value: DateFilter.semana, child: Text('Esta Semana')),
+                  PopupMenuItem(value: DateFilter.mes, child: Text('Este Mes')),
+                ],
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.map_rounded),
             onPressed: () => context.push('/map'),
@@ -236,9 +293,9 @@ class _RepartidoresScreenState extends ConsumerState<RepartidoresScreen> with Si
               labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
               tabs: const [
-                Tab(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.people_rounded, size: 16), SizedBox(width: 6), Text('Equipo')])),
-                Tab(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.receipt_long_rounded, size: 16), SizedBox(width: 6), Text('Actividad')])),
-                Tab(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.account_balance_wallet_rounded, size: 16), SizedBox(width: 6), Text('Corte')])),
+                Tab(child: FittedBox(fit: BoxFit.scaleDown, child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.people_rounded, size: 16), SizedBox(width: 4), Text('Equipo')]))),
+                Tab(child: FittedBox(fit: BoxFit.scaleDown, child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.receipt_long_rounded, size: 16), SizedBox(width: 4), Text('Actividad')]))),
+                Tab(child: FittedBox(fit: BoxFit.scaleDown, child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.account_balance_wallet_rounded, size: 16), SizedBox(width: 4), Text('Corte')]))),
               ],
             ),
           ),
@@ -284,46 +341,21 @@ class _RepartidoresScreenState extends ConsumerState<RepartidoresScreen> with Si
 
   // ── Modal para establecer la meta diaria ──────────────────────────────
   Future<void> _setMetaDialog(BuildContext context, String repId, String nombre, int metaActual) async {
-    final ctrl = TextEditingController(text: metaActual > 0 ? metaActual.toString() : '');
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Meta de envíos — $nombre'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('¿Cuántos envíos debe completar hoy?',
-                style: TextStyle(color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 13)),
-            const SizedBox(height: 16),
-            TextField(
-              controller: ctrl,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Meta (número de envíos)',
-                prefixIcon: Icon(Icons.flag_rounded),
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF6B35)),
-            onPressed: () async {
-              final meta = int.tryParse(ctrl.text.trim()) ?? 0;
-              await ref.read(repartidorServiceProvider).setMetaEnvios(repId, meta);
-              if (ctx.mounted) Navigator.pop(ctx);
-              ref.invalidate(metaEnviosProvider);
-            },
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
+    final metaStr = await PremiumBottomSheet.showInput(
+      context,
+      title: 'Meta de envíos — $nombre',
+      content: '¿Cuántos envíos debe completar hoy?',
+      initialValue: metaActual > 0 ? metaActual.toString() : '',
+      hintText: 'Meta (número de envíos)',
+      confirmText: 'Guardar Meta',
+      keyboardType: TextInputType.number,
     );
+
+    if (metaStr != null) {
+      final meta = int.tryParse(metaStr.trim()) ?? 0;
+      await ref.read(repartidorServiceProvider).setMetaEnvios(repId, meta);
+      ref.invalidate(metaEnviosProvider);
+    }
   }
 
   Future<void> _agregarRepartidor(BuildContext context) async {
@@ -334,6 +366,7 @@ class _RepartidoresScreenState extends ConsumerState<RepartidoresScreen> with Si
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useRootNavigator: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => Padding(
         padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
@@ -386,6 +419,7 @@ class _RepartidoresScreenState extends ConsumerState<RepartidoresScreen> with Si
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useRootNavigator: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => Consumer(
         builder: (context, ref, _) {
@@ -429,9 +463,12 @@ class _RepartidoresScreenState extends ConsumerState<RepartidoresScreen> with Si
                       TextField(controller: descCtrl, decoration: const InputDecoration(labelText: 'Descripción a dónde fuiste')),
                     ],
                     const SizedBox(height: 12),
+                    const SizedBox(height: 12),
                     TextField(controller: montoCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Monto cobrado (\x24)')),
                     const SizedBox(height: 12),
                     TextField(controller: notasCtrl, decoration: const InputDecoration(labelText: 'Notas (Opcional)')),
+                    const SizedBox(height: 12),
+                    _ImageSelector(onImage: (file) => _tempFile = file),
                     const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
@@ -453,21 +490,38 @@ class _RepartidoresScreenState extends ConsumerState<RepartidoresScreen> with Si
                             finalDesc = descCtrl.text.trim();
                           }
 
+                          // Muestra indicador de carga si hay foto (puede tardar)
+                          if (_tempFile != null) {
+                            showDialog(context: ctx, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
+                          }
+
+                          String? fotoUrl;
+                          if (_tempFile != null) {
+                            fotoUrl = await ref.read(repartidorServiceProvider).uploadComprobante(_tempFile!);
+                          }
+
                           final ok = await ref.read(repartidorServiceProvider).addServicio(
                             repartidorId: myId, 
                             descripcion: finalDesc, 
                             monto: monto, 
-                            restauranteId: selectedRestId, // New field
-                            tipoServicio: isRestaurante ? 'restaurante' : 'cliente', // New field
+                            restauranteId: selectedRestId,
+                            tipoServicio: isRestaurante ? 'restaurante' : 'cliente',
                             notas: notasCtrl.text.isEmpty ? null : notasCtrl.text,
                             estado: 'completado',
                             esAdmin: false,
+                            comprobanteUrl: fotoUrl,
                           );
+
+                          if (_tempFile != null && ctx.mounted) {
+                            Navigator.pop(ctx); // Quitar indicador de carga
+                          }
+
                           if (ok && ctx.mounted) {
                             Navigator.pop(ctx);
                             ref.invalidate(serviciosHoyProvider(myId));
                             ref.invalidate(cuadreProvider);
                             ref.invalidate(metaEnviosProvider);
+                            _tempFile = null;
                           } else if (ctx.mounted) {
                             ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Error al enviar el servicio al servidor.'), backgroundColor: Color(0xFFE11D48)));
                           }
@@ -501,6 +555,8 @@ class _RepartidoresTab extends ConsumerWidget {
     final cardColor = Theme.of(context).cardColor;
     final isAdmin = ref.watch(isAdminProvider);
 
+    final leaderboardAsync = ref.watch(leaderboardProvider);
+
     return repsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B35))),
       error: (e, _) => Center(child: Text('Error: $e')),
@@ -513,14 +569,76 @@ class _RepartidoresTab extends ConsumerWidget {
           return (a['nombre'] ?? '').toString().compareTo(b['nombre'] ?? '');
         });
 
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-          itemCount: sortedReps.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (ctx, i) {
-            final r = sortedReps[i];
-            final isAdminProfile = (r['alias'] ?? '').toString().toUpperCase() == 'ADMIN';
-            return FadeInLeft(
+        return CustomScrollView(
+          slivers: [
+            if (isAdmin) 
+              SliverToBoxAdapter(
+                child: leaderboardAsync.when(
+                  data: (ranking) {
+                    if (ranking.isEmpty) return const SizedBox();
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [Color(0xFFFF6B35), Color(0xFFFFA03A)]),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.leaderboard_rounded, color: Colors.white),
+                                SizedBox(width: 8),
+                                Text('Ranking Semanal', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: ranking.take(3).toList().asMap().entries.map((entry) {
+                                final idx = entry.key;
+                                final rep = entry.value;
+                                final isFirst = idx == 0;
+                                final icon = idx == 0 ? '🥇' : (idx == 1 ? '🥈' : '🥉');
+                                return Column(
+                                  children: [
+                                    Text(icon, style: TextStyle(fontSize: isFirst ? 32 : 24)),
+                                    const SizedBox(height: 4),
+                                    Text(rep['alias'] ?? rep['nombre'] ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12), overflow: TextOverflow.ellipsis),
+                                    Container(
+                                      margin: const EdgeInsets.only(top: 4),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                                      child: Text('${rep['total_envios']} envíos', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    )
+                                  ],
+                                );
+                              }).toList(),
+                            )
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                  loading: () => const SizedBox(),
+                  error: (_, __) => const SizedBox(),
+                ),
+              ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (ctx, i) {
+                    final r = sortedReps[i];
+                    final isAdminProfile = (r['alias'] ?? '').toString().toUpperCase() == 'ADMIN';
+                    
+                    final estado = r['estado_actividad'] ?? 'activo';
+                    final colorEstado = estado == 'activo' ? Colors.green : (estado == 'ocupado' ? Colors.orange : Colors.red);
+
+                    return FadeInLeft(
               delay: Duration(milliseconds: i * 60),
               child: Material(
                 color: cardColor,
@@ -541,12 +659,29 @@ class _RepartidoresTab extends ConsumerWidget {
                       children: [
                         Row(
                           children: [
-                            CircleAvatar(
-                              backgroundColor: (isAdminProfile ? Colors.blueGrey : const Color(0xFFFF6B35)).withValues(alpha: 0.2),
-                              radius: 28,
-                              child: isAdminProfile 
-                                ? const Icon(Icons.business_center_rounded, color: Colors.blueGrey, size: 28)
-                                : const Icon(Icons.two_wheeler_rounded, color: Color(0xFFFF6B35), size: 28),
+                            Stack(
+                              children: [
+                                CircleAvatar(
+                                  backgroundColor: (isAdminProfile ? Colors.blueGrey : const Color(0xFFFF6B35)).withOpacity(0.2),
+                                  radius: 28,
+                                  child: isAdminProfile 
+                                    ? const Icon(Icons.business_center_rounded, color: Colors.blueGrey, size: 28)
+                                    : const Icon(Icons.two_wheeler_rounded, color: Color(0xFFFF6B35), size: 28),
+                                ),
+                                if (!isAdminProfile)
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: Container(
+                                      width: 14, height: 14,
+                                      decoration: BoxDecoration(
+                                        color: colorEstado,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: cardColor, width: 2),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                             const SizedBox(width: 16),
                             Expanded(
@@ -601,20 +736,26 @@ class _RepartidoresTab extends ConsumerWidget {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          hoy >= meta && meta > 0 ? Icons.emoji_events_rounded : Icons.track_changes_rounded,
-                                          size: 16,
-                                          color: hoy >= meta && meta > 0 ? Colors.amber : const Color(0xFFFF6B35),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          meta > 0 ? 'Meta diaria' : 'Sin meta asignada',
-                                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: onSurface.withValues(alpha: 0.7)),
-                                        ),
-                                      ],
+                                    Expanded(
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            hoy >= meta && meta > 0 ? Icons.emoji_events_rounded : Icons.track_changes_rounded,
+                                            size: 16,
+                                            color: hoy >= meta && meta > 0 ? Colors.amber : const Color(0xFFFF6B35),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              meta > 0 ? 'Meta diaria' : 'Sin meta asignada',
+                                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: onSurface.withValues(alpha: 0.7)),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
+                                    const SizedBox(width: 8),
                                     Text(
                                       meta > 0 ? '$hoy / $meta envíos' : '$hoy envíos hoy',
                                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: onSurface),
@@ -622,29 +763,34 @@ class _RepartidoresTab extends ConsumerWidget {
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: LinearProgressIndicator(
-                                    value: meta > 0 ? (hoy / meta).clamp(0.0, 1.0) : 0,
-                                    backgroundColor: onSurface.withValues(alpha: 0.05),
-                                    color: isAdminProfile ? Colors.blueGrey : (hoy >= meta && meta > 0 ? Colors.green : const Color(0xFFFF6B35)),
-                                    minHeight: 8,
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: LinearProgressIndicator(
+                                      value: meta > 0 ? (hoy / meta).clamp(0.0, 1.0) : 0,
+                                      backgroundColor: onSurface.withValues(alpha: 0.05),
+                                      color: isAdminProfile ? Colors.blueGrey : (hoy >= meta && meta > 0 ? Colors.green : const Color(0xFFFF6B35)),
+                                      minHeight: 8,
+                                    ),
                                   ),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ), // Column
+                    ), // Padding
+                  ), // InkWell
+                ), // Material
+              ); // FadeInLeft
+            }, // Builder
+            childCount: sortedReps.length,
+          ), // SliverChildBuilderDelegate
+        ), // SliverList
+      ), // SliverPadding
+    ], // CustomScrollView children
+  ); // CustomScrollView
+    },
+  );
   }
 }
 
@@ -934,6 +1080,47 @@ class _CuadreTab extends ConsumerWidget {
                               ),
                             ),
                           ),
+                          if (ref.watch(isAdminProvider))
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              child: SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF11998E),
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                  onPressed: () async {
+                                    final confirm = await PremiumBottomSheet.showConfirm(
+                                      context,
+                                      title: 'Liquidar Corte',
+                                      content: '¿Estás seguro de liquidar el corte de ${r['alias'] ?? r['repartidor']} para este periodo? Esto marcará sus entregas y deudas como liquidadas.',
+                                      confirmText: 'Liquidar',
+                                    );
+                                    if (confirm == true) {
+                                      final filter = ref.read(dateFilterProvider);
+                                      final range = _getDateRange(filter);
+                                      final startStr = range['start']!.toIso8601String().split('T')[0];
+                                      final endStr = range['end']!.toIso8601String().split('T')[0];
+                                      
+                                      final success = await ref.read(repartidorServiceProvider).liquidarCorte(r['repartidor_id'].toString(), startStr, endStr);
+                                      if (context.mounted) {
+                                        if (success) {
+                                          ref.invalidate(cuadreProvider);
+                                          ref.invalidate(serviciosHoyProvider);
+                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Corte liquidado con éxito.'), backgroundColor: Colors.green));
+                                        } else {
+                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error al liquidar corte.'), backgroundColor: Colors.red));
+                                        }
+                                      }
+                                    }
+                                  },
+                                  icon: const Icon(Icons.check_circle_outline_rounded),
+                                  label: const Text('Marcar como Liquidado', style: TextStyle(fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),

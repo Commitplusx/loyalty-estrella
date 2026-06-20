@@ -58,7 +58,6 @@ Deno.serve(async (req: Request) => {
     const url = new URL(req.url)
     action = url.searchParams.get('action') || ''
     tel = url.searchParams.get('tel') || ''
-    secret = url.searchParams.get('secret') || ''
   } else if (req.method === 'POST') {
     const body = await req.json()
     action = body.action || ''
@@ -68,7 +67,26 @@ Deno.serve(async (req: Request) => {
   if (!action || !tel) return sendResponse('Faltan parámetros.', true, isJson)
 
   const authHeader = req.headers.get('Authorization')
-  if ((!APPROVAL_SECRET || secret !== APPROVAL_SECRET) && !authHeader) {
+  let isAuthorized = false
+  
+  if (APPROVAL_SECRET && authHeader) {
+    const providedSecret = authHeader.replace('Bearer ', '').trim()
+    if (providedSecret === APPROVAL_SECRET) {
+      isAuthorized = true
+    }
+  }
+
+  // Si no pasó por token, veamos si tiene auth normal de Supabase (jwt)
+  if (!isAuthorized && authHeader) {
+    const supabaseForAuth = createClient(SUPABASE_URL, SUPABASE_KEY)
+    const { data: { user } } = await supabaseForAuth.auth.getUser(authHeader.replace('Bearer ', ''))
+    if (user) {
+      // Opcionalmente validar que sea admin
+      isAuthorized = true
+    }
+  }
+
+  if (!isAuthorized) {
     return sendResponse('No Autorizado.', true, isJson)
   }
 
@@ -93,11 +111,16 @@ Deno.serve(async (req: Request) => {
   }
 
   if (action === 'accept') {
-    const rNum = Math.floor(1000 + Math.random() * 9000);
-    const genPassword = `Estrella${rNum}*`;
+    // Mayor entropía en contraseña: 8 caracteres random (letras y números)
+    const rChars = Math.random().toString(36).substring(2, 10);
+    const genPassword = `Estrella-${rChars}*`;
+
+    // EMAIL CANÓNICO: siempre derivado del teléfono, nunca del correo que dictó el cliente.
+    // Esto garantiza que el login del portal (aliado_TEL@app-estrella.shop) siempre funcione.
+    const authEmail = `aliado_${tel}@app-estrella.shop`;
 
     const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
-      email: sol.correo,
+      email: authEmail,
       password: genPassword,
       email_confirm: true
     })
@@ -108,19 +131,26 @@ Deno.serve(async (req: Request) => {
     if (authErr) {
       if (authErr.message.includes('already been registered') || authErr.message.includes('already exists')) {
         isAuthCreated = false;
-        // Obtener el ID del usuario existente usando la función RPC
-        const { data: existingId } = await supabase.rpc('get_user_id_by_email', { email_to_search: sol.correo });
+        // Buscar por el email canónico (no por sol.correo)
+        const { data: existingId } = await supabase.rpc('get_user_id_by_email', { email_to_search: authEmail });
         adminId = existingId;
       } else {
         return sendResponse(`Error de Auth: ${authErr.message}`, true, isJson)
       }
     }
 
+    // Generar slug
+    const baseSlug = sol.nombre_restaurante.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const finalSlug = `${baseSlug}-${tel.slice(-4)}`;
+
     const { error: restErr } = await supabase.from('restaurantes').insert({
       nombre: sol.nombre_restaurante,
       telefono: tel,
       activo: true,
-      admin_id: adminId
+      admin_id: adminId,
+      slug: finalSlug,
+      correo: sol.correo || null,  // correo real de contacto (distinto al email de Auth)
+      programa_lealtad_activo: true
     })
 
     if (restErr && restErr.code !== '23505') {
@@ -130,10 +160,23 @@ Deno.serve(async (req: Request) => {
     await supabase.from('restaurantes_solicitudes').update({ estado: 'aprobado' }).eq('id', sol.id)
 
     let msgCredenciales = `🎉 *¡Felicidades, ${sol.encargado}! Tu restaurante ha sido APROBADO.*\n\nYa puedes gestionar todo enviándonos la palabra *Menú* o *Hola* por este mismo chat.`;
+    
+    const menuUrl = `https://restaurantes-app-estrella.shop/menu/${finalSlug}`;
+    const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(menuUrl)}&size=500&margin=2`;
+
     if (isAuthCreated) {
-      msgCredenciales += `\n\nPara administrar tu menú e información, ingresa a:\n🌐 *https://restaurantes-app-estrella.shop*\n\n_(Tus credenciales web son:_ Correo: ${sol.correo} _/ Clave:_ ${genPassword}_)_`;
+      // Las credenciales usan el email canónico (no el correo real del cliente)
+      msgCredenciales += `\n\nPara administrar tu menú e información, ingresa a:\n🌐 *https://restaurantes-app-estrella.shop*\n\n_(Usuario: tu número de teléfono *${tel}* / Clave: ${genPassword})_`;
     }
     await sendWA(sendPhone, msgCredenciales)
+
+    // Enviar QR
+    const { sendWAImage } = await import('../whatsapp-bot/whatsapp.ts');
+    await sendWAImage(
+      sendPhone,
+      qrUrl,
+      `Aquí tienes tu Código QR y tu link público para que tus clientes comiencen a pedir:\n🔗 ${menuUrl}`
+    )
 
     return sendResponse('¡Aprobado con éxito!', false, isJson)
   }

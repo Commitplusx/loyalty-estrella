@@ -6,6 +6,7 @@ import '../services/gasto_service.dart';
 import '../services/repartidor_service.dart';
 import '../core/user_role.dart';
 import '../core/supabase_config.dart';
+import '../core/ui_helpers.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 final dateRangeProvider = StateProvider<DateTimeRange?>((ref) => null);
@@ -248,43 +249,66 @@ class GastosScreen extends ConsumerWidget {
     final placaCtrl = TextEditingController();
     final aliasCtrl = TextEditingController();
     
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(context).cardColor,
-        title: Text('Nueva Motocicleta', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: placaCtrl,
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-              decoration: InputDecoration(labelText: 'Placas (Ej: X1A2B)'),
+    await PremiumBottomSheet.showCustom<void>(
+      context,
+      title: 'Nueva Motocicleta',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: placaCtrl,
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+            decoration: InputDecoration(
+              labelText: 'Placas (Ej: X1A2B)',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
             ),
-            SizedBox(height: 16),
-            TextField(
-              controller: aliasCtrl,
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-              decoration: InputDecoration(labelText: 'Apodo (Ej: Moto Roja)'),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: aliasCtrl,
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+            decoration: InputDecoration(
+              labelText: 'Apodo (Ej: Moto Roja)',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancelar', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)))),
-          ElevatedButton(
-            onPressed: () async {
-              if (placaCtrl.text.isEmpty || aliasCtrl.text.isEmpty) return;
-              final error = await ref.read(gastoServiceProvider).addMoto(placaCtrl.text, aliasCtrl.text);
-              if (error == null && ctx.mounted) {
-                Navigator.pop(ctx);
-                ref.invalidate(motosProvider);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Moto agregada correctamente')));
-              } else if (ctx.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $error'), backgroundColor: Colors.red));
-              }
-            },
-            child: Text('Registrar'),
-          )
+          ),
+          const SizedBox(height: 32),
+          Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  child: Text('Cancelar', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () async {
+                    if (placaCtrl.text.isEmpty || aliasCtrl.text.isEmpty) return;
+                    final error = await ref.read(gastoServiceProvider).addMoto(placaCtrl.text, aliasCtrl.text);
+                    if (error == null && context.mounted) {
+                      Navigator.pop(context);
+                      ref.invalidate(motosProvider);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Moto agregada correctamente')));
+                    } else if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $error'), backgroundColor: Colors.red));
+                    }
+                  },
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  child: const Text('Registrar', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -323,136 +347,172 @@ class GastosScreen extends ConsumerWidget {
       visibleReps = allReps.where((r) => r['id'].toString() == myRepId).toList();
     }
 
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          backgroundColor: Theme.of(context).cardColor,
-          title: Text(isAdmin ? 'Nuevo Gasto' : 'Subir Gasto (Pendiente)', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (isAdmin) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Flota', style: TextStyle(color: categoria == 'flota' ? const Color(0xFFE11D48) : Colors.white54)),
-                      Switch(
-                        value: categoria == 'caja_chica',
-                        onChanged: (val) {
-                          setState(() {
-                            categoria = val ? 'caja_chica' : 'flota';
-                            if (categoria == 'caja_chica') {
-                              selectedMotoId = null;
-                              selectedRepId = null;
-                            }
-                          });
-                        },
-                        activeColor: const Color(0xFF60A5FA),
-                        inactiveThumbColor: const Color(0xFFE11D48),
-                      ),
-                      Text('Caja Chica', style: TextStyle(color: categoria == 'caja_chica' ? const Color(0xFF60A5FA) : Colors.white54)),
-                    ],
-                  ),
-                  SizedBox(height: 16),
-                ],
-                TextField(
-                  controller: conceptoCtrl,
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-                  decoration: InputDecoration(labelText: 'Concepto (Ej: Gasolina)', labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
+    await PremiumBottomSheet.showCustom<void>(
+      context,
+      title: isAdmin ? 'Nuevo Gasto' : 'Subir Gasto (Pendiente)',
+      child: StatefulBuilder(
+        builder: (context, setState) => SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (isAdmin) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Flota', style: TextStyle(color: categoria == 'flota' ? const Color(0xFFE11D48) : Theme.of(context).colorScheme.onSurface.withOpacity(0.5))),
+                    Switch(
+                      value: categoria == 'caja_chica',
+                      onChanged: (val) {
+                        setState(() {
+                          categoria = val ? 'caja_chica' : 'flota';
+                          if (categoria == 'caja_chica') {
+                            selectedMotoId = null;
+                            selectedRepId = null;
+                          }
+                        });
+                      },
+                      activeColor: const Color(0xFF60A5FA),
+                      inactiveThumbColor: const Color(0xFFE11D48),
+                    ),
+                    Text('Caja Chica', style: TextStyle(color: categoria == 'caja_chica' ? const Color(0xFF60A5FA) : Theme.of(context).colorScheme.onSurface.withOpacity(0.5))),
+                  ],
                 ),
-                SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  initialValue: tipoGasto,
+                const SizedBox(height: 16),
+              ],
+              TextField(
+                controller: conceptoCtrl,
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                decoration: InputDecoration(
+                  labelText: 'Concepto (Ej: Gasolina)',
+                  labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                initialValue: tipoGasto,
+                dropdownColor: Theme.of(context).cardColor,
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                decoration: InputDecoration(
+                  labelText: 'Tipo de Gasto',
+                  labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'gasolina', child: Text('Gasolina')),
+                  DropdownMenuItem(value: 'mantenimiento', child: Text('Mantenimiento')),
+                  DropdownMenuItem(value: 'repuesto', child: Text('Repuesto/Refacción')),
+                  DropdownMenuItem(value: 'otro', child: Text('Otro')),
+                ],
+                onChanged: (val) => setState(() => tipoGasto = val!),
+              ),
+              const SizedBox(height: 16),
+              if (categoria == 'flota') ...[
+                DropdownButtonFormField<String?>(
+                  value: selectedMotoId,
                   dropdownColor: Theme.of(context).cardColor,
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-                  decoration: InputDecoration(labelText: 'Tipo de Gasto', labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
-                  items: const [
-                    DropdownMenuItem(value: 'gasolina', child: Text('Gasolina')),
-                    DropdownMenuItem(value: 'mantenimiento', child: Text('Mantenimiento')),
-                    DropdownMenuItem(value: 'repuesto', child: Text('Repuesto/Refacción')),
-                    DropdownMenuItem(value: 'otro', child: Text('Otro')),
+                  decoration: InputDecoration(
+                    labelText: 'Vehículo (Asignado)',
+                    labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Ninguna')),
+                    ...visibleMotos.map((m) => DropdownMenuItem(
+                      value: m['id'].toString(),
+                      child: Text('${m['alias'] ?? m['placa']}'),
+                    )),
                   ],
-                  onChanged: (val) => setState(() => tipoGasto = val!),
+                  onChanged: isAdmin ? (val) => setState(() => selectedMotoId = val) : null,
                 ),
-                SizedBox(height: 16),
-                if (categoria == 'flota') ...[
-                  DropdownButtonFormField<String?>(
-                    value: selectedMotoId,
-                    dropdownColor: Theme.of(context).cardColor,
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-                    decoration: InputDecoration(labelText: 'Vehículo (Asignado)', labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('Ninguna')),
-                      ...visibleMotos.map((m) => DropdownMenuItem(
-                        value: m['id'].toString(),
-                        child: Text('${m['alias'] ?? m['placa']}'),
-                      )),
-                    ],
-                    onChanged: isAdmin ? (val) => setState(() => selectedMotoId = val) : null,
-                  ),
-                  SizedBox(height: 16),
-                  DropdownButtonFormField<String?>(
-                    value: selectedRepId,
-                    dropdownColor: Theme.of(context).cardColor,
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-                    decoration: InputDecoration(labelText: 'Vincular a Repartidor', labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('Ninguno')),
-                      ...visibleReps.map((r) => DropdownMenuItem(
-                        value: r['id'].toString(),
-                        child: Text('${r['alias'] ?? r['nombre']}'),
-                      )),
-                    ],
-                    onChanged: isAdmin ? (val) => setState(() => selectedRepId = val) : null,
-                  ),
-                  SizedBox(height: 16),
-                ],
-                _ImageSelectorDashboard(onImage: (file) => setState(() => tempFile = file)),
-                SizedBox(height: 12),
-                TextField(
-                  controller: montoCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String?>(
+                  value: selectedRepId,
+                  dropdownColor: Theme.of(context).cardColor,
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-                  decoration: InputDecoration(labelText: 'Monto (\$)', labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
+                  decoration: InputDecoration(
+                    labelText: 'Vincular a Repartidor',
+                    labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Ninguno')),
+                    ...visibleReps.map((r) => DropdownMenuItem(
+                      value: r['id'].toString(),
+                      child: Text('${r['alias'] ?? r['nombre']}'),
+                    )),
+                  ],
+                  onChanged: isAdmin ? (val) => setState(() => selectedRepId = val) : null,
                 ),
+                const SizedBox(height: 16),
               ],
-            ),
+              _ImageSelectorDashboard(onImage: (file) => setState(() => tempFile = file)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: montoCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                decoration: InputDecoration(
+                  labelText: 'Monto (\$)',
+                  labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+              const SizedBox(height: 32),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: Text('Cancelar', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () async {
+                        final monto = double.tryParse(montoCtrl.text);
+                        if (conceptoCtrl.text.isEmpty || monto == null) return;
+
+                        String? url;
+                        if (tempFile != null) {
+                          url = await ref.read(repartidorServiceProvider).uploadComprobante(tempFile!);
+                        }
+
+                        final ok = await ref.read(gastoServiceProvider).addGasto(
+                          conceptoCtrl.text, 
+                          monto, 
+                          isAdmin: isAdmin,
+                          motoId: selectedMotoId,
+                          repartidorId: selectedRepId,
+                          tipoGasto: tipoGasto,
+                          comprobanteUrl: url,
+                          categoria: categoria,
+                        );
+                        if (ok && context.mounted) {
+                          Navigator.pop(context);
+                          ref.refresh(gastosProvider);
+                        } else if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error al enviar el gasto al servidor. Comprueba tu red.'), backgroundColor: Color(0xFFE11D48)));
+                        }
+                      },
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: const Text('Enviar Gasto', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancelar', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)))),
-            ElevatedButton(
-              onPressed: () async {
-                final monto = double.tryParse(montoCtrl.text);
-                if (conceptoCtrl.text.isEmpty || monto == null) return;
-
-                String? url;
-                if (tempFile != null) {
-                  url = await ref.read(repartidorServiceProvider).uploadComprobante(tempFile!);
-                }
-
-                final ok = await ref.read(gastoServiceProvider).addGasto(
-                  conceptoCtrl.text, 
-                  monto, 
-                  isAdmin: isAdmin,
-                  motoId: selectedMotoId,
-                  repartidorId: selectedRepId,
-                  tipoGasto: tipoGasto,
-                  comprobanteUrl: url,
-                  categoria: categoria,
-                );
-                if (ok && ctx.mounted) {
-                  Navigator.pop(ctx);
-                  ref.refresh(gastosProvider);
-                } else if (ctx.mounted) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Error al enviar el gasto al servidor. Comprueba tu red.'), backgroundColor: Color(0xFFE11D48)));
-                }
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE11D48)),
-              child: Text('Guardar'),
-            ),
-          ],
         ),
       ),
     );

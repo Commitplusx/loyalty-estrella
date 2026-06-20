@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/supabase_config.dart';
 import '../core/theme_provider.dart';
+import '../core/ui_helpers.dart';
 import '../services/repartidor_service.dart';
 import '../services/gasto_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -382,62 +383,68 @@ class _MotosSheet extends ConsumerWidget {
   Future<void> _agregarMoto(BuildContext context, WidgetRef ref) async {
     final placaCtrl = TextEditingController();
     final aliasCtrl = TextEditingController();
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Nueva Motocicleta'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: placaCtrl, decoration: const InputDecoration(labelText: 'Placas (ej: X1A2B)')),
-          const SizedBox(height: 12),
-          TextField(controller: aliasCtrl, decoration: const InputDecoration(labelText: 'Alias / Apodo (ej: Moto Roja)')),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF59E0B)),
-            onPressed: () async {
-              if (placaCtrl.text.isEmpty || aliasCtrl.text.isEmpty) return;
-              final err = await ref.read(gastoServiceProvider).addMoto(placaCtrl.text, aliasCtrl.text);
-              if (err == null && ctx.mounted) {
-                Navigator.pop(ctx);
-                ref.invalidate(motosProvider);
-              } else if (ctx.mounted) {
-                ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(err ?? 'Error')));
-              }
-            },
-            child: const Text('Guardar', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+    await PremiumBottomSheet.showCustom<void>(
+      context,
+      title: 'Nueva Motocicleta',
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: placaCtrl, decoration: const InputDecoration(labelText: 'Placas (ej: X1A2B)')),
+        const SizedBox(height: 12),
+        TextField(controller: aliasCtrl, decoration: const InputDecoration(labelText: 'Alias / Apodo (ej: Moto Roja)')),
+        const SizedBox(height: 32),
+        Row(
+          children: [
+            Expanded(
+              child: TextButton(
+                onPressed: () => Navigator.pop(context),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                child: Text('Cancelar', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: FilledButton(
+                onPressed: () async {
+                  if (placaCtrl.text.isEmpty || aliasCtrl.text.isEmpty) return;
+                  final err = await ref.read(gastoServiceProvider).addMoto(placaCtrl.text, aliasCtrl.text);
+                  if (err == null && context.mounted) {
+                    Navigator.pop(context);
+                    ref.invalidate(motosProvider);
+                  } else if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err ?? 'Error')));
+                  }
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFF59E0B),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                child: const Text('Guardar', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ]),
     );
-    placaCtrl.dispose();
-    aliasCtrl.dispose();
   }
 
   Future<void> _editarMoto(BuildContext context, WidgetRef ref, Map<String, dynamic> moto) async {
-    final aliasCtrl = TextEditingController(text: moto['alias'] ?? '');
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Editar ${moto['placa']}'),
-        content: TextField(controller: aliasCtrl, decoration: const InputDecoration(labelText: 'Alias / Apodo')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF59E0B)),
-            onPressed: () async {
-              await supabase.from('motos').update({'alias': aliasCtrl.text.trim()}).eq('id', moto['id']);
-              if (ctx.mounted) {
-                Navigator.pop(ctx);
-                ref.invalidate(motosProvider);
-              }
-            },
-            child: const Text('Guardar', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+    final val = await PremiumBottomSheet.showInput(
+      context,
+      title: 'Editar ${moto['placa']}',
+      hintText: 'Alias / Apodo',
+      confirmText: 'Guardar',
+      initialValue: moto['alias'] ?? '',
     );
-    aliasCtrl.dispose();
+
+    if (val != null) {
+      await supabase.from('motos').update({'alias': val.trim()}).eq('id', moto['id']);
+      if (context.mounted) {
+        ref.invalidate(motosProvider);
+      }
+    }
   }
 }
 
@@ -631,16 +638,13 @@ class _LocalFormSheetState extends ConsumerState<_LocalFormSheet> {
   }
 
   Future<void> _eliminar() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('¿Eliminar restaurante?'),
-        content: const Text('Se eliminará permanentemente junto con sus zonas configuradas.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar', style: TextStyle(color: Colors.red))),
-        ],
-      ),
+    final ok = await PremiumBottomSheet.showConfirm(
+      context,
+      title: '¿Eliminar restaurante?',
+      content: 'Se eliminará permanentemente junto con sus zonas configuradas.',
+      confirmText: 'Eliminar',
+      cancelText: 'Cancelar',
+      isDestructive: true,
     );
     if (ok != true) return;
     await supabase.from('restaurantes').delete().eq('id', widget.local!['id']);
@@ -964,31 +968,46 @@ class _PromosSheet extends ConsumerWidget {
   Future<void> _nuevaPromo(BuildContext context, WidgetRef ref) async {
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Nueva Promoción'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: 'Título (ej: Hora Feliz)')),
-          const SizedBox(height: 12),
-          TextField(controller: descCtrl, maxLines: 2, decoration: const InputDecoration(labelText: 'Descripción')),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B35)),
-            onPressed: () async {
-              if (titleCtrl.text.trim().isEmpty) return;
-              await supabase.from('promociones_dinamicas').insert({'titulo': titleCtrl.text.trim(), 'descripcion': descCtrl.text.trim(), 'activa': true});
-              if (ctx.mounted) { Navigator.pop(ctx); ref.invalidate(promosProvider); }
-            },
-            child: const Text('Crear', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+    await PremiumBottomSheet.showCustom<void>(
+      context,
+      title: 'Nueva Promoción',
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: 'Título (ej: Hora Feliz)')),
+        const SizedBox(height: 12),
+        TextField(controller: descCtrl, maxLines: 2, decoration: const InputDecoration(labelText: 'Descripción')),
+        const SizedBox(height: 32),
+        Row(
+          children: [
+            Expanded(
+              child: TextButton(
+                onPressed: () => Navigator.pop(context),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                child: Text('Cancelar', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: FilledButton(
+                onPressed: () async {
+                  if (titleCtrl.text.trim().isEmpty) return;
+                  await supabase.from('promociones_dinamicas').insert({'titulo': titleCtrl.text.trim(), 'descripcion': descCtrl.text.trim(), 'activa': true});
+                  if (context.mounted) { Navigator.pop(context); ref.invalidate(promosProvider); }
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF6B35),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                child: const Text('Crear', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ]),
     );
-    titleCtrl.dispose();
-    descCtrl.dispose();
   }
 }
 
@@ -1073,29 +1092,18 @@ class _AvisosSheet extends ConsumerWidget {
   }
 
   Future<void> _nuevoAviso(BuildContext context, WidgetRef ref) async {
-    final ctrl = TextEditingController();
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Nuevo Aviso Flash ⚡'),
-        content: TextField(controller: ctrl, maxLines: 3, decoration: const InputDecoration(labelText: 'Ej: Hoy llueve, +20min de espera')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE11D48)),
-            onPressed: () async {
-              if (ctrl.text.trim().isEmpty) return;
-              // Apagar todos los anteriores
-              await supabase.from('anuncios_flash').update({'activo': false}).neq('id', '00000000-0000-0000-0000-000000000000');
-              await supabase.from('anuncios_flash').insert({'mensaje': ctrl.text.trim(), 'activo': true});
-              if (ctx.mounted) { Navigator.pop(ctx); ref.invalidate(anunciosProvider); }
-            },
-            child: const Text('Lanzar', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+    final val = await PremiumBottomSheet.showInput(
+      context,
+      title: 'Nuevo Aviso Flash ⚡',
+      hintText: 'Ej: Hoy llueve, +20min de espera',
+      confirmText: 'Lanzar',
     );
-    ctrl.dispose();
+
+    if (val != null && val.trim().isNotEmpty) {
+      await supabase.from('anuncios_flash').update({'activo': false}).neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('anuncios_flash').insert({'mensaje': val.trim(), 'activo': true});
+      if (context.mounted) { ref.invalidate(anunciosProvider); }
+    }
   }
 }
 
@@ -1120,7 +1128,7 @@ class _ResumenFechaSheet extends ConsumerWidget {
     }));
 
     final serviciosAsync = ref.watch(FutureProvider.autoDispose((r) {
-      return r.read(repartidorServiceProvider).getServicios(fecha: fecha);
+      return r.read(repartidorServiceProvider).getServicios(fechaInicio: fecha, fechaFin: fecha);
     }));
 
     return DraggableScrollableSheet(
@@ -1387,12 +1395,10 @@ class _RepartidorFormSheetState extends ConsumerState<_RepartidorFormSheet> {
           'activo': activo,
         }).eq('id', widget.rep!['id']);
       } else {
-        await supabase.from('repartidores').insert({
-          'nombre': n,
-          'telefono': t.isEmpty ? null : t,
-          'alias': a.isEmpty ? null : a,
-          'activo': activo,
-        });
+        final errorMsg = await widget.currentRef.read(repartidorServiceProvider).addRepartidor(n, t.isEmpty ? null : t, a.isEmpty ? null : a);
+        if (errorMsg != null) {
+          throw Exception(errorMsg);
+        }
       }
       if (mounted) Navigator.pop(context);
     } catch (e) {

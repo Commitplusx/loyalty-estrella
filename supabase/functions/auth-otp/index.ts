@@ -14,20 +14,39 @@ const WA_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_ID')!
 const ADMIN_PHONES = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHONE') ?? ''
 
 serve(async (req) => {
+  let cors: Record<string, string> = CORS_HEADERS
+  try {
+    const utils = await import('../_shared/utils.ts')
+    cors = utils.getCorsHeaders(req)
+  } catch(e) {}
+
   // CORS Preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS_HEADERS })
+    return new Response('ok', { headers: cors })
   }
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+    const { rateLimit, rateLimitResponse } = await import('../_shared/utils.ts')
     const { action, telefono, codigo, nuevaPassword } = await req.json()
 
     if (!telefono) {
-      return new Response(JSON.stringify({ error: 'Falta el teléfono' }), { status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ error: 'Falta el teléfono' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } })
     }
 
     const cleanPhone = telefono.replace(/\D/g, '')
+
+    // Rate limiting: máx 5 OTPs por teléfono cada 10 minutos
+    if (action === 'request' && cleanPhone) {
+      const rl = await rateLimit(supabase, `otp:${cleanPhone}`, 5, 600)
+      if (!rl.allowed) return rateLimitResponse(cors, rl.resetAt)
+    }
+
+    // Rate limiting: máx 10 intentos de verify por teléfono cada 10 minutos (anti-brute force)
+    if ((action === 'verify-code' || action === 'set-password') && cleanPhone) {
+      const rl = await rateLimit(supabase, `otp-verify:${cleanPhone}`, 10, 600)
+      if (!rl.allowed) return rateLimitResponse(cors, rl.resetAt)
+    }
 
     // ── ACCIÓN: REQUEST OTP ──
     if (action === 'request') {
@@ -69,7 +88,7 @@ serve(async (req) => {
       }
 
       if (!isAuthorized) {
-        return new Response(JSON.stringify({ error: 'Número no autorizado o inactivo' }), { status: 403, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+        return new Response(JSON.stringify({ error: 'Número no autorizado o inactivo' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } })
       }
 
       // Asegurar que tenga el código de país de México si solo son 10 dígitos y falló todo lo anterior (fallback)
@@ -82,6 +101,13 @@ serve(async (req) => {
 
       // 3. Guardar en otp_codes (expira en 5 minutos)
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+
+      // Invalidar OTPs anteriores del mismo teléfono antes de generar uno nuevo
+      await supabase
+        .from('otp_codes')
+        .delete()
+        .eq('telefono', cleanPhone)
+
       const { error: dbError } = await supabase.from('otp_codes').insert({
         telefono: cleanPhone, // Guardamos la versión original ingresada en el móvil para la validación
         codigo: pin,
@@ -104,16 +130,44 @@ serve(async (req) => {
       })
 
       if (!waRes.ok) {
-        console.error('WhatsApp Error:', await waRes.text())
+        console.error('WhatsApp Error:', waRes.status, waRes.statusText)
       }
 
-      return new Response(JSON.stringify({ ok: true, role }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ ok: true, role }), { headers: { ...cors, 'Content-Type': 'application/json' } })
+    }
+
+    // ── ACCIÓN: VERIFY CODE ONLY ──
+    if (action === 'verify-code') {
+      if (!codigo) {
+        return new Response(JSON.stringify({ error: 'Falta código' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } })
+      }
+      if (!/^\d{6}$/.test(codigo)) {
+        return new Response(JSON.stringify({ error: 'Formato de código inválido' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } })
+      }
+
+      const { data: otpRecords } = await supabase
+        .from('otp_codes')
+        .select('id')
+        .eq('telefono', cleanPhone)
+        .eq('codigo', codigo)
+        .gte('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (!otpRecords || otpRecords.length === 0) {
+        return new Response(JSON.stringify({ error: 'Código inválido o expirado' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } })
+      }
+
+      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } })
     }
 
     // ── ACCIÓN: VERIFY & SET PASSWORD ──
     if (action === 'set-password') {
       if (!codigo || !nuevaPassword) {
-        return new Response(JSON.stringify({ error: 'Falta código o contraseña' }), { status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+        return new Response(JSON.stringify({ error: 'Falta código o contraseña' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } })
+      }
+      if (nuevaPassword.length < 8) {
+        return new Response(JSON.stringify({ error: 'La contraseña debe tener al menos 8 caracteres' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } })
       }
 
       // 1. Validar OTP
@@ -127,7 +181,7 @@ serve(async (req) => {
         .limit(1)
 
       if (!otpRecords || otpRecords.length === 0) {
-        return new Response(JSON.stringify({ error: 'Código inválido o expirado' }), { status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+        return new Response(JSON.stringify({ error: 'Código inválido o expirado' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } })
       }
 
       // 2. Determinar Rol para el email (admin o repartidor)

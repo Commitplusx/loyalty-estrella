@@ -68,6 +68,29 @@ class PedidoModel {
     );
   }
 
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'cliente_tel': clienteTel,
+      'cliente_nombre': clienteNombre,
+      'restaurante': restaurante,
+      'repartidor_id': repartidorId,
+      'descripcion': descripcion,
+      'direccion': direccion,
+      'lat': lat,
+      'lng': lng,
+      'estado': estado,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+      'repartidores': repartidorNombre != null ? {'nombre': repartidorNombre} : null,
+      'tipo_pedido': tipoPedido,
+      'metodo_pago': metodoPago,
+      'origen': origen,
+      'destino': destino,
+      'precio_entrega': precioEntrega,
+    };
+  }
+
   String get estadoLabel {
     switch (estado) {
       case 'pendiente':  return 'Pendiente (Sin asignar)';
@@ -81,9 +104,9 @@ class PedidoModel {
 
   bool get isTerminado => estado == 'entregado' || estado == 'cancelado';
 
-  /// Siguiente estado en el flujo del repartidor
   String? get siguienteEstado {
     switch (estado) {
+      case 'pendiente': return 'asignado';
       case 'asignado':  return 'recibido';
       case 'recibido':  return 'en_camino';
       case 'en_camino': return 'entregado';
@@ -93,6 +116,7 @@ class PedidoModel {
 
   String? get siguienteEstadoLabel {
     switch (siguienteEstado) {
+      case 'asignado':  return 'Aceptar Pedido';
       case 'recibido':  return 'Marcar como Recibido';
       case 'en_camino': return 'Salir a Entregar';
       case 'entregado': return 'Marcar como Entregado';

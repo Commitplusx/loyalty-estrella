@@ -12,26 +12,47 @@ import '../core/supabase_config.dart';
 import '../core/theme_provider.dart';
 import '../core/user_role.dart';
 
-// Provider de pedidos activos
-final pedidosActivosProvider = FutureProvider.autoDispose<List<PedidoModel>>(
-  (ref) {
-    final isAdmin = ref.watch(isAdminProvider);
-    final userId = isAdmin ? null : supabase.auth.currentUser?.id;
-    return ref.read(pedidoServiceProvider).getPedidosActivos(repartidorUserId: userId);
-  },
-);
+import '../core/cache_helper.dart';
 
-// Provider de repartidores (para el dropdown)
-final repartidoresListProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>(
-  (ref) async {
-    final data = await supabase
-        .from('repartidores')
-        .select('id, user_id, nombre, telefono')
-        .eq('activo', true)
-        .order('nombre');
-    return List<Map<String, dynamic>>.from(data);
-  },
-);
+// Provider de pedidos activos con caché offline-first
+final pedidosActivosProvider = StreamProvider.autoDispose<List<PedidoModel>>((ref) async* {
+  final isAdmin = ref.watch(isAdminProvider);
+  final userId = isAdmin ? null : supabase.auth.currentUser?.id;
+  final cacheKey = 'pedidos_activos_$userId';
+
+  // 1. Mostrar caché primero (abre instantáneo)
+  final cached = await CacheHelper.getList(cacheKey);
+  if (cached != null) {
+    yield cached.map((m) => PedidoModel.fromMap(m)).toList();
+  }
+
+  // 2. Traer de la red
+  final networkData = await ref.read(pedidoServiceProvider).getPedidosActivos(repartidorUserId: userId);
+
+  // 3. Guardar caché silenciosamente
+  await CacheHelper.saveList(cacheKey, networkData.map((e) => e.toMap()).toList());
+
+  // 4. Emitir versión actualizada
+  yield networkData;
+});
+
+// Provider de repartidores (para el dropdown) con caché
+final repartidoresListProvider = StreamProvider.autoDispose<List<Map<String, dynamic>>>((ref) async* {
+  const cacheKey = 'repartidores_activos_list';
+
+  final cached = await CacheHelper.getList(cacheKey);
+  if (cached != null) yield cached;
+
+  final data = await supabase
+      .from('repartidores')
+      .select('id, user_id, nombre, telefono')
+      .eq('activo', true)
+      .order('nombre');
+
+  final networkData = List<Map<String, dynamic>>.from(data);
+  await CacheHelper.saveList(cacheKey, networkData);
+  yield networkData;
+});
 
 class PedidosScreen extends ConsumerWidget {
   const PedidosScreen({super.key});
@@ -250,6 +271,7 @@ class PedidosScreen extends ConsumerWidget {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _NuevoPedidoSheet(
         onCreado: () => ref.invalidate(pedidosActivosProvider),
@@ -309,16 +331,24 @@ class _PedidoTile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       child: Material(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(18),
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(20),
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: color.withValues(alpha: 0.25), width: 1.5),
+              color: cardBg,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -354,15 +384,25 @@ class _PedidoTile extends StatelessWidget {
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: color.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  pedido.estadoLabel,
-                                  style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800),
+                              Flexible(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: color.withValues(alpha: isDark ? 0.25 : 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: color.withValues(alpha: 0.3)),
+                                  ),
+                                  child: Text(
+                                    pedido.estadoLabel.toUpperCase(),
+                                    style: TextStyle(
+                                      color: color, 
+                                      fontSize: 12, 
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.5,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 6),
@@ -375,90 +415,6 @@ class _PedidoTile extends StatelessWidget {
                       ),
                     ),
                     Icon(Icons.chevron_right_rounded, color: onSurface.withValues(alpha: 0.2), size: 20),
-                  ],
-                ),
-
-                // Divisor
-                if (pedido.repartidorNombre != null || 
-                    (pedido.direccion != null && pedido.direccion!.isNotEmpty) || 
-                    (pedido.clienteTel.isNotEmpty) ||
-                    pedido.tipoPedido == 'mandadito') ...[
-                  const SizedBox(height: 12),
-                  Container(height: 1, color: onSurface.withValues(alpha: 0.06)),
-                  const SizedBox(height: 10),
-                ],
-
-                // Info adicional en chips
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    if (pedido.tipoPedido == 'mandadito')
-                      _InfoChip(
-                        icon: Icons.inventory_2_rounded,
-                        label: 'Mandadito',
-                        color: const Color(0xFFD946EF),
-                        isDark: isDark,
-                      ),
-                    if (pedido.metodoPago == 'transferencia')
-                      _InfoChip(
-                        icon: Icons.account_balance_rounded,
-                        label: 'Transferencia',
-                        color: const Color(0xFF3B82F6),
-                        isDark: isDark,
-                      )
-                    else if (pedido.metodoPago == 'efectivo')
-                      _InfoChip(
-                        icon: Icons.payments_rounded,
-                        label: 'Efectivo',
-                        color: const Color(0xFF10B981),
-                        isDark: isDark,
-                      ),
-                    if (pedido.repartidorNombre != null)
-                      _InfoChip(
-                        icon: Icons.delivery_dining_rounded,
-                        label: pedido.repartidorNombre!,
-                        color: const Color(0xFF10B981),
-                        isDark: isDark,
-                      ),
-                    if (pedido.tipoPedido == 'mandadito' && pedido.origen != null)
-                      _InfoChip(
-                        icon: Icons.my_location_rounded,
-                        label: 'De: ${pedido.origen!}',
-                        color: const Color(0xFFF59E0B),
-                        isDark: isDark,
-                        maxWidth: true,
-                      ),
-                    if (pedido.tipoPedido == 'mandadito' && pedido.destino != null)
-                      _InfoChip(
-                        icon: Icons.location_on_rounded,
-                        label: 'A: ${pedido.destino!}',
-                        color: const Color(0xFFE11D48),
-                        isDark: isDark,
-                        maxWidth: true,
-                      ),
-                    if (pedido.tipoPedido != 'mandadito' && pedido.restaurante != null && pedido.restaurante!.isNotEmpty)
-                      _InfoChip(
-                        icon: Icons.storefront_rounded,
-                        label: pedido.restaurante!,
-                        color: const Color(0xFFF59E0B),
-                        isDark: isDark,
-                      ),
-                    if (pedido.clienteTel.isNotEmpty)
-                      _InfoChip(
-                        icon: Icons.phone_rounded,
-                        label: pedido.clienteTel,
-                        color: const Color(0xFF60A5FA),
-                        isDark: isDark,
-                      ),
-                    if (pedido.tipoPedido != 'mandadito' && pedido.direccion != null && pedido.direccion!.isNotEmpty)
-                      _InfoChip(
-                        icon: Icons.location_on_rounded,
-                        label: pedido.direccion!,
-                        color: const Color(0xFFE11D48),
-                        isDark: isDark,
-                        maxWidth: true,
-                      ),
                   ],
                 ),
               ],
