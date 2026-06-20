@@ -141,7 +141,7 @@ serve(async (req) => {
       })
       .eq('wb_message_id', pedidoId)
       .eq('estado', 'pendiente_pago')  // Guard: evitar procesamiento doble
-      .select('id, cliente_nombre, restaurante, descripcion, precio, notas')
+      .select('id, cliente_nombre, restaurante, descripcion, precio, notas, direccion')
       .maybeSingle()  // maybeSingle en vez de single para no lanzar error si no hay filas
 
     if (updateError) {
@@ -171,18 +171,23 @@ serve(async (req) => {
       console.warn(`[${requestId}] No se encontró teléfono para restaurante: "${restauranteNombre}"`)
     } else {
       const numeroRestaurante = "52" + restTelefono.replace(/\D/g, '')
-      const montoStr = montoTotal ? ` ($${montoTotal.toFixed(2)} MXN)` : ''
+      const montoStr = montoTotal ? `$${montoTotal.toFixed(2)}` : 'N/A'
+      
+      let tipoEntrega = 'A domicilio'
+      if (pedidoData.direccion && (pedidoData.direccion.toLowerCase().includes('tienda') || pedidoData.direccion.toLowerCase().includes('recoger'))) {
+        tipoEntrega = 'Recoger en tienda'
+      }
+
       const mensajeRest = [
-        `🔔 *NUEVO PEDIDO CONFIRMADO* 🔔`,
-        `Hola *${restauranteNombre}*,`,
-        `Se ha recibido y pagado un nuevo pedido en línea${montoStr}.`,
+        `Hola, tienes un nuevo pedido en línea, aquí los detalles:`,
         ``,
-        `🧾 *Ticket:* #${pedidoId}`,
-        `👤 *Cliente:* ${sanitizar(pedidoData.cliente_nombre || 'Cliente web', 100)}`,
-        `📝 *Pedido:*`,
-        sanitizar(pedidoData.descripcion || 'Consulta los detalles en tu panel.', 1000),
+        `*orden:* #${pedidoId}`,
+        `*tipo de entrega:* ${tipoEntrega}`,
+        `*pidió:*`,
+        sanitizar(pedidoData.descripcion || 'Sin detalles.', 1000),
         ``,
-        `👨‍🍳 _Por favor, comiencen a prepararlo. ¡Mucho éxito!_`
+        `*total:* ${montoStr}`,
+        `*estado:* Pagado en línea (${paymentInfoStr})`
       ].join('\n')
 
       try {
