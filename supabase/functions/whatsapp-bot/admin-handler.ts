@@ -339,7 +339,7 @@ export async function executeAdminAction(
       if (result?.ok === false) {
         await sendWA(fromPhone, `❌ Error enviando términos a ${tel10}: ${result.error}`)
       } else {
-        await sendWA(fromPhone, `✅ Términos y condiciones enviados a *${tel10}*.`)
+        await sendWA(fromPhone, `✅ Términos y condiciones enviados a *${tel10}*.\n`)
       }
       break
     }
@@ -1090,6 +1090,123 @@ Guárdala muy bien en tus favoritos. Con ella irás acumulando recompensas en ca
 }
 
 export async function handleAdminCommands(supabase: Supa, fromPhone: string, buttonId: string): Promise<Response> {
-  await sendWA(fromPhone, `❌ Los comandos de pedidos están deshabilitados.`)
+  const { sendWA } = await import('./whatsapp.ts')
+
+  // ── Parsear el comando y número de orden ──
+  const isReasignar = buttonId.startsWith('CMD_REASIGNAR_')
+  const isCancelar  = buttonId.startsWith('CMD_CANCELAR_')
+
+  if (!isReasignar && !isCancelar) {
+    await sendWA(fromPhone, '❌ Comando desconocido.')
+    return new Response('OK', { status: 200 })
+  }
+
+  const prefix = isReasignar ? 'CMD_REASIGNAR_' : 'CMD_CANCELAR_'
+  const pedidoId = buttonId.replace(prefix, '')
+
+  // ── Buscar el pedido por número de orden ──
+  const { data: pedido } = await supabase
+    .from('pedidos')
+    .select('id, estado, repartidor_id, descripcion, direccion, cliente_tel, cliente_nombre, wb_message_id')
+    .eq('id', pedidoId)
+    .maybeSingle()
+
+  if (!pedido) {
+    await sendWA(fromPhone, `❌ No encontré el pedido. Puede que ya fue procesado o eliminado.`)
+    return new Response('OK', { status: 200 })
+  }
+
+  const ticketStr = pedido.wb_message_id || pedidoId.slice(0, 8)
+
+  if (pedido.estado === 'entregado' || pedido.estado === 'cancelado') {
+    await sendWA(fromPhone, `⚠️ El pedido *#${ticketStr}* ya está en estado *${pedido.estado.toUpperCase()}*. No se puede modificar.`)
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── CMD: CANCELAR ──
+  if (isCancelar) {
+    const { error: updateError } = await supabase
+      .from('pedidos')
+      .update({ estado: 'cancelado' })
+      .eq('id', pedido.id)
+
+    if (updateError) {
+      await sendWA(fromPhone, `❌ Error al cancelar el pedido *#${ticketStr}*.`)
+      return new Response('OK', { status: 200 })
+    }
+
+    try {
+      await supabase.from('pedido_logs').insert({
+        pedido_id: pedido.id,
+        accion: 'CANCELADO',
+        detalles: 'Cancelado por admin vía alerta zombie en WhatsApp',
+      })
+    } catch (_) {}
+
+    await sendWA(fromPhone, `✅ Pedido *#${ticketStr}* cancelado correctamente.`)
+
+    // Notificar al cliente si tenemos su teléfono
+    if (pedido.cliente_tel) {
+      const tel = pedido.cliente_tel.replace(/\D/g, '').slice(-10)
+      await sendWA(`52${tel}`, `😔 Hola ${pedido.cliente_nombre || 'cliente'}, lamentamos informarte que tu pedido *#${ticketStr}* fue cancelado. Puedes contactarnos para más información. ¡Disculpa los inconvenientes! 🙏`)
+    }
+
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── CMD: REASIGNAR ──
+  // Buscar repartidor activo con cuenta que no sea el actual, con menos pedidos activos
+  const { data: repartidores } = await supabase
+    .from('repartidores')
+    .select('id, user_id, nombre, telefono')
+    .eq('activo', true)
+    .not('user_id', 'is', null)
+    .neq('user_id', pedido.repartidor_id ?? '')
+
+  if (!repartidores || repartidores.length === 0) {
+    await sendWA(fromPhone, `⚠️ No hay otros repartidores disponibles en este momento para reasignar el pedido *#${ticketStr}*.\n\nPuedes cancelarlo respondiendo con *CMD_CANCELAR_${ticketStr}* o reasignarlo manualmente desde la app.`)
+    return new Response('OK', { status: 200 })
+  }
+
+  // Elegir el repartidor con menos pedidos activos (menor carga)
+  const { data: pedidosActivos } = await supabase
+    .from('pedidos')
+    .select('repartidor_id')
+    .in('estado', ['asignado', 'en_camino', 'recogido'])
+
+  const cargaPorRep: Record<string, number> = {}
+  for (const rep of repartidores) {
+    cargaPorRep[rep.user_id] = 0
+  }
+  for (const p of pedidosActivos ?? []) {
+    if (p.repartidor_id && cargaPorRep[p.repartidor_id] !== undefined) {
+      cargaPorRep[p.repartidor_id]++
+    }
+  }
+
+  const repElegido = repartidores.sort((a, b) => (cargaPorRep[a.user_id] ?? 0) - (cargaPorRep[b.user_id] ?? 0))[0]
+
+  // Actualizar el pedido
+  await supabase
+    .from('pedidos')
+    .update({ repartidor_id: repElegido.user_id, estado: 'asignado' })
+    .eq('id', pedido.id)
+
+  try {
+    await supabase.from('pedido_logs').insert({
+      pedido_id: pedido.id,
+      accion: 'REASIGNADO',
+      detalles: `Reasignado a ${repElegido.nombre} vía alerta zombie en WhatsApp`,
+    })
+  } catch (_) {}
+
+  await sendWA(fromPhone, `✅ Pedido *#${ticketStr}* reasignado a *${repElegido.nombre}* (${cargaPorRep[repElegido.user_id] ?? 0} pedidos activos).\n\n🛵 Se le notificará automáticamente.`)
+
+  // Notificar al nuevo repartidor
+  if (repElegido.telefono) {
+    const tel = repElegido.telefono.replace(/\D/g, '').slice(-10)
+    await sendWA(`52${tel}`, `🛵 *¡Pedido Reasignado!*\n\n📦 *#${ticketStr}*\n📝 ${pedido.descripcion || 'Sin descripción'}\n📍 ${pedido.direccion || 'Dirección no especificada'}\n\nEl admin te asignó este pedido. ¡Mucho éxito! 💪`)
+  }
+
   return new Response('OK', { status: 200 })
 }

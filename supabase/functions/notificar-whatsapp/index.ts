@@ -101,6 +101,18 @@ async function sendInteractiveButton(to: string, text: string, buttonId: string,
   if (!res.ok) throw new Error(`WhatsApp Interactive API error: ${textBody}`)
 }
 
+async function logPedidoAccion(supabase: any, pedidoId: string, accion: string, detalles: string, actorId?: string) {
+  try {
+    const payload: any = { pedido_id: pedidoId, accion, detalles }
+    if (actorId) payload.actor_id = actorId
+    const { error } = await supabase.from('pedido_logs').insert(payload)
+    if (error) console.error(`[LOG DB ERROR] No se pudo guardar el log en BD: ${error.message}`)
+    else console.log(`[LOG DB] Guardado exitosamente: ${accion} -> ${detalles.substring(0, 50)}`)
+  } catch (e: any) {
+    console.error(`[LOG DB CRASH] ${e.message}`)
+  }
+}
+
 async function notificarCliente(
   estado: string, tel: string, desc: string, pedidoId: string,
   nombre?: string, direccion?: string, restaurante?: string, repartidorNombre?: string, supabase?: any
@@ -411,8 +423,8 @@ serve(async (req: Request) => {
           body: { text: msgZ.substring(0, 1024) },
           action: {
             buttons: [
-              { type: 'reply', reply: { id: `CMD_REASIGNAR_${numeroOrden}`, title: '🔄 Reasignar' } },
-              { type: 'reply', reply: { id: `CMD_CANCELAR_${numeroOrden}`, title: '❌ Cancelar' } }
+              { type: 'reply', reply: { id: `CMD_REASIGNAR_${pedido_id}`, title: '🔄 Reasignar' } },
+              { type: 'reply', reply: { id: `CMD_CANCELAR_${pedido_id}`, title: '❌ Cancelar' } }
             ]
           }
         }
@@ -514,8 +526,34 @@ serve(async (req: Request) => {
       }
     }
 
-    // B. Notificar al Cliente
-    if (tipo !== 'asignacion' && pedido.cliente_tel) {
+    // B. Notificar al Cliente o al Restaurante (B2B)
+    if (pedido.origen === 'b2b_moto' && pedido.restaurante && tipo !== 'asignacion') {
+      const { data: rInfo } = await supabase.from('restaurantes').select('telefono').ilike('nombre', `%${pedido.restaurante}%`).eq('activo', true).limit(1).maybeSingle()
+      if (rInfo?.telefono) {
+        let repNom = 'un repartidor'
+        if (pedido.repartidor_id) {
+          const { data: r } = await supabase.from('repartidores').select('nombre').or(`user_id.eq.${pedido.repartidor_id},id.eq.${pedido.repartidor_id}`).limit(1).maybeSingle()
+          if (r?.nombre) repNom = r.nombre
+        }
+        
+        let msgB2B = ''
+        if (tipo === 'recibido' || tipo === 'en_camino') {
+          msgB2B = `🛵 *Actualización de Moto B2B*\n\nEl repartidor *${repNom}* acaba de recoger el pedido de *${pedido.cliente_nombre || 'Cliente'}* para *${pedido.direccion || 'destino'}* y va en camino. 💨`
+        } else if (tipo === 'entregado') {
+          msgB2B = `✅ *Moto B2B Completada*\n\nEl pedido para *${pedido.direccion || 'destino'}* ha sido entregado exitosamente por *${repNom}*. ¡Gracias por usar la red B2B Estrella!`
+        }
+
+        if (msgB2B) {
+          await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+            method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: formatTel(rInfo.telefono), type: 'text', text: { body: msgB2B } })
+          }, 15000)
+          results.push(`✅ Notificación B2B enviada al restaurante ${pedido.restaurante}`)
+        }
+      } else {
+        results.push(`⚠️ Restaurante B2B no encontrado o sin teléfono activo`)
+      }
+    } else if (tipo !== 'asignacion' && pedido.cliente_tel) {
       const tel10 = pedido.cliente_tel.replace(/\D/g, '').slice(-10)
 
       // REGLA ESTRICTA DE PRIVACIDAD: Solo notificar a clientes VIP (acepta_terminos = true)
@@ -578,12 +616,31 @@ serve(async (req: Request) => {
     }
 
     console.log("Final Actions:", results)
+    
+    // GUARDAR LOG DE NOTIFICACIÓN
+    await logPedidoAccion(
+      supabase, 
+      pedido_id, 
+      'NOTIFICACION_ENVIADA', 
+      `Estado: ${tipo} | Resultados: ${results.join(' | ')}`
+    )
+
     return new Response(JSON.stringify({ ok: true, actions: results }), {
       status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     })
 
   } catch (e: any) {
     console.error("FATAL ERROR IN NOTIFICAR-WHATSAPP:", e)
+    
+    // INTENTAR GUARDAR LOG DE ERROR SI ES POSIBLE
+    try {
+      const { pedido_id, tipo } = await req.clone().json().catch(() => ({}))
+      if (pedido_id) {
+        const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+        await logPedidoAccion(supabase, pedido_id, 'ERROR_NOTIFICACION', `Fallo al notificar estado ${tipo}: ${e.message}`)
+      }
+    } catch (_) { /* ignore */ }
+
     await logError(
       'notificar-whatsapp',
       `Unhandled crash: ${e.message}`,
