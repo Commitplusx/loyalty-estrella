@@ -178,16 +178,15 @@ serve(async (req) => {
         tipoEntrega = 'Recoger en tienda'
       }
 
+      const ticketCorto = pedidoId.split('-')[0].toUpperCase()
+
       const mensajeRest = [
-        `Hola, tienes un nuevo pedido en línea, aquí los detalles:`,
-        ``,
-        `*orden:* #${pedidoId}`,
-        `*tipo de entrega:* ${tipoEntrega}`,
-        `*pidió:*`,
-        sanitizar(pedidoData.descripcion || 'Sin detalles.', 1000),
-        ``,
-        `*total:* ${montoStr}`,
-        `*estado:* Pagado en línea (${paymentInfoStr})`
+        `Hola, tienes un nuevo pedido en linea, aqui los detalles:`,
+        `orden: #${ticketCorto}`,
+        `tipo de entrega: ${tipoEntrega}`,
+        `pidio:\n${sanitizar(pedidoData.descripcion || 'Sin detalles.', 1000)}`,
+        `total: ${montoStr}`,
+        `estado: pagado (${paymentInfoStr})`
       ].join('\n')
 
       try {
