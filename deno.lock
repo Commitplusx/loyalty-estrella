@@ -214,6 +214,7 @@
         "npm:lucide-react@0.562",
         "npm:next-themes@~0.4.6",
         "npm:pdf-parse@^2.4.5",
+        "npm:pg@^8.21.0",
         "npm:postcss@^8.5.6",
         "npm:puppeteer@^25.0.4",
         "npm:qrcode@^1.5.4",

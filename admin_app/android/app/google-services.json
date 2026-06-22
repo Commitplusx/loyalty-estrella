@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "167286581797",
+    "project_id": "estrella-app-admin",
+    "storage_bucket": "estrella-app-admin.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:167286581797:android:45feab6fdd4949d3796dcc",
+        "android_client_info": {
+          "package_name": "app.estrella.shop"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyApkuyFs-r4Cl-v5zckbSUp4Iths9xy_Gk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
