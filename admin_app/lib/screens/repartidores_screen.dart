@@ -128,7 +128,7 @@ class _RepartidoresScreenState extends ConsumerState<RepartidoresScreen> with Si
         data: (myId) {
           if (myId == null) {
             return Scaffold(
-              appBar: AppBar(title: const Text('Mis Servicios')),
+              appBar: AppBar(leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => context.go('/dashboard')), title: const Text('Mis Servicios')),
               body: Center(child: Padding(
                 padding: const EdgeInsets.all(32.0),
                 child: Text('No tienes un perfil de repartidor asociado. Contacta al Administrador.', textAlign: TextAlign.center, style: TextStyle(color: onSurface.withValues(alpha: 0.5))),
@@ -137,6 +137,7 @@ class _RepartidoresScreenState extends ConsumerState<RepartidoresScreen> with Si
           }
           return Scaffold(
             appBar: AppBar(
+              leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => context.go('/dashboard')),
               title: const Text('Mis Servicios'),
               actions: [
                 IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: () {
@@ -237,6 +238,7 @@ class _RepartidoresScreenState extends ConsumerState<RepartidoresScreen> with Si
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => context.go('/dashboard')),
         title: const Text('Logística / Gestión'),
         actions: [
           Consumer(

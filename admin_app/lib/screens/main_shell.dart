@@ -7,6 +7,9 @@ import 'package:flutter/rendering.dart';
 import '../core/user_role.dart';
 import '../core/supabase_config.dart';
 import '../core/ui_helpers.dart';
+import 'dashboard_screen.dart' show statsProvider;
+import 'pedidos_screen.dart' show pedidosActivosProvider;
+
 // Provider para contar solicitudes pendientes
 final pendingSolicitudesProvider = FutureProvider.autoDispose<int>((ref) async {
   final res = await supabase
@@ -14,6 +17,23 @@ final pendingSolicitudesProvider = FutureProvider.autoDispose<int>((ref) async {
       .select('id')
       .eq('estado', 'pendiente');
   return (res as List).length;
+});
+
+final lastSeenPedidosProvider = StateProvider<DateTime>((ref) => DateTime.now());
+
+// Provider para contar pedidos pendientes usando stream
+final pendingPedidosCountProvider = StreamProvider.autoDispose<int>((ref) {
+  final lastSeen = ref.watch(lastSeenPedidosProvider);
+  return supabase
+      .from('pedidos')
+      .stream(primaryKey: ['id'])
+      .map((list) => list.where((p) {
+        final dt = DateTime.tryParse(p['created_at'] ?? '');
+        if (dt == null) return false;
+        final isNew = dt.isAfter(lastSeen);
+        final isActive = p['estado'] == 'asignado' || p['estado'] == 'pendiente' || p['estado'] == 'pendiente_pago';
+        return isNew && isActive;
+      }).length);
 });
 
 class MainShell extends ConsumerStatefulWidget {
@@ -26,6 +46,7 @@ class MainShell extends ConsumerStatefulWidget {
 
 class _MainShellState extends ConsumerState<MainShell> {
   bool _isNavVisible = true;
+  bool _isExpanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -33,13 +54,16 @@ class _MainShellState extends ConsumerState<MainShell> {
     final isAdmin = ref.watch(isAdminProvider);
     final pendingAsync = isAdmin ? ref.watch(pendingSolicitudesProvider) : null;
     final pendingCount = pendingAsync?.valueOrNull ?? 0;
+    
+    final pedidosCountAsync = ref.watch(pendingPedidosCountProvider);
+    final pedidosCount = pedidosCountAsync.valueOrNull ?? 0;
 
     final tabs = [
       const _TabItem(icon: Icons.grid_view_rounded,      activeIcon: Icons.grid_view_rounded,     label: 'Dashboard',  route: '/dashboard'),
       const _TabItem(icon: Icons.qr_code_scanner_rounded, activeIcon: Icons.qr_code_scanner_rounded, label: 'Escanear', route: '/scanner'),
       if (isAdmin) const _TabItem(icon: Icons.delivery_dining_rounded, activeIcon: Icons.delivery_dining_rounded, label: 'Equipo',   route: '/repartidores'),
       if (isAdmin) const _TabItem(icon: Icons.people_outline,       activeIcon: Icons.people_rounded,       label: 'Clientes',  route: '/clients'),
-      _TabItem(icon: Icons.inventory_2_outlined, activeIcon: Icons.inventory_2_rounded,  label: isAdmin ? 'Pedidos' : 'Asignados',   route: '/pedidos'),
+      _TabItem(icon: Icons.inventory_2_outlined, activeIcon: Icons.inventory_2_rounded,  label: isAdmin ? 'Pedidos' : 'Asignados',   route: '/pedidos', badge: isAdmin ? pedidosCount : 0),
       if (isAdmin) _TabItem(icon: Icons.store_outlined, activeIcon: Icons.store_rounded, label: 'Aliados', route: '/solicitudes', badge: pendingCount),
     ];
 
@@ -47,6 +71,11 @@ class _MainShellState extends ConsumerState<MainShell> {
     for (int i = 0; i < tabs.length; i++) {
       if (location.startsWith(tabs[i].route)) {
         currentIndex = i;
+        if (tabs[i].route == '/pedidos') {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            ref.read(lastSeenPedidosProvider.notifier).state = DateTime.now();
+          });
+        }
         break;
       }
     }
@@ -62,6 +91,14 @@ class _MainShellState extends ConsumerState<MainShell> {
         canPop: false,
         onPopInvokedWithResult: (didPop, result) async {
           if (didPop) return;
+          if (_isExpanded) {
+            setState(() => _isExpanded = false);
+            return;
+          }
+          if (currentIndex != 0) {
+            context.go('/dashboard');
+            return;
+          }
           final shouldExit = await PremiumBottomSheet.showConfirm(
             context,
             title: '¿Salir de la app?',
@@ -79,20 +116,83 @@ class _MainShellState extends ConsumerState<MainShell> {
               if (notification.direction == ScrollDirection.forward) {
                 if (!_isNavVisible) setState(() => _isNavVisible = true);
               } else if (notification.direction == ScrollDirection.reverse) {
-                if (_isNavVisible) setState(() => _isNavVisible = false);
+                if (_isNavVisible && !_isExpanded) setState(() => _isNavVisible = false);
               }
               return false; // Permitir que otros listeners escuchen
             },
-            child: widget.child,
+            child: Stack(
+              children: [
+                widget.child,
+                
+                // Overlay oscuro animado
+                Positioned.fill(
+                  child: IgnorePointer(
+                    ignoring: !_isExpanded,
+                    child: GestureDetector(
+                      onTap: () => setState(() => _isExpanded = false),
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 300),
+                        opacity: _isExpanded ? 1.0 : 0.0,
+                        curve: Curves.easeInOut,
+                        child: Container(
+                          color: Theme.of(context).brightness == Brightness.dark ? Colors.black.withOpacity(0.6) : Colors.black.withOpacity(0.3),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Menú Expandible
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 90,
+                  child: AnimatedSlide(
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeOutBack,
+                    offset: _isExpanded ? Offset.zero : const Offset(0, 1.5),
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 300),
+                      opacity: _isExpanded ? 1.0 : 0.0,
+                      child: IgnorePointer(
+                        ignoring: !_isExpanded,
+                        child: _PremiumNavBar(
+                          tabs: tabs,
+                          currentIndex: currentIndex,
+                          onTap: (i) {
+                            setState(() => _isExpanded = false);
+                            context.go(tabs[i].route);
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          bottomNavigationBar: AnimatedSlide(
+          floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+          floatingActionButton: AnimatedSlide(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOutCubic,
-            offset: _isNavVisible ? Offset.zero : const Offset(0, 1.5),
-            child: _PremiumNavBar(
-              tabs: tabs,
-              currentIndex: currentIndex,
-              onTap: (i) => context.go(tabs[i].route),
+            offset: _isNavVisible || _isExpanded ? Offset.zero : const Offset(0, 2.0),
+            child: Consumer(
+              builder: (context, ref, child) {
+                return FloatingActionButton(
+                  onPressed: () {
+                    setState(() => _isExpanded = !_isExpanded);
+                  },
+                  elevation: _isExpanded ? 0 : 12,
+                  backgroundColor: _isExpanded ? Theme.of(context).colorScheme.error : Theme.of(context).colorScheme.primary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                  child: AnimatedRotation(
+                    turns: _isExpanded ? 0.125 : 0, // Gira 45º
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                    child: const Icon(Icons.add_rounded, color: Colors.white, size: 36),
+                  ),
+                );
+              }
             ),
           ),
         ),

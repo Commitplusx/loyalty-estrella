@@ -310,6 +310,29 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
     }
 
+    if (tipo === 'nueva_orden_admin') {
+      const { restaurante, descripcion, ticket_id, tipo_entrega } = payload
+      const adminPhoneRaw = Deno.env.get('ADMIN_PHONE_BILLETERA') || Deno.env.get('ADMIN_PHONE') || (Deno.env.get('ADMIN_PHONES') ?? '').split(',')[0]?.trim()
+      
+      if (adminPhoneRaw && adminPhoneRaw.length > 0) {
+        const adminTelFormateado = formatTel(adminPhoneRaw)
+        const icono = tipo_entrega === 'tienda' ? '🏪' : '🛵'
+        const etiqueta = tipo_entrega === 'tienda' ? 'Recoger en Tienda' : 'A Domicilio'
+        const mensajeAdmin = `🚨 *NUEVO PEDIDO WEB (#${ticket_id})*\n\n🏪 Restaurante: ${restaurante}\n📦 Entrega: ${etiqueta} ${icono}\n\n${descripcion}`
+
+        const resAdm = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+          method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp', recipient_type: 'individual', to: adminTelFormateado, type: 'text',
+            text: { body: mensajeAdmin }
+          })
+        }, 15000)
+        if (!resAdm.ok) console.error(`WA error nueva_orden_admin:`, await resAdm.text())
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+    }
+
+
     if (tipo === 'canje_billetera') {
       const { cliente_tel, cliente_nombre, codigo_canje, monto, saldo_restante } = payload
       const telFormateado = formatTel(cliente_tel)

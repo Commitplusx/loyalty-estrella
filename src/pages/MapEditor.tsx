@@ -320,7 +320,7 @@ export default function MapEditor() {
           <button
             onClick={() => setShowCols(v => !v)}
             style={{
-              flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+              flex: 1, padding: '6px 0', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600,
               background: showCols ? '#3B82F620' : '#1e293b', color: showCols ? '#3B82F6' : '#64748b',
               border: `1px solid ${showCols ? '#3B82F6' : '#334155'}` as any,
             }}>
@@ -329,7 +329,7 @@ export default function MapEditor() {
           <button
             onClick={() => setShowKml(v => !v)}
             style={{
-              flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+              flex: 1, padding: '6px 0', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600,
               background: showKml ? '#F9731620' : '#1e293b', color: showKml ? '#F97316' : '#64748b',
               border: `1px solid ${showKml ? '#F97316' : '#334155'}` as any,
             }}>

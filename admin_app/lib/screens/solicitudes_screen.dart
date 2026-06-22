@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_config.dart';
 import 'main_shell.dart' show pendingSolicitudesProvider;
@@ -109,6 +110,7 @@ class _SolicitudesScreenState extends ConsumerState<SolicitudesScreen> {
         slivers: [
           // ── Header ──
           SliverAppBar(
+            leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => context.go('/dashboard')),
             expandedHeight: 120,
             pinned: true,
             backgroundColor: cs.surface,

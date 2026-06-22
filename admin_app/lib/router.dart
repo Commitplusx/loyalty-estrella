@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -104,57 +105,69 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: '/dashboard',
-            builder: (ctx, state) => const DashboardScreen(),
+            pageBuilder: (ctx, state) => _buildPageWithTransition(const DashboardScreen(), state),
           ),
           GoRoute(
             path: '/scanner',
-            builder: (ctx, state) => const ScannerScreen(),
+            pageBuilder: (ctx, state) => _buildPageWithTransition(const ScannerScreen(), state),
           ),
           GoRoute(
             path: '/clients',
-            builder: (ctx, state) => const ClientsScreen(),
+            pageBuilder: (ctx, state) => _buildPageWithTransition(const ClientsScreen(), state),
           ),
           GoRoute(
             path: '/gastos',
-            builder: (ctx, state) => const GastosScreen(),
+            pageBuilder: (ctx, state) => _buildPageWithTransition(const GastosScreen(), state),
           ),
           GoRoute(
             path: '/clients/:id',
-            builder: (ctx, state) => ClientDetailScreen(
-              clienteId: state.pathParameters['id']!,
-            ),
+            pageBuilder: (ctx, state) => _buildPageWithTransition(ClientDetailScreen(clienteId: state.pathParameters['id']!), state),
           ),
           GoRoute(
             path: '/repartidores',
-            builder: (ctx, state) => const RepartidoresScreen(),
+            pageBuilder: (ctx, state) => _buildPageWithTransition(const RepartidoresScreen(), state),
           ),
           GoRoute(
             path: '/repartidores/:id',
-            builder: (ctx, state) => RepartidorDetailScreen(
-              repartidorId: state.pathParameters['id']!,
-              nombre: state.uri.queryParameters['nombre'] ?? 'Detalle',
-            ),
+            pageBuilder: (ctx, state) => _buildPageWithTransition(RepartidorDetailScreen(repartidorId: state.pathParameters['id']!, nombre: state.uri.queryParameters['nombre'] ?? 'Detalle'), state),
           ),
           GoRoute(
             path: '/leaderboard',
-            builder: (ctx, state) => const LeaderboardScreen(),
+            pageBuilder: (ctx, state) => _buildPageWithTransition(const LeaderboardScreen(), state),
           ),
           GoRoute(
             path: '/pedidos',
-            builder: (ctx, state) => const PedidosScreen(),
+            pageBuilder: (ctx, state) => _buildPageWithTransition(const PedidosScreen(), state),
           ),
           GoRoute(
             path: '/pedidos/:id',
-            builder: (ctx, state) => PedidoDetailScreen(
-              pedidoId: state.pathParameters['id']!,
-            ),
+            pageBuilder: (ctx, state) => _buildPageWithTransition(PedidoDetailScreen(pedidoId: state.pathParameters['id']!), state),
           ),
           GoRoute(
             path: '/solicitudes',
-            builder: (ctx, state) => const SolicitudesScreen(),
+            pageBuilder: (ctx, state) => _buildPageWithTransition(const SolicitudesScreen(), state),
           ),
         ],
       ),
     ],
   );
 });
+
+CustomTransitionPage<void> _buildPageWithTransition(Widget child, GoRouterState state) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      return FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0.0, 0.05),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+          child: child,
+        ),
+      );
+    },
+  );
+}

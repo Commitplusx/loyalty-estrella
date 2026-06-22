@@ -1,10 +1,9 @@
-// SplashScreen.tsx — Splash GPU-acelerado (sin JS por partícula)
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Props { onComplete: () => void; }
 
-// Partículas: posiciones pre-calculadas — animadas 100% por CSS (GPU)
+// Partículas sutiles adaptadas a fondo blanco
 const PARTICLES = Array.from({ length: 20 }, (_, i) => ({
   id: i,
   x: 3 + (i * 4.8) % 94,
@@ -15,10 +14,11 @@ const PARTICLES = Array.from({ length: 20 }, (_, i) => ({
   dy: -(8 + (i % 3) * 7),
 }));
 
+// Colores más intensos para que se lean perfecto en fondo blanco
 const WORDS = [
-  { text: 'Pide.',  color: '#93c5fd' },
-  { text: 'Suma.',  color: '#a78bfa' },
-  { text: 'Gana.',  color: '#34d399' },
+  { text: 'Pide.',  color: '#3b82f6' }, // blue-500
+  { text: 'Suma.',  color: '#8b5cf6' }, // purple-500
+  { text: 'Gana.',  color: '#10b981' }, // emerald-500
 ];
 
 const SONAR = [0, 0.6, 1.2];
@@ -51,55 +51,20 @@ export function SplashScreen({ onComplete }: Props) {
     <AnimatePresence>
       {phase < 2 && (
         <motion.div
-          key="splash"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white overflow-hidden"
           initial={{ opacity: 1 }}
           exit={{ opacity: 0, scale: 1.05 }}
-          transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
-          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden select-none"
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
           style={{
-            background: 'linear-gradient(150deg,#060d2e 0%,#0f2070 35%,#1a40c0 65%,#1d4ed8 100%)',
-            paddingTop: 'env(safe-area-inset-top)',
             paddingBottom: 'env(safe-area-inset-bottom)',
             willChange: 'opacity, transform',
           }}
         >
-          {/* ── Blobs ambientales — CSS puro, GPU ── */}
-          <div
-            className="pointer-events-none absolute rounded-full splash-blob-0"
-            style={{
-              top: -80, left: -80, width: 340, height: 340,
-              background: 'radial-gradient(circle,rgba(59,130,246,0.18),transparent 70%)',
-              filter: 'blur(55px)',
-              willChange: 'transform',
-              transform: 'translate3d(0,0,0)',
-            }}
-          />
-          <div
-            className="pointer-events-none absolute rounded-full splash-blob-1"
-            style={{
-              bottom: -70, right: -70, width: 280, height: 280,
-              background: 'radial-gradient(circle,rgba(139,92,246,0.18),transparent 70%)',
-              filter: 'blur(55px)',
-              willChange: 'transform',
-              transform: 'translate3d(0,0,0)',
-            }}
-          />
-          <div
-            className="pointer-events-none absolute rounded-full splash-blob-0"
-            style={{
-              top: '40%', left: -40, width: 180, height: 180,
-              background: 'radial-gradient(circle,rgba(6,182,212,0.14),transparent 70%)',
-              filter: 'blur(40px)',
-              willChange: 'transform',
-              transform: 'translate3d(0,0,0)',
-            }}
-          />
-
-          {/* ── Partículas — CSS @keyframes, 0 JS por frame ── */}
+          {/* ✨ Partículas oscuras/suaves ✨ */}
           {PARTICLES.map(p => (
             <div
               key={p.id}
-              className="absolute rounded-full bg-white pointer-events-none splash-particle"
+              className="absolute rounded-full bg-slate-300 pointer-events-none splash-particle"
               style={{
                 left: `${p.x}%`,
                 top: `${p.y}%`,
@@ -113,13 +78,13 @@ export function SplashScreen({ onComplete }: Props) {
             />
           ))}
 
-          {/* ── Grid sutil ── */}
+          {/* ✨ Grid sutil oscuro ✨ */}
           <div
-            className="pointer-events-none absolute inset-0 opacity-[0.04]"
-            style={{ backgroundImage: 'radial-gradient(circle,white 1px,transparent 1px)', backgroundSize: '36px 36px' }}
+            className="pointer-events-none absolute inset-0 opacity-[0.03]"
+            style={{ backgroundImage: 'radial-gradient(circle,#000 1px,transparent 1px)', backgroundSize: '36px 36px' }}
           />
 
-          {/* ── LOGO + ANILLOS — GPU via transform/opacity ── */}
+          {/* ✨ LOGO + ANILLOS ✨ */}
           <motion.div
             className="relative flex items-center justify-center"
             initial={{ scale: 0.3, opacity: 0 }}
@@ -131,47 +96,47 @@ export function SplashScreen({ onComplete }: Props) {
             {SONAR.map((del, i) => (
               <motion.div
                 key={i}
-                className="absolute rounded-full border border-blue-400/50 pointer-events-none"
+                className="absolute rounded-full border border-blue-500/20 pointer-events-none"
                 style={{ width: 90, height: 90, willChange: 'transform, opacity' }}
-                animate={{ scale: [1, 2.8], opacity: [0.6, 0] }}
+                animate={{ scale: [1, 2.8], opacity: [0.8, 0] }}
                 transition={{ duration: 2.4, repeat: Infinity, delay: del, ease: 'easeOut' }}
               />
             ))}
 
-            {/* Glow pulsante */}
+            {/* Glow pulsante (más suave para fondo blanco) */}
             <motion.div
               className="absolute rounded-full pointer-events-none"
               style={{
                 width: 120, height: 120,
-                background: 'radial-gradient(circle,rgba(96,165,250,0.55),transparent 70%)',
+                background: 'radial-gradient(circle,rgba(59,130,246,0.15),transparent 70%)',
                 willChange: 'transform, opacity',
               }}
               animate={{ scale: [1, 1.35, 1], opacity: [0.5, 0.95, 0.5] }}
               transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
             />
 
-            {/* Anillo exterior — CSS spin (GPU) */}
+            {/* Anillo exterior */}
             <div
               className="absolute rounded-full pointer-events-none splash-spin-cw"
               style={{
                 width: 116, height: 116,
                 border: '2.5px solid transparent',
-                borderTopColor: 'rgba(147,197,253,0.95)',
-                borderRightColor: 'rgba(147,197,253,0.4)',
-                borderBottomColor: 'rgba(147,197,253,0.1)',
+                borderTopColor: 'rgba(59,130,246,0.5)',
+                borderRightColor: 'rgba(59,130,246,0.2)',
+                borderBottomColor: 'rgba(59,130,246,0.05)',
                 willChange: 'transform',
               }}
             />
 
-            {/* Anillo interior inverso — CSS spin (GPU) */}
+            {/* Anillo interior inverso */}
             <div
               className="absolute rounded-full pointer-events-none splash-spin-ccw"
               style={{
                 width: 94, height: 94,
                 border: '2px solid transparent',
-                borderBottomColor: 'rgba(167,139,250,0.9)',
-                borderLeftColor: 'rgba(167,139,250,0.4)',
-                borderTopColor: 'rgba(167,139,250,0.1)',
+                borderBottomColor: 'rgba(139,92,246,0.5)',
+                borderLeftColor: 'rgba(139,92,246,0.2)',
+                borderTopColor: 'rgba(139,92,246,0.05)',
                 willChange: 'transform',
               }}
             />
@@ -182,8 +147,8 @@ export function SplashScreen({ onComplete }: Props) {
               style={{ width: 116, height: 116, willChange: 'transform' }}
             >
               <div
-                className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-blue-300"
-                style={{ boxShadow: '0 0 10px 3px rgba(147,197,253,0.8)' }}
+                className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-blue-500"
+                style={{ boxShadow: '0 0 10px 3px rgba(59,130,246,0.4)' }}
               />
             </div>
 
@@ -193,20 +158,20 @@ export function SplashScreen({ onComplete }: Props) {
               style={{ width: 94, height: 94, willChange: 'transform' }}
             >
               <div
-                className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-2 h-2 rounded-full bg-violet-300"
-                style={{ boxShadow: '0 0 8px 2px rgba(167,139,250,0.8)' }}
+                className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-2 h-2 rounded-full bg-purple-500"
+                style={{ boxShadow: '0 0 8px 2px rgba(139,92,246,0.4)' }}
               />
             </div>
 
-            {/* Logo */}
+            {/* Logo adaptado para que resalte en blanco */}
             <motion.img
               src="/logo.png"
               alt="Estrella"
-              className="relative z-10 rounded-full object-cover"
+              className="relative z-10 rounded-full object-cover bg-white"
               style={{
                 width: 78, height: 78,
-                border: '3.5px solid rgba(255,255,255,0.35)',
-                boxShadow: '0 0 0 7px rgba(255,255,255,0.06), 0 16px 48px rgba(0,0,0,0.5)',
+                border: '3.5px solid rgba(248,250,252,1)',
+                boxShadow: '0 0 0 7px rgba(0,0,0,0.03), 0 16px 32px rgba(0,0,0,0.1)',
                 willChange: 'transform',
               }}
               animate={{ scale: [1, 1.04, 1] }}
@@ -214,7 +179,7 @@ export function SplashScreen({ onComplete }: Props) {
             />
           </motion.div>
 
-          {/* ── TEXTO ── */}
+          {/* ✨ TEXTO ✨ */}
           <motion.div
             className="flex flex-col items-center gap-2 mt-8"
             initial={{ opacity: 0, y: 20 }}
@@ -227,15 +192,15 @@ export function SplashScreen({ onComplete }: Props) {
               style={{
                 fontFamily: 'system-ui,-apple-system,sans-serif',
                 fontSize: '3rem', letterSpacing: '-0.05em',
-                background: 'linear-gradient(135deg,#fff 30%,#93c5fd 70%,#a78bfa 100%)',
+                background: 'linear-gradient(135deg,#0f172a 30%,#3b82f6 70%,#8b5cf6 100%)',
                 WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
               }}
             >
-              Estrella<span style={{ WebkitTextFillColor: '#93c5fd' }}>.</span>
+              Estrella<span style={{ WebkitTextFillColor: '#3b82f6' }}>.</span>
             </h1>
             <motion.p
-              className="text-white/50 text-xs font-semibold uppercase tracking-[0.18em]"
+              className="text-slate-400 text-xs font-bold uppercase tracking-[0.18em]"
               style={{ fontFamily: 'system-ui,-apple-system,sans-serif' }}
               initial={{ opacity: 0 }} animate={{ opacity: 1 }}
               transition={{ delay: 0.6 }}
@@ -244,7 +209,7 @@ export function SplashScreen({ onComplete }: Props) {
             </motion.p>
           </motion.div>
 
-          {/* ── TICKER ── */}
+          {/* ✨ TICKER ✨ */}
           <div className="mt-7 h-12 flex items-center justify-center overflow-hidden" style={{ minWidth: 160 }}>
             <AnimatePresence mode="wait">
               {wordVisible && (
@@ -262,7 +227,7 @@ export function SplashScreen({ onComplete }: Props) {
                       fontFamily: 'system-ui,-apple-system,sans-serif',
                       letterSpacing: '-0.04em',
                       color: WORDS[wordIdx].color,
-                      textShadow: `0 0 24px ${WORDS[wordIdx].color}80`,
+                      textShadow: `0 4px 14px ${WORDS[wordIdx].color}40`,
                     }}
                   >
                     {WORDS[wordIdx].text}
@@ -272,7 +237,7 @@ export function SplashScreen({ onComplete }: Props) {
             </AnimatePresence>
           </div>
 
-          {/* ── BARRA DE CARGA ── */}
+          {/* ✨ BARRA DE CARGA ✨ */}
           <AnimatePresence>
             {showBar && (
               <motion.div
@@ -283,12 +248,12 @@ export function SplashScreen({ onComplete }: Props) {
               >
                 <div
                   className="overflow-hidden rounded-full"
-                  style={{ width: 160, height: 3, background: 'rgba(255,255,255,0.1)' }}
+                  style={{ width: 160, height: 3, background: 'rgba(0,0,0,0.06)' }}
                 >
                   <motion.div
                     className="h-full rounded-full"
                     style={{
-                      background: 'linear-gradient(90deg,#60a5fa,#a78bfa,#60a5fa)',
+                      background: 'linear-gradient(90deg,#3b82f6,#8b5cf6,#3b82f6)',
                       backgroundSize: '200% 100%',
                       willChange: 'transform',
                       transformOrigin: 'left',
@@ -302,7 +267,7 @@ export function SplashScreen({ onComplete }: Props) {
                   {[0, 1, 2].map(i => (
                     <div
                       key={i}
-                      className="rounded-full bg-white/35 splash-dot"
+                      className="rounded-full bg-slate-300 splash-dot"
                       style={{
                         width: 5, height: 5,
                         willChange: 'transform, opacity',
@@ -315,19 +280,8 @@ export function SplashScreen({ onComplete }: Props) {
             )}
           </AnimatePresence>
 
-          {/* ── CSS Keyframes — todo GPU ── */}
+          {/* ✨ CSS Keyframes — todo GPU ✨ */}
           <style>{`
-            @keyframes splashBlob0 {
-              from { transform: translate3d(0,0,0) scale(1); }
-              to   { transform: translate3d(28px,18px,0) scale(1.08); }
-            }
-            @keyframes splashBlob1 {
-              from { transform: translate3d(0,0,0) scale(1); }
-              to   { transform: translate3d(-22px,-14px,0) scale(1.06); }
-            }
-            .splash-blob-0 { animation: splashBlob0 9s ease-in-out infinite alternate; }
-            .splash-blob-1 { animation: splashBlob1 11s ease-in-out infinite alternate; }
-
             @keyframes splashSpinCW  { to { transform: rotate(360deg); } }
             @keyframes splashSpinCCW { to { transform: rotate(-360deg); } }
             .splash-spin-cw      { animation: splashSpinCW  1.8s linear infinite; }
@@ -335,8 +289,8 @@ export function SplashScreen({ onComplete }: Props) {
             .splash-spin-ccw-slow{ animation: splashSpinCCW 2.6s linear infinite; }
 
             @keyframes splashParticle {
-              0%,100% { transform: translate3d(0,0,0);            opacity: 0.06; }
-              50%      { transform: translate3d(0,var(--dy),0);   opacity: 0.65; }
+              0%,100% { transform: translate3d(0,0,0);            opacity: 0.1; }
+              50%      { transform: translate3d(0,var(--dy),0);   opacity: 0.6; }
             }
             .splash-particle {
               animation: splashParticle 3s ease-in-out infinite;

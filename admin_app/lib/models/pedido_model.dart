@@ -93,6 +93,7 @@ class PedidoModel {
 
   String get estadoLabel {
     switch (estado) {
+      case 'pendiente_pago': return 'Pendiente de Pago';
       case 'pendiente':  return 'Pendiente (Sin asignar)';
       case 'asignado':   return 'Asignado';
       case 'recibido':   return 'Recibido';
@@ -106,6 +107,7 @@ class PedidoModel {
 
   String? get siguienteEstado {
     switch (estado) {
+      case 'pendiente_pago': return 'pendiente'; // Debería pasar a pendiente cuando se pague, pero por ahora permitimos avanzar manual
       case 'pendiente': return 'asignado';
       case 'asignado':  return 'recibido';
       case 'recibido':  return 'en_camino';
@@ -116,6 +118,7 @@ class PedidoModel {
 
   String? get siguienteEstadoLabel {
     switch (siguienteEstado) {
+      case 'pendiente': return 'Marcar como Pagado';
       case 'asignado':  return 'Aceptar Pedido';
       case 'recibido':  return 'Marcar como Recibido';
       case 'en_camino': return 'Salir a Entregar';

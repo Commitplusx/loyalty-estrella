@@ -94,20 +94,20 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
                               Navigator.pop(ctx);
                               ref.invalidate(clientesProvider(_busqueda));
                               if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('✅ Cliente Registrado: ${res['qr_code']}'),
-                                  backgroundColor: const Color(0xFF11998E),
-                                ),
+                              PremiumToast.show(
+                                context,
+                                title: 'Cliente Registrado',
+                                description: 'Código QR: ${res['qr_code']}',
+                                icon: Icons.how_to_reg_rounded,
                               );
                             } else {
                               setState(() => loading = false);
                               if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Error: ${res['message']}'),
-                                  backgroundColor: Colors.red,
-                                ),
+                              PremiumToast.show(
+                                context,
+                                title: 'Error al registrar',
+                                description: res['message'],
+                                isError: true,
                               );
                             }
                           },
@@ -135,6 +135,7 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => context.go('/dashboard')),
         title: Text('Clientes'),
         actions: [
           IconButton(

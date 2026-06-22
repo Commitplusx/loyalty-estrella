@@ -136,12 +136,12 @@ serve(async (req) => {
       .from('pedidos')
       .update({ 
         estado: 'asignado',
-        notas: paymentInfoStr,
+        estado_pago: 'pagado',
         updated_at: new Date().toISOString()
       })
       .eq('wb_message_id', pedidoId)
       .eq('estado', 'pendiente_pago')  // Guard: evitar procesamiento doble
-      .select('id, cliente_nombre, restaurante, descripcion, precio, notas, direccion')
+      .select('id, cliente_nombre, restaurante, descripcion, total, direccion')
       .maybeSingle()  // maybeSingle en vez de single para no lanzar error si no hay filas
 
     if (updateError) {

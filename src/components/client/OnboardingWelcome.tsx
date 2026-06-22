@@ -64,7 +64,7 @@ export function OnboardingWelcome({ onFinish }: OnboardingWelcomeProps) {
           key="onboarding-overlay"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.35 }}
-          className="fixed inset-0 z-40 flex flex-col items-center justify-between
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-between
             bg-gradient-to-br from-slate-950 via-blue-950/90 to-slate-900
             backdrop-blur-sm px-5 select-none"
           style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.5rem)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}

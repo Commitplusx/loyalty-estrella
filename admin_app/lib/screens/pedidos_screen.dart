@@ -11,29 +11,35 @@ import '../services/repartidor_service.dart';
 import '../core/supabase_config.dart';
 import '../core/theme_provider.dart';
 import '../core/user_role.dart';
-
+import '../core/user_role.dart';
 import '../core/cache_helper.dart';
+import '../core/ui_helpers.dart';
 
-// Provider de pedidos activos con caché offline-first
-final pedidosActivosProvider = StreamProvider.autoDispose<List<PedidoModel>>((ref) async* {
+// Provider de pedidos activos usando stream realtime directo
+final pedidosActivosProvider = StreamProvider.autoDispose<List<PedidoModel>>((ref) {
   final isAdmin = ref.watch(isAdminProvider);
   final userId = isAdmin ? null : supabase.auth.currentUser?.id;
-  final cacheKey = 'pedidos_activos_$userId';
 
-  // 1. Mostrar caché primero (abre instantáneo)
-  final cached = await CacheHelper.getList(cacheKey);
-  if (cached != null) {
-    yield cached.map((m) => PedidoModel.fromMap(m)).toList();
+  if (userId != null) {
+    return supabase
+        .from('pedidos')
+        .stream(primaryKey: ['id'])
+        .eq('repartidor_id', userId)
+        .order('created_at', ascending: false)
+        .map((list) {
+      final activeList = list.where((m) => !['entregado', 'cancelado'].contains(m['estado'])).toList();
+      return activeList.map((m) => PedidoModel.fromMap(m)).toList();
+    });
+  } else {
+    return supabase
+        .from('pedidos')
+        .stream(primaryKey: ['id'])
+        .order('created_at', ascending: false)
+        .map((list) {
+      final activeList = list.where((m) => !['entregado', 'cancelado'].contains(m['estado'])).toList();
+      return activeList.map((m) => PedidoModel.fromMap(m)).toList();
+    });
   }
-
-  // 2. Traer de la red
-  final networkData = await ref.read(pedidoServiceProvider).getPedidosActivos(repartidorUserId: userId);
-
-  // 3. Guardar caché silenciosamente
-  await CacheHelper.saveList(cacheKey, networkData.map((e) => e.toMap()).toList());
-
-  // 4. Emitir versión actualizada
-  yield networkData;
 });
 
 // Provider de repartidores (para el dropdown) con caché
@@ -71,53 +77,22 @@ class PedidosScreen extends ConsumerWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Servicios Activos',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                color: onSurface,
-              ),
-            ),
-            Text(
-              'Pedidos en tiempo real',
-              style: TextStyle(
-                fontSize: 13,
-                color: onSurface.withValues(alpha: 0.5),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
+        leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => context.go('/dashboard')),
+        title: Text(
+          'Pedidos',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            color: onSurface,
+            letterSpacing: -1.0,
+          ),
         ),
         actions: [
-          pedidosAsync.when(
-            data: (p) => Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: primary.withValues(alpha: 0.3)),
-              ),
-              child: Text(
-                '${p.length} activos',
-                style: TextStyle(
-                  color: primary,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
-          ),
           IconButton(
             icon: Icon(Icons.refresh_rounded, color: onSurface.withValues(alpha: 0.6)),
             onPressed: () => ref.invalidate(pedidosActivosProvider),
           ),
+          const SizedBox(width: 8),
         ],
       ),
       floatingActionButton: !ref.watch(isAdminProvider) ? null : Padding(
@@ -125,15 +100,26 @@ class PedidosScreen extends ConsumerWidget {
         child: FloatingActionButton.extended(
           onPressed: () => _mostrarNuevoPedido(context, ref),
           icon: const Icon(Icons.add_rounded),
-          label: const Text('Nuevo Pedido', style: TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: primary,
-          foregroundColor: Colors.white,
-          elevation: 8,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          label: const Text('Nuevo', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: -0.2)),
+          backgroundColor: isDark ? Colors.white : Colors.black,
+          foregroundColor: isDark ? Colors.black : Colors.white,
+          elevation: 0,
+          highlightElevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
         ),
       ),
       body: pedidosAsync.when(
-        loading: () => Center(child: CircularProgressIndicator(color: primary)),
+        loading: () => ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: 5,
+          itemBuilder: (ctx, i) => ShimmerLoading(
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              height: 120,
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
         error: (e, _) => Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -150,25 +136,16 @@ class PedidosScreen extends ConsumerWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 80, height: 80,
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E28) : const Color(0xFFF8F9FA),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Icon(Icons.inbox_outlined, color: onSurface.withValues(alpha: 0.15), size: 32),
-                    ),
-                  ),
+                  Icon(Icons.check_circle_outline_rounded, color: onSurface.withValues(alpha: 0.05), size: 100),
                   const SizedBox(height: 24),
                   Text(
-                    'Sin servicios activos',
-                    style: TextStyle(color: onSurface.withValues(alpha: 0.8), fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: -0.3),
+                    'Todo al día',
+                    style: TextStyle(color: onSurface.withValues(alpha: 0.6), fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.5),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Text(
-                    'Es un buen momento para un descanso.',
-                    style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 13),
+                    'No hay pedidos activos en este momento.',
+                    style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 14),
                   ),
                 ],
               ),
@@ -187,34 +164,41 @@ class PedidosScreen extends ConsumerWidget {
             children: [
               // Banner de resumen minimalista
               Padding(
-                padding: const EdgeInsets.only(bottom: 24, left: 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                padding: const EdgeInsets.only(bottom: 24, top: 8),
+                child: Row(
                   children: [
                     Text(
-                      '${pedidos.length} SERVICIOS',
+                      '${pedidos.length} Activos',
                       style: TextStyle(
-                        color: isDark ? Colors.white : const Color(0xFF1A1A2E), 
+                        color: onSurface.withValues(alpha: 0.9), 
                         fontWeight: FontWeight.w800, 
-                        fontSize: 22,
-                        letterSpacing: -0.5,
+                        fontSize: 14,
+                        letterSpacing: -0.3,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${enCamino.length} en camino • ${recibidos.length} recibidos',
-                      style: TextStyle(
-                        color: isDark ? Colors.white54 : Colors.black54, 
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                    const SizedBox(width: 12),
+                    if (enCamino.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF6B35).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '${enCamino.length} en camino',
+                          style: const TextStyle(
+                            color: Color(0xFFFF6B35), 
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
 
               if (pendientes.isNotEmpty) ...[
-                _SectionHeader(title: 'Pendientes (Sin Repartidor)', count: pendientes.length, color: const Color(0xFFEF4444), isDark: isDark),
+                _SectionHeader(title: 'Pendientes (Sin Repartidor)', count: pendientes.length, color: const Color(0xFFEA580C), isDark: isDark),
                 const SizedBox(height: 8),
                 ...pendientes.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
                 const SizedBox(height: 20),
@@ -281,31 +265,29 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 12, top: 8),
+      padding: const EdgeInsets.only(left: 0, bottom: 12, top: 24),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            width: 3,
-            height: 14,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(2),
-            ),
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 8),
           Text(
-            title.toUpperCase(), 
+            title, 
             style: TextStyle(
-              color: isDark ? Colors.white54 : Colors.black54, 
+              color: isDark ? Colors.white.withValues(alpha: 0.9) : Colors.black87, 
               fontWeight: FontWeight.w700, 
-              fontSize: 12,
-              letterSpacing: 0.5,
+              fontSize: 16,
+              letterSpacing: -0.5,
             )
           ),
           const SizedBox(width: 6),
           Text(
             '$count', 
-            style: TextStyle(color: isDark ? Colors.white30 : Colors.black38, fontWeight: FontWeight.w600, fontSize: 12)
+            style: TextStyle(color: isDark ? Colors.white30 : Colors.black38, fontWeight: FontWeight.w500, fontSize: 14)
           ),
         ],
       ),
@@ -339,20 +321,24 @@ class _PedidoTile extends StatelessWidget {
     final String destinoStr = pedido.clienteNombre?.isNotEmpty == true ? pedido.clienteNombre! : (pedido.destino?.isNotEmpty == true ? pedido.destino! : 'Cliente');
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          highlightColor: color.withValues(alpha: 0.05),
-          splashColor: color.withValues(alpha: 0.1),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: BouncingCard(
+        onTap: onTap,
+        child: Material(
+          color: Colors.transparent,
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E1E28) : Colors.white,
+              color: (pedido.estado == 'asignado' || pedido.estado == 'pendiente' || pedido.estado == 'pendiente_pago')
+                  ? (isDark ? const Color(0xFF0F172A) : const Color(0xFFEFF6FF))
+                  : (isDark ? Colors.black : Colors.white),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05), width: 1),
+              border: Border.all(
+                color: (pedido.estado == 'asignado' || pedido.estado == 'pendiente' || pedido.estado == 'pendiente_pago')
+                    ? const Color(0xFF3B82F6).withValues(alpha: 0.5)
+                    : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
+                width: (pedido.estado == 'asignado' || pedido.estado == 'pendiente' || pedido.estado == 'pendiente_pago') ? 1.5 : 1.0,
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -363,124 +349,124 @@ class _PedidoTile extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: color.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            pedido.estadoLabel.toUpperCase(),
-                            style: TextStyle(
-                              color: color, 
-                              fontSize: 10, 
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
-                            ),
+                        Icon(Icons.circle, size: 8, color: color),
+                        const SizedBox(width: 6),
+                        Text(
+                          pedido.estadoLabel,
+                          style: TextStyle(
+                            color: onSurface.withValues(alpha: 0.8), 
+                            fontSize: 12, 
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        if (pedido.tipoPedido == 'tienda') ...[
+                        if (pedido.estado == 'asignado' || pedido.estado == 'pendiente' || pedido.estado == 'pendiente_pago') ...[
                           const SizedBox(width: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.orange.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
+                              color: const Color(0xFF3B82F6).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(6),
                             ),
-                            child: const Text('🏪 RECOGER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange)),
+                            child: const Text('NUEVO', style: TextStyle(color: Color(0xFF2563EB), fontSize: 10, fontWeight: FontWeight.bold)),
                           ),
+                        ],
+                        if (pedido.tipoPedido == 'tienda') ...[
+                          const SizedBox(width: 8),
+                          Text('•', style: TextStyle(color: onSurface.withValues(alpha: 0.3), fontSize: 12)),
+                          const SizedBox(width: 8),
+                          const Text('Recoger', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.orange)),
                         ],
                       ],
                     ),
-                    Text(timeAgo, style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 12, fontWeight: FontWeight.w500)),
+                    Text(
+                      timeAgo, 
+                      style: TextStyle(
+                        color: timeAgo == 'ahora' ? Colors.red : onSurface.withValues(alpha: 0.4), 
+                        fontSize: 12, 
+                        fontWeight: timeAgo == 'ahora' ? FontWeight.bold : FontWeight.w400
+                      )
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
                 
-                // Cuerpo Central: Rutas (Minimalista)
-                Column(
+                // Cuerpo Central: Rutas (Ultra Minimalista)
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          margin: const EdgeInsets.only(top: 4, right: 12),
-                          width: 8, height: 8,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: onSurface.withValues(alpha: 0.3), width: 2),
-                            shape: BoxShape.circle,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'De',
+                            style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 11, fontWeight: FontWeight.w500),
                           ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('RECOGER EN', style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                              Text(
-                                origenStr,
-                                style: TextStyle(
-                                  color: onSurface.withValues(alpha: 0.9),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 15,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
+                          const SizedBox(height: 2),
+                          Text(
+                            origenStr,
+                            style: TextStyle(
+                              color: onSurface.withValues(alpha: 0.9),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                    Container(
-                      margin: const EdgeInsets.only(left: 3.5, top: 4, bottom: 4),
-                      width: 1, height: 16,
-                      color: onSurface.withValues(alpha: 0.1),
-                    ),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          margin: const EdgeInsets.only(top: 4, right: 12),
-                          width: 8, height: 8,
-                          decoration: BoxDecoration(
-                            color: primary.withValues(alpha: 0.8),
-                            shape: BoxShape.circle,
+                    Container(width: 1, height: 30, color: onSurface.withValues(alpha: 0.1), margin: const EdgeInsets.symmetric(horizontal: 16)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Para',
+                            style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 11, fontWeight: FontWeight.w500),
                           ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('ENTREGAR A', style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                              Text(
-                                destinoStr,
-                                style: TextStyle(
-                                  color: onSurface.withValues(alpha: 0.9),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 15,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
+                          const SizedBox(height: 2),
+                          Text(
+                            destinoStr,
+                            style: TextStyle(
+                              color: onSurface.withValues(alpha: 0.9),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
                 
                 if (pedido.descripcion.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    pedido.descripcion,
-                    style: TextStyle(
-                      color: onSurface.withValues(alpha: 0.5),
-                      fontSize: 13,
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white.withValues(alpha: 0.03) : const Color(0xFFF9FAFB),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    child: Row(
+                      children: [
+                        Icon(Icons.notes_rounded, size: 14, color: onSurface.withValues(alpha: 0.4)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            pedido.descripcion,
+                            style: TextStyle(
+                              color: onSurface.withValues(alpha: 0.6),
+                              fontSize: 13,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ],
@@ -578,9 +564,7 @@ class _NuevoPedidoSheetState extends ConsumerState<_NuevoPedidoSheet> {
   Future<void> _crear() async {
     if (!_formKey.currentState!.validate()) return;
     if (_repartidorId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Selecciona un repartidor'), backgroundColor: Color(0xFFE11D48)),
-      );
+      PremiumToast.show(context, title: 'Atención', description: 'Selecciona un repartidor', isError: true);
       return;
     }
 
@@ -616,19 +600,9 @@ class _NuevoPedidoSheetState extends ConsumerState<_NuevoPedidoSheet> {
       if (result.ok) {
         Navigator.pop(context);
         widget.onCreado();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Pedido creado — Notificado por WhatsApp 📲'),
-            backgroundColor: Color(0xFF11998E),
-          ),
-        );
+        PremiumToast.show(context, title: 'Pedido creado', description: 'Notificado por WhatsApp 📲');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Error: ${result.error}'),
-            backgroundColor: const Color(0xFFE11D48),
-          ),
-        );
+        PremiumToast.show(context, title: 'Error', description: result.error, isError: true);
       }
     }
   }
@@ -848,7 +822,7 @@ String _timeAgo(DateTime? dt) {
 
 Color _estadoColor(String estado) {
   switch (estado) {
-    case 'pendiente': return const Color(0xFFEF4444);
+    case 'pendiente': return const Color(0xFFEA580C);
     case 'asignado':  return const Color(0xFF60A5FA);
     case 'recibido':  return const Color(0xFF10B981);
     case 'en_camino': return const Color(0xFFFF6B35);

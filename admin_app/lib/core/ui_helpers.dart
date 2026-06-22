@@ -229,3 +229,235 @@ class PremiumBottomSheet {
     );
   }
 }
+
+// ── Premium Toast ────────────────────────────────────────────────────────────
+class PremiumToast {
+  static void show(BuildContext context, {
+    required String title,
+    String? description,
+    bool isError = false,
+    IconData? icon,
+  }) {
+    final overlay = Overlay.of(context);
+    late OverlayEntry entry;
+    
+    entry = OverlayEntry(
+      builder: (context) => _PremiumToastWidget(
+        title: title,
+        description: description,
+        isError: isError,
+        icon: icon ?? (isError ? Icons.error_outline_rounded : Icons.check_circle_rounded),
+        onClose: () {
+          if (entry.mounted) entry.remove();
+        },
+      ),
+    );
+
+    overlay.insert(entry);
+    Future.delayed(const Duration(seconds: 4), () {
+      if (entry.mounted) entry.remove();
+    });
+  }
+}
+
+class _PremiumToastWidget extends StatefulWidget {
+  final String title;
+  final String? description;
+  final bool isError;
+  final IconData icon;
+  final VoidCallback onClose;
+
+  const _PremiumToastWidget({required this.title, this.description, required this.isError, required this.icon, required this.onClose});
+
+  @override
+  State<_PremiumToastWidget> createState() => _PremiumToastWidgetState();
+}
+
+class _PremiumToastWidgetState extends State<_PremiumToastWidget> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _scale;
+  late Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _scale = Tween<double>(begin: 0.8, end: 1.0).animate(CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut));
+    _slide = Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
+    _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF1E1E1E).withOpacity(0.9) : Colors.white.withOpacity(0.95);
+    final accent = widget.isError ? Colors.red : const Color(0xFF10B981);
+
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 16,
+      left: 16,
+      right: 16,
+      child: Material(
+        color: Colors.transparent,
+        child: SlideTransition(
+          position: _slide,
+          child: ScaleTransition(
+            scale: _scale,
+            child: GestureDetector(
+              onTap: widget.onClose,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 10)),
+                    BoxShadow(color: accent.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 5)),
+                  ],
+                  border: Border.all(color: accent.withOpacity(0.3), width: 1.5),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: accent.withOpacity(0.15), shape: BoxShape.circle),
+                      child: Icon(widget.icon, color: accent, size: 24),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(widget.title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Theme.of(context).colorScheme.onSurface)),
+                          if (widget.description != null)
+                            Text(widget.description!, style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7))),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Shimmer Loading ─────────────────────────────────────────────────────────────
+class ShimmerLoading extends StatefulWidget {
+  final Widget child;
+  final bool isLoading;
+
+  const ShimmerLoading({super.key, required this.child, this.isLoading = true});
+
+  @override
+  State<ShimmerLoading> createState() => _ShimmerLoadingState();
+}
+
+class _ShimmerLoadingState extends State<ShimmerLoading> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<Color?> _color;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000))..repeat(reverse: true);
+    _color = ColorTween(
+      begin: Colors.grey.withOpacity(0.1),
+      end: Colors.grey.withOpacity(0.3),
+    ).animate(_ctrl);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.isLoading) return widget.child;
+
+    return AnimatedBuilder(
+      animation: _color,
+      builder: (context, _) => ShaderMask(
+        blendMode: BlendMode.srcATop,
+        shaderCallback: (bounds) => LinearGradient(
+          colors: [_color.value!, _color.value!.withOpacity(0.5), _color.value!],
+          stops: const [0.0, 0.5, 1.0],
+          begin: const Alignment(-1.0, -0.5),
+          end: const Alignment(1.0, 0.5),
+          tileMode: TileMode.clamp,
+        ).createShader(bounds),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+// ── Bouncing Card ──────────────────────────────────────────────────────────────
+class BouncingCard extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+
+  const BouncingCard({super.key, required this.child, this.onTap});
+
+  @override
+  State<BouncingCard> createState() => _BouncingCardState();
+}
+
+class _BouncingCardState extends State<BouncingCard> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 150));
+    _scale = Tween<double>(begin: 1.0, end: 0.95).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _onTapDown(TapDownDetails details) {
+    if (widget.onTap != null) _ctrl.forward();
+  }
+
+  void _onTapUp(TapUpDetails details) {
+    if (widget.onTap != null) {
+      _ctrl.reverse();
+      widget.onTap!();
+    }
+  }
+
+  void _onTapCancel() {
+    if (widget.onTap != null) _ctrl.reverse();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: _onTapDown,
+      onTapUp: _onTapUp,
+      onTapCancel: _onTapCancel,
+      behavior: HitTestBehavior.opaque,
+      child: ScaleTransition(
+        scale: _scale,
+        child: widget.child,
+      ),
+    );
+  }
+}

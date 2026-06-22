@@ -18,11 +18,23 @@ import 'pedidos_screen.dart';
 import 'main_shell.dart' show pendingSolicitudesProvider;
 
 final statsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
-  return ref.read(dashboardServiceProvider).getDailyStats();
+  final isAdmin = ref.watch(isAdminProvider);
+  if (isAdmin) {
+    return ref.read(dashboardServiceProvider).getDailyStats();
+  } else {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return {'servicios': 0, 'ganancias': 0.0, 'gratis': 0};
+    
+    // Conseguir el repartidor_id
+    final repId = await ref.read(repartidorServiceProvider).getRepartidorIdByUserId(userId);
+    if (repId == null) return {'servicios': 0, 'ganancias': 0.0, 'gratis': 0};
+
+    return ref.read(dashboardServiceProvider).getDriverDailyStats(repId);
+  }
 });
 
-final chartDataProvider = FutureProvider<List<int>>((ref) async {
-  return ref.read(clienteServiceProvider).getWeeklyChartData();
+final topRestaurantesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  return ref.read(dashboardServiceProvider).getTopRestaurantes();
 });
 
 class DashboardScreen extends ConsumerWidget {
@@ -109,9 +121,9 @@ class DashboardScreen extends ConsumerWidget {
                   _VitalStatsCard(statsAsync: statsAsync, isAdmin: isAdmin),
                   const SizedBox(height: 24),
 
-                  // ── Weekly Activity Chart ──
+                  // ── Top Restaurantes (Movimiento Semanal) ──
                   if (isAdmin) ...[
-                    _ActivityChart(chartDataAsync: ref.watch(chartDataProvider)),
+                    _TopRestaurantesWidget(topAsync: ref.watch(topRestaurantesProvider)),
                     const SizedBox(height: 32),
                   ],
 
@@ -222,23 +234,27 @@ class _VitalStatsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: AppGradients.brand,
+        color: isDark ? const Color(0xFF16161E) : Colors.white,
         borderRadius: BorderRadius.circular(32),
-        boxShadow: [
+        border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
+        boxShadow: isDark ? [] : [
           BoxShadow(
-            color: AppColors.brandRed.withOpacity(0.3),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
+            color: theme.colorScheme.primary.withOpacity(0.06),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
       child: statsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
-        error: (e, _) => Center(child: Text('Error: $e', style: const TextStyle(color: Colors.white))),
+        loading: () => Center(child: CircularProgressIndicator(color: theme.colorScheme.primary)),
+        error: (e, _) => Center(child: Text('Error: $e', style: TextStyle(color: theme.colorScheme.error))),
         data: (stats) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -248,17 +264,17 @@ class _VitalStatsCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: theme.colorScheme.primary.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(Icons.speed_rounded, color: Colors.white, size: 24),
+                    child: Icon(Icons.speed_rounded, color: theme.colorScheme.primary, size: 24),
                   ),
                   const SizedBox(width: 16),
-                  const Text(
+                  Text(
                     'Servicios Hoy',
                     style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 16,
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -267,8 +283,8 @@ class _VitalStatsCard extends StatelessWidget {
               const SizedBox(height: 16),
               Text(
                 '${stats['servicios'] ?? 0}',
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: theme.colorScheme.onSurface,
                   fontSize: 56,
                   fontWeight: FontWeight.w900,
                   height: 1.0,
@@ -278,9 +294,17 @@ class _VitalStatsCard extends StatelessWidget {
               const SizedBox(height: 24),
               Row(
                 children: [
-                  if (isAdmin) _MiniStat(label: 'Ingresos Hoy', value: '\$${(stats['ganancias'] ?? 0.0).toStringAsFixed(2)}'),
-                  if (isAdmin) const SizedBox(width: 24),
-                  _MiniStat(label: 'Gratis Hoy', value: '${stats['gratis'] ?? 0}'),
+                  if (isAdmin) _MiniStat(
+                    label: 'Ingresos Hoy', 
+                    value: '\$${(stats['ganancias'] ?? 0.0).toStringAsFixed(2)}',
+                    color: const Color(0xFF10B981),
+                  ),
+                  if (isAdmin) const SizedBox(width: 32),
+                  _MiniStat(
+                    label: 'Gratis Hoy', 
+                    value: '${stats['gratis'] ?? 0}',
+                    color: theme.colorScheme.onSurface.withOpacity(0.8),
+                  ),
                 ],
               ),
             ],
@@ -294,7 +318,8 @@ class _VitalStatsCard extends StatelessWidget {
 class _MiniStat extends StatelessWidget {
   final String label;
   final String value;
-  const _MiniStat({required this.label, required this.value});
+  final Color? color;
+  const _MiniStat({required this.label, required this.value, this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -303,12 +328,12 @@ class _MiniStat extends StatelessWidget {
       children: [
         Text(
           label,
-          style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12, fontWeight: FontWeight.w500),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
+          style: TextStyle(color: color ?? Theme.of(context).colorScheme.onSurface, fontSize: 18, fontWeight: FontWeight.w800),
         ),
       ],
     );
@@ -570,18 +595,11 @@ class _BentoItem extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF9FAFB),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.03)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -590,19 +608,19 @@ class _BentoItem extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(14),
+                    color: color.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Icon(icon, color: color, size: 20),
+                  child: Icon(icon, color: color, size: 22),
                 ),
                 if (badgeCount > 0)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       color: cs.error,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: Text(
                       badgeCount.toString(),
@@ -615,7 +633,7 @@ class _BentoItem extends StatelessWidget {
             Text(
               title,
               style: TextStyle(
-                fontSize: 15,
+                fontSize: 16,
                 fontWeight: FontWeight.w800,
                 color: cs.onSurface,
                 letterSpacing: -0.3,
@@ -625,9 +643,9 @@ class _BentoItem extends StatelessWidget {
             Text(
               subtitle,
               style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: badgeCount > 0 ? color : cs.onSurfaceVariant,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: badgeCount > 0 ? color : cs.onSurface.withOpacity(0.4),
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -639,29 +657,29 @@ class _BentoItem extends StatelessWidget {
   }
 }
 
-class _ActivityChart extends StatelessWidget {
-  final AsyncValue<List<int>> chartDataAsync;
+class _TopRestaurantesWidget extends StatelessWidget {
+  final AsyncValue<List<Map<String, dynamic>>> topAsync;
 
-  const _ActivityChart({required this.chartDataAsync});
+  const _TopRestaurantesWidget({required this.topAsync});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cs = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cs = theme.colorScheme;
 
     return Container(
       width: double.infinity,
-      height: 200,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        color: isDark ? const Color(0xFF16161E) : Colors.white,
+        borderRadius: BorderRadius.circular(32),
         border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
-        boxShadow: [
+        boxShadow: isDark ? [] : [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+            color: cs.primary.withOpacity(0.06),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -672,82 +690,114 @@ class _ActivityChart extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Actividad Semanal',
+                'Top Restaurantes',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 18,
                   fontWeight: FontWeight.w800,
                   color: cs.onSurface,
-                  letterSpacing: -0.3,
+                  letterSpacing: -0.5,
                 ),
               ),
-              Icon(Icons.bar_chart_rounded, color: cs.primary, size: 20),
+              const Icon(Icons.local_fire_department_rounded, color: Color(0xFFFF6B35), size: 22),
             ],
           ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: chartDataAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
-              data: (data) {
-                if (data.isEmpty || data.every((e) => e == 0)) {
-                  return Center(
-                    child: Text('Aún no hay datos para esta semana', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
-                  );
-                }
-
-                final maxVal = data.reduce((curr, next) => curr > next ? curr : next).toDouble();
-                final days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-
-                return BarChart(
-                  BarChartData(
-                    alignment: BarChartAlignment.spaceAround,
-                    maxY: maxVal == 0 ? 1 : maxVal * 1.2,
-                    barTouchData: BarTouchData(enabled: false),
-                    titlesData: FlTitlesData(
-                      show: true,
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          getTitlesWidget: (value, meta) {
-                            if (value < 0 || value >= days.length) return const SizedBox();
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8.0),
-                              child: Text(
-                                days[value.toInt()],
-                                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 10, fontWeight: FontWeight.bold),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    ),
-                    gridData: const FlGridData(show: false),
-                    borderData: FlBorderData(show: false),
-                    barGroups: List.generate(data.length, (i) {
-                      return BarChartGroupData(
-                        x: i,
-                        barRods: [
-                          BarChartRodData(
-                            toY: data[i].toDouble(),
-                            color: cs.primary,
-                            width: 12,
-                            borderRadius: BorderRadius.circular(6),
-                            backDrawRodData: BackgroundBarChartRodData(
-                              show: true,
-                              toY: maxVal == 0 ? 1 : maxVal * 1.2,
-                              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
-                            ),
-                          ),
-                        ],
-                      );
-                    }),
+          const SizedBox(height: 6),
+          Text(
+            'Los más solicitados esta semana',
+            style: TextStyle(color: cs.onSurface.withOpacity(0.5), fontSize: 13, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 24),
+          topAsync.when(
+            loading: () => Center(child: CircularProgressIndicator(color: cs.primary)),
+            error: (e, _) => Center(child: Text('Error: $e')),
+            data: (data) {
+              if (data.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: Text('Aún no hay suficientes datos.', style: TextStyle(color: cs.onSurface.withOpacity(0.4))),
                   ),
                 );
-              },
-            ),
+              }
+
+              return Column(
+                children: List.generate(data.length, (i) {
+                  final item = data[i];
+                  final isFirst = i == 0;
+                  
+                  Color getRankColor() {
+                    if (i == 0) return const Color(0xFFF59E0B); // Oro
+                    if (i == 1) return const Color(0xFF94A3B8); // Plata
+                    if (i == 2) return const Color(0xFFD97706); // Bronce
+                    return cs.onSurface.withOpacity(0.3);       // Otros
+                  }
+                  
+                  final rankColor = getRankColor();
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: i < 3 ? rankColor.withOpacity(0.15) : cs.onSurface.withOpacity(0.04),
+                            shape: BoxShape.circle,
+                            border: isFirst ? Border.all(color: rankColor.withOpacity(0.3), width: 1.5) : null,
+                          ),
+                          child: Text(
+                            '${i + 1}',
+                            style: TextStyle(
+                              color: i < 3 ? rankColor : cs.onSurface.withOpacity(0.6),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            item['nombre'],
+                            style: TextStyle(
+                              fontSize: isFirst ? 16 : 15,
+                              fontWeight: isFirst ? FontWeight.w800 : FontWeight.w600,
+                              color: cs.onSurface.withOpacity(isFirst ? 1.0 : 0.8),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF27272A) : const Color(0xFFF4F4F5),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.shopping_bag_rounded, size: 14, color: rankColor.withOpacity(0.8)),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${item['pedidos']}',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
+                                  color: cs.onSurface.withOpacity(0.8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              );
+            },
           ),
         ],
       ),

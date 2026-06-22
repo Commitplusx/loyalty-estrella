@@ -15,6 +15,8 @@ import '../services/repartidor_service.dart';
 import '../services/gasto_service.dart';
 import '../core/ui_helpers.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'dashboard_screen.dart' show statsProvider;
+import 'pedidos_screen.dart' show pedidosActivosProvider;
 
 final _pedidoProvider = FutureProvider.autoDispose.family<PedidoModel?, String>(
   (ref, id) => ref.read(pedidoServiceProvider).getPedido(id),
@@ -44,7 +46,11 @@ class PedidoDetailScreen extends ConsumerWidget {
           }
           return _PedidoBody(
             pedido: pedido,
-            onEstadoActualizado: () => ref.invalidate(_pedidoProvider(pedidoId)),
+            onEstadoActualizado: () {
+              ref.invalidate(_pedidoProvider(pedidoId));
+              ref.invalidate(statsProvider);
+              ref.invalidate(pedidosActivosProvider);
+            },
           );
         },
       ),
@@ -113,14 +119,12 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
     setState(() => _loading = false);
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(ok
-            ? '✅ Estado actualizado — mensaje enviado al cliente por WhatsApp'
-            : '❌ Error al actualizar el estado', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: ok ? const Color(0xFF11998E) : const Color(0xFFE11D48),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ));
+      PremiumToast.show(
+        context,
+        title: ok ? 'Estado actualizado' : 'Error',
+        description: ok ? 'Mensaje enviado al cliente por WhatsApp' : 'Error al actualizar el estado',
+        isError: !ok,
+      );
       if (ok) widget.onEstadoActualizado();
     }
   }
@@ -192,10 +196,12 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
         setState(() => _loading = false);
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(ok ? '✅ Pedido reasignado y notificado al repartidor' : '❌ Error al reasignar'),
-            backgroundColor: ok ? const Color(0xFF11998E) : const Color(0xFFE11D48),
-          ));
+          PremiumToast.show(
+            context,
+            title: ok ? 'Reasignado' : 'Error',
+            description: ok ? 'Notificado al nuevo repartidor' : 'Error al reasignar',
+            isError: !ok,
+          );
           if (ok) widget.onEstadoActualizado();
         }
       }
@@ -213,46 +219,36 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
     final minutosRetraso = DateTime.now().difference(pedido.createdAt).inMinutes;
     final estaAtrasado = pedido.estado != 'entregado' && pedido.estado != 'cancelado' && minutosRetraso > 20;
     
-    // Forzar color rojo si está pendiente o atrasado
+    // Forzar color naranja si está pendiente o atrasado
     final bannerColor = (pedido.estado == 'pendiente' || estaAtrasado) 
-        ? const Color(0xFFE11D48) 
+        ? const Color(0xFFEA580C) 
         : color;
 
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      physics: const BouncingScrollPhysics(),
       children: [
-        // Estado visual (Banner)
+        // ── Banner de Estado (Premium) ──
         Container(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                bannerColor.withOpacity(isDark ? 0.25 : 0.15), 
-                bannerColor.withOpacity(isDark ? 0.08 : 0.05)
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: bannerColor.withOpacity(0.5), width: 1.5),
-            boxShadow: [
-              BoxShadow(
-                color: bannerColor.withOpacity(0.1),
-                blurRadius: 15,
-                offset: const Offset(0, 8),
-              )
+            color: isDark ? bannerColor.withOpacity(0.1) : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: isDark ? [] : [
+              BoxShadow(color: bannerColor.withOpacity(0.08), blurRadius: 24, offset: const Offset(0, 10))
             ],
+            border: Border.all(color: bannerColor.withOpacity(isDark ? 0.3 : 0.1), width: 1.5),
           ),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: bannerColor.withOpacity(0.2),
+                  color: bannerColor.withOpacity(0.15),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  estaAtrasado ? Icons.warning_amber_rounded : _estadoIcon(pedido.estado), 
+                  estaAtrasado ? Icons.timer_off_rounded : _estadoIcon(pedido.estado), 
                   color: bannerColor, 
                   size: 32
                 ),
@@ -263,20 +259,21 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      estaAtrasado ? '¡RETRASO DE ${minutosRetraso}M!' : pedido.estadoLabel.toUpperCase(),
+                      estaAtrasado ? 'RETRASO DE ${minutosRetraso}M' : pedido.estadoLabel.toUpperCase(),
                       style: TextStyle(
                         color: bannerColor,
-                        fontSize: 18,
+                        fontSize: 17,
                         fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
+                        letterSpacing: 0.5,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
-                      estaAtrasado ? 'Este pedido está tomando más tiempo del esperado.' : _estadoSubtitulo(pedido.estado),
+                      estaAtrasado ? 'Este pedido requiere atención inmediata.' : _estadoSubtitulo(pedido.estado),
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                        color: theme.colorScheme.onSurface.withOpacity(0.6),
                         fontSize: 12,
+                        height: 1.3,
                       ),
                     ),
                   ],
@@ -288,115 +285,122 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
 
         const SizedBox(height: 24),
 
-        // ── GPS Card (si el pedido tiene coordenadas) ────────────────
+        // ── Barra de Progreso ──
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: isDark ? [] : [
+              BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))
+            ],
+          ),
+          child: _ProgressoEstados(estadoActual: pedido.estado),
+        ),
+
+        const SizedBox(height: 24),
+
+        // ── GPS Card ──
         if (pedido.lat != null && pedido.lng != null)
           _GpsCard(lat: pedido.lat!, lng: pedido.lng!),
 
-        // Datos del pedido
+        // ── Tarjeta de Detalles Minimalista ──
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 12),
+          child: Text(
+            'Información',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: theme.colorScheme.onSurface.withOpacity(0.9),
+            ),
+          ),
+        ),
+        
         Container(
           decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
-            boxShadow: [
-              BoxShadow(
-                color: theme.colorScheme.shadow.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              )
+            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: isDark ? [] : [
+              BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))
             ],
           ),
           child: Column(
             children: [
               if (pedido.tipoPedido == 'mandadito') ...[
-                _InfoCard(titulo: '📦 Tipo', valor: 'Mandadito', grande: true),
-                if (pedido.origen != null) _InfoCard(titulo: '🛫 Origen', valor: pedido.origen!),
-                if (pedido.destino != null) _InfoCard(titulo: '🛬 Destino', valor: pedido.destino!),
-                _InfoCard(
-                  titulo: '💳 Pago',
-                  valor: pedido.metodoPago == 'transferencia' ? 'Transferencia' : 'Efectivo',
-                ),
-                _InfoCard(titulo: '💵 Precio', valor: '\$${pedido.precioEntrega ?? 0}'),
+                _InfoRow(icon: Icons.inventory_2_rounded, title: 'Tipo', value: 'Mandadito', isFirst: true),
+                if (pedido.origen != null) _InfoRow(icon: Icons.flight_takeoff_rounded, title: 'Origen', value: pedido.origen!),
+                if (pedido.destino != null) _InfoRow(icon: Icons.flight_land_rounded, title: 'Destino', value: pedido.destino!),
+                _InfoRow(icon: Icons.payment_rounded, title: 'Pago', value: pedido.metodoPago == 'transferencia' ? 'Transferencia' : 'Efectivo'),
+                _InfoRow(icon: Icons.attach_money_rounded, title: 'Precio', value: '\$${pedido.precioEntrega ?? 0}'),
               ] else if (pedido.restaurante != null && pedido.restaurante!.isNotEmpty) ...[
-                _InfoCard(titulo: '🍽️ Restaurante', valor: pedido.restaurante!, grande: true),
+                _InfoRow(icon: Icons.storefront_rounded, title: 'Restaurante', value: pedido.restaurante!, isFirst: true),
               ],
-              _InfoCard(
-                titulo: '📦 Descripción',
-                valor: pedido.descripcion,
-                grande: pedido.restaurante == null && pedido.tipoPedido != 'mandadito',
+              _InfoRow(
+                icon: Icons.subject_rounded, 
+                title: 'Descripción', 
+                value: pedido.descripcion, 
+                isFirst: pedido.restaurante == null && pedido.tipoPedido != 'mandadito'
               ),
               if (pedido.clienteNombre != null && pedido.clienteNombre!.isNotEmpty)
-                _InfoCard(titulo: '👤 Cliente', valor: pedido.clienteNombre!),
+                _InfoRow(icon: Icons.person_outline_rounded, title: 'Cliente', value: pedido.clienteNombre!),
               if (pedido.direccion != null && pedido.direccion!.isNotEmpty)
-                _InfoCard(titulo: '📍 Dirección', valor: pedido.direccion!),
-              _InfoCard(
-                titulo: '📱 Teléfono',
-                valor: '•••• •••• ${pedido.clienteTel.length >= 4 ? pedido.clienteTel.substring(pedido.clienteTel.length - 4) : pedido.clienteTel}',
+                _InfoRow(icon: Icons.location_on_outlined, title: 'Dirección', value: pedido.direccion!),
+              _InfoRow(
+                icon: Icons.phone_outlined, 
+                title: 'Teléfono', 
+                value: '•••• •••• ${pedido.clienteTel.length >= 4 ? pedido.clienteTel.substring(pedido.clienteTel.length - 4) : pedido.clienteTel}'
               ),
-              _InfoCard(
-                titulo: '🕐 Asignado',
-                valor: _formatDateTime(pedido.createdAt),
-              ),
-              _InfoCard(
-                titulo: '🔄 Última actualización',
-                valor: _formatDateTime(pedido.updatedAt),
-              ),
+              _InfoRow(icon: Icons.access_time_rounded, title: 'Asignado', value: _formatDateTime(pedido.createdAt)),
+              _InfoRow(icon: Icons.update_rounded, title: 'Actualizado', value: _formatDateTime(pedido.updatedAt), isLast: true),
             ],
           ),
         ),
 
-        const SizedBox(height: 28),
-
-        // Barra de progreso de estados
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
-          ),
-          child: _ProgressoEstados(estadoActual: pedido.estado),
-        ),
-
         const SizedBox(height: 32),
 
-        // Botón de acción
+        // ── Acción Principal ──
         if (pedido.siguienteEstado != null)
           _loading
-              ? Center(child: CircularProgressIndicator(color: theme.colorScheme.primary))
-              : ElevatedButton.icon(
+              ? const Center(child: CircularProgressIndicator())
+              : ElevatedButton(
                   onPressed: _avanzarEstado,
-                  icon: Icon(_estadoIcon(pedido.siguienteEstado!)),
-                  label: Text(
-                    pedido.siguienteEstadoLabel ?? 'Actualizar',
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _estadoColor(pedido.siguienteEstado!),
                     foregroundColor: Colors.white,
                     minimumSize: const Size(double.infinity, 60),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    elevation: 8,
-                    shadowColor: _estadoColor(pedido.siguienteEstado!).withOpacity(0.5),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    elevation: 0,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(_estadoIcon(pedido.siguienteEstado!), size: 24),
+                      const SizedBox(width: 12),
+                      Text(
+                        pedido.siguienteEstadoLabel ?? 'Actualizar',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 0.5),
+                      ),
+                    ],
                   ),
                 )
         else
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 20),
             decoration: BoxDecoration(
-              color: const Color(0xFF11998E).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF11998E).withOpacity(0.3)),
+              color: const Color(0xFF10B981).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFF10B981).withOpacity(0.2)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.check_circle_rounded, color: Color(0xFF11998E), size: 32),
+                const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 28),
                 const SizedBox(width: 12),
                 Text(
                   '¡Pedido Entregado!',
                   style: theme.textTheme.titleMedium?.copyWith(
-                    color: const Color(0xFF11998E),
+                    color: const Color(0xFF10B981),
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -406,65 +410,89 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
 
         const SizedBox(height: 16),
         
-        // Botón Reasignar (solo para administradores)
+        // ── Botón Reasignar ──
         if (isAdmin && pedido.estado != 'entregado' && pedido.estado != 'cancelado')
           OutlinedButton.icon(
             onPressed: _loading ? null : _reasignarRepartidor,
             icon: const Icon(Icons.sync_alt_rounded),
-            label: const Text('Reasignar Repartidor', style: TextStyle(fontWeight: FontWeight.bold)),
+            label: const Text('Reasignar Repartidor', style: TextStyle(fontWeight: FontWeight.w700)),
             style: OutlinedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              minimumSize: const Size(double.infinity, 56),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              side: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.1), width: 1.5),
             ),
           ),
 
-        const SizedBox(height: 100), // Extra padding para que no tape el BottomNavBar
+        const SizedBox(height: 100),
       ],
     );
   }
 }
 
-// ── Widgets auxiliares ────────────────────────────────────────────────────────
+// ── Widgets Auxiliares Rediseñados ──────────────────────────────────────────
 
-class _InfoCard extends StatelessWidget {
-  final String titulo;
-  final String valor;
-  final bool grande;
-  const _InfoCard({required this.titulo, required this.valor, this.grande = false});
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String value;
+  final bool isFirst;
+  final bool isLast;
+
+  const _InfoRow({
+    required this.icon,
+    required this.title,
+    required this.value,
+    this.isFirst = false,
+    this.isLast = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 2),
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(titulo,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant, 
-                  fontSize: 13, 
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              valor,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurface,
-                fontSize: grande ? 17 : 14,
-                fontWeight: grande ? FontWeight.w800 : FontWeight.w600,
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 2),
+                child: Icon(icon, size: 20, color: theme.colorScheme.primary.withOpacity(0.8)),
               ),
-            ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: theme.colorScheme.onSurface.withOpacity(0.4),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      value,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurface.withOpacity(0.9),
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+        if (!isLast)
+          Divider(height: 1, thickness: 1, color: theme.dividerColor.withOpacity(0.4), indent: 56, endIndent: 20),
+      ],
     );
   }
 }
@@ -474,61 +502,69 @@ class _ProgressoEstados extends StatelessWidget {
   const _ProgressoEstados({required this.estadoActual});
 
   static const _estados = ['asignado', 'recibido', 'en_camino', 'entregado'];
-  static const _labels = ['Asignado', 'Recibido', 'En Camino', 'Entregado'];
+  static const _labels = ['Asignado', 'Recibido', 'Camino', 'Entregado'];
+  static const _icons = [Icons.assignment_turned_in_rounded, Icons.storefront_rounded, Icons.two_wheeler_rounded, Icons.check_circle_rounded];
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final currentIdx = _estados.indexOf(estadoActual);
-    final inactiveColor = isDark ? Colors.white12 : Colors.black12;
+    final activeColor = theme.colorScheme.primary;
+    final inactiveColor = isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05);
 
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: List.generate(_estados.length, (i) {
         final done = i <= currentIdx;
+        final current = i == currentIdx;
+        
         return Expanded(
           child: Column(
             children: [
               Row(
                 children: [
-                  if (i > 0)
-                    Expanded(
-                      child: Container(
-                        height: 3,
-                        color: done ? const Color(0xFFFF6B35) : inactiveColor,
-                      ),
-                    ),
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: done ? const Color(0xFFFF6B35) : inactiveColor,
-                    ),
-                    child: Icon(
-                      done ? Icons.check : Icons.circle,
-                      size: done ? 16 : 8,
-                      color: Colors.white,
+                  Expanded(
+                    child: Container(
+                      height: 3,
+                      color: i == 0 ? Colors.transparent : (done ? activeColor : inactiveColor),
                     ),
                   ),
-                  if (i < _estados.length - 1)
-                    Expanded(
-                      child: Container(
-                        height: 3,
-                        color: i < currentIdx ? const Color(0xFFFF6B35) : inactiveColor,
-                      ),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    width: current ? 36 : 28,
+                    height: current ? 36 : 28,
+                    decoration: BoxDecoration(
+                      color: done ? activeColor : inactiveColor,
+                      shape: BoxShape.circle,
+                      boxShadow: current ? [
+                        BoxShadow(color: activeColor.withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 4))
+                      ] : null,
                     ),
+                    child: Icon(
+                      _icons[i],
+                      size: current ? 18 : 14,
+                      color: done ? Colors.white : theme.colorScheme.onSurface.withOpacity(0.3),
+                    ),
+                  ),
+                  Expanded(
+                    child: Container(
+                      height: 3,
+                      color: i == _estados.length - 1 ? Colors.transparent : (i < currentIdx ? activeColor : inactiveColor),
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                _labels[i],
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: done ? const Color(0xFFFF6B35) : theme.colorScheme.onSurfaceVariant,
-                  fontSize: 10,
-                  fontWeight: done ? FontWeight.bold : FontWeight.w500,
+              const SizedBox(height: 12),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 300),
+                style: TextStyle(
+                  fontFamily: theme.textTheme.bodyMedium?.fontFamily,
+                  color: current ? activeColor : (done ? theme.colorScheme.onSurface.withOpacity(0.8) : theme.colorScheme.onSurface.withOpacity(0.4)),
+                  fontSize: current ? 12 : 10,
+                  fontWeight: current ? FontWeight.w800 : (done ? FontWeight.w600 : FontWeight.w500),
                 ),
-                textAlign: TextAlign.center,
+                child: Text(_labels[i], textAlign: TextAlign.center),
               ),
             ],
           ),
@@ -542,11 +578,11 @@ class _ProgressoEstados extends StatelessWidget {
 
 Color _estadoColor(String estado) {
   switch (estado) {
-    case 'pendiente': return const Color(0xFFEF4444);
-    case 'asignado':  return const Color(0xFF60A5FA);
+    case 'pendiente': return const Color(0xFFEA580C);
+    case 'asignado':  return const Color(0xFF3B82F6);
     case 'recibido':  return const Color(0xFFF59E0B);
-    case 'en_camino': return const Color(0xFFFF6B35);
-    case 'entregado': return const Color(0xFF11998E);
+    case 'en_camino': return const Color(0xFF8B5CF6);
+    case 'entregado': return const Color(0xFF10B981);
     default:          return Colors.grey;
   }
 }
@@ -587,7 +623,7 @@ String _estadoSubtitulo(String estado) {
 String _formatDateTime(DateTime dt) {
   final d = '${dt.day.toString().padLeft(2,'0')}/${dt.month.toString().padLeft(2,'0')}/${dt.year}';
   final t = '${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}';
-  return '$d a las $t';
+  return '$d • $t';
 }
 
 // ── Tarjeta GPS ───────────────────────────────────────────────────────────────
@@ -611,45 +647,37 @@ class _GpsCard extends StatelessWidget {
     return GestureDetector(
       onTap: _abrirMapa,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 24),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: isDark 
-                ? [const Color(0xFF1A3A5C), const Color(0xFF0F2340)]
-                : [const Color(0xFFEFF6FF), const Color(0xFFDBEAFE)],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF3B82F6).withOpacity(isDark ? 0.4 : 0.2)),
+          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.2), width: 1.5),
         ),
         child: Row(
           children: [
             Container(
-              width: 48,
-              height: 48,
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: const Color(0xFF3B82F6).withOpacity(0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.location_on_rounded, color: Color(0xFF3B82F6), size: 28),
+              child: const Icon(Icons.near_me_rounded, color: Color(0xFF3B82F6), size: 28),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('📍 Ubicación GPS del cliente',
-                      style: theme.textTheme.titleSmall?.copyWith(color: isDark ? Colors.white : const Color(0xFF1E3A8A), fontWeight: FontWeight.w700, fontSize: 14)),
-                  const SizedBox(height: 2),
-                  Text('${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)}',
-                      style: theme.textTheme.bodySmall?.copyWith(color: isDark ? Colors.white70 : const Color(0xFF3B82F6), fontSize: 12, fontFamily: 'monospace')),
+                  Text('Ubicación de Entrega',
+                      style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E3A8A), fontWeight: FontWeight.w800, fontSize: 15)),
                   const SizedBox(height: 4),
-                  Text('TAP para abrir en Google Maps 🗺️',
-                      style: theme.textTheme.labelSmall?.copyWith(color: const Color(0xFF60A5FA), fontSize: 11, fontWeight: FontWeight.w700)),
+                  Text('Toca para abrir en Google Maps',
+                      style: TextStyle(color: const Color(0xFF3B82F6).withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
-            const Icon(Icons.open_in_new_rounded, color: Color(0xFF3B82F6), size: 20),
+            Icon(Icons.arrow_forward_ios_rounded, color: const Color(0xFF3B82F6).withOpacity(0.5), size: 16),
           ],
         ),
       ),

@@ -12,20 +12,27 @@ class DashboardService {
     final now = DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day).toUtc().toIso8601String();
     
-    // Obtenemos todos los pedidos que se crearon hoy y que NO están cancelados.
+    // Obtenemos todos los pedidos que se actualizaron hoy y que NO están cancelados.
     final response = await supabase
         .from('pedidos')
-        .select('id, precio_entrega, metodo_pago, estado')
-        .gte('created_at', startOfDay)
+        .select('id, precio_entrega, metodo_pago, estado, updated_at')
+        .gte('updated_at', startOfDay)
         .neq('estado', 'cancelado');
 
     final pedidos = response as List<dynamic>;
 
-    int serviciosHoy = pedidos.length;
+    int serviciosHoy = 0;
     double gananciasHoy = 0.0;
     int enviosGratisHoy = 0;
 
     for (var p in pedidos) {
+      final estado = p['estado'] as String? ?? '';
+      
+      // Solo contar en el dashboard los pedidos que ya fueron entregados.
+      if (estado != 'entregado') continue;
+
+      serviciosHoy++;
+
       final precio = (p['precio_entrega'] as num?)?.toDouble() ?? 0.0;
       final metodoPago = p['metodo_pago'] as String? ?? '';
       
@@ -33,7 +40,6 @@ class DashboardService {
       if (precio == 0 || metodoPago.toLowerCase() == 'billetera') {
         enviosGratisHoy++;
       } else {
-        // Solo sumar a las ganancias si se completaron o están en curso, y no son gratis.
         gananciasHoy += precio;
       }
     }
@@ -52,14 +58,51 @@ class DashboardService {
     
     final response = await supabase
         .from('pedidos')
-        .select('id, precio_entrega, estado')
+        .select('id, precio_entrega, estado, updated_at')
         .eq('repartidor_id', repartidorId)
-        .gte('created_at', startOfDay)
+        .gte('updated_at', startOfDay)
         .neq('estado', 'cancelado');
 
     final pedidos = response as List<dynamic>;
+    int servicios = 0;
+    
+    for (var p in pedidos) {
+      if (p['estado'] == 'entregado') {
+        servicios++;
+      }
+    }
+    
     return {
-      'servicios': pedidos.length,
+      'servicios': servicios,
     };
+  }
+
+  /// Obtiene los restaurantes más pedidos de la última semana (Top 5)
+  Future<List<Map<String, dynamic>>> getTopRestaurantes() async {
+    final now = DateTime.now();
+    final sevenDaysAgo = now.subtract(const Duration(days: 7)).toUtc().toIso8601String();
+
+    final response = await supabase
+        .from('pedidos')
+        .select('restaurante')
+        .gte('created_at', sevenDaysAgo)
+        .neq('estado', 'cancelado')
+        .not('restaurante', 'is', 'null');
+
+    final pedidos = response as List<dynamic>;
+    final map = <String, int>{};
+
+    for (var p in pedidos) {
+      final rest = (p['restaurante'] as String).trim();
+      if (rest.isEmpty) continue;
+      map[rest] = (map[rest] ?? 0) + 1;
+    }
+
+    final sorted = map.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    
+    return sorted.take(5).map((e) => {
+      'nombre': e.key,
+      'pedidos': e.value,
+    }).toList();
   }
 }
