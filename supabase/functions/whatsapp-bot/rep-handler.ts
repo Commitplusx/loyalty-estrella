@@ -140,12 +140,15 @@ export async function handleRepButtons(
   try {
     if (tipo === 'CUPON') {
       const codigo = rest.slice(1).join('_')
-      const { data: cupon } = await supabase.from('cupones')
-        .update({ estado: 'usado', used_at: new Date().toISOString() })
-        .eq('codigo', codigo).eq('estado', 'activo').select().maybeSingle()
-      if (cupon) {
-        if (cupon.cliente_tel) {
-          await supabase.from('clientes').update({ cupon_activo: null }).eq('telefono', cupon.cliente_tel)
+      // BUG-C4 fix: was using direct UPDATE which could race with the modern RPC path.
+      // Now uses the same usar_cupon RPC as the REP_CMD_CUPON flow, guaranteeing
+      // idempotency regardless of which path processes the coupon first.
+      const { data, error } = await (supabase as any).rpc('usar_cupon', { p_codigo: codigo })
+      if (error) {
+        await sendWA(fromPhone, `❌ Error interno al procesar el cupón: ${error.message}`)
+      } else if (data?.ok) {
+        if (data.cliente_tel) {
+          await supabase.from('clientes').update({ cupon_activo: null }).eq('telefono', data.cliente_tel)
         }
         await sendWA(fromPhone, `✅ Cupón *${codigo}* marcado como usado. ¡Buen trabajo!`)
         if (ADMIN_PHONE_MAIN) await sendWA(ADMIN_PHONE_MAIN, `🎟️ [OP] Repartidor marcó cupón ${codigo} como usado.`)
@@ -154,6 +157,7 @@ export async function handleRepButtons(
       }
       return true
     }
+
 
     if (tipo === 'ACEPTAR') {
       const pedidoId = rest.slice(1).join('_')

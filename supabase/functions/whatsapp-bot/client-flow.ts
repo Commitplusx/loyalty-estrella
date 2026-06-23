@@ -44,15 +44,6 @@ export async function handleClientFlow(
     .select('nombre, puntos, es_vip, reputacion, saldo_billetera, envios_totales, rango, acepta_terminos, notas_crm')
     .eq('telefono', from10).limit(1).maybeSingle()
 
-  let ubicacionesGuardadas: any[] = []
-  if (clienteDB?.acepta_terminos === true) {
-    const { data: ubiData } = await supabase.from('cliente_ubicaciones')
-      .select('tipo, colonia_nombre, lat, lng')
-      .eq('cliente_telefono', from10)
-      .not('tipo', 'in', '(origen,destino)')
-    if (ubiData) ubicacionesGuardadas = ubiData
-  }
-
   // ── Embudo Inicial: número desconocido ──
   if (!clienteDB || clienteDB.acepta_terminos === false) {
     await sendInteractiveButtons(
@@ -65,6 +56,16 @@ export async function handleClientFlow(
     )
     return new Response('OK', { status: 200 })
   }
+
+  // BUG-C5 fix: moved ubicaciones query to here, AFTER the acepta_terminos guard.
+  // Previously it ran for every client including those without T&C, wasting a DB round-trip
+  // since the result was discarded in the early-return block above.
+  let ubicacionesGuardadas: any[] = []
+  const { data: ubiData } = await supabase.from('cliente_ubicaciones')
+    .select('tipo, colonia_nombre, lat, lng')
+    .eq('cliente_telefono', from10)
+    .not('tipo', 'in', '(origen,destino)')
+  if (ubiData) ubicacionesGuardadas = ubiData
 
   // ── Interceptor para el Mesero Virtual (Comercio Conversacional) [DESACTIVADO] ──
   /*

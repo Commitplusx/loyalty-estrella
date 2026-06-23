@@ -67,7 +67,15 @@ export async function handleButtonEvent(
   if (esAdmin && buttonId.startsWith('cmd_lluvia_')) {
     const recargoText = buttonId.replace('cmd_lluvia_', '')
     const recargo = parseInt(recargoText, 10)
-    
+
+    // BUG-C2 fix: validate parseInt result before writing to DB.
+    // A malformed buttonId (e.g. cmd_lluvia_abc) would store NaN, causing
+    // every mandadito quote to return '$NaN' to the client.
+    if (isNaN(recargo) || recargo < 0) {
+      await sendWA(fromPhone, '⚠️ Valor de recargo inválido. No se guardó ningún cambio.')
+      return new Response('OK', { status: 200 })
+    }
+
     const { data: config } = await supabase.from('app_config').select('configuracion_precios').eq('id', 'default').single()
     const currentConfig = config?.configuracion_precios || {}
 

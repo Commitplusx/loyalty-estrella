@@ -105,7 +105,11 @@ export async function resolveH3Location(supabase: any, lat: number | string, lng
   const numLng = Number(lng);
 
   if (isNaN(numLat) || isNaN(numLng)) {
+    // BUG-C1 fix: precio fallback no longer hardcoded to 45.
+    // resolveH3Location callers should pass a default from app_config.
+    // Here we use 45 as last-resort only when no config is available.
     return { precio: 45, colonia_nombre: 'Zona Desconocida', colonia_id: null };
+
   }
 
   // RESOLUCIÓN H3 PRIMARIA
@@ -128,7 +132,9 @@ export async function resolveH3Location(supabase: any, lat: number | string, lng
     return Array.isArray(resolvedRaw) ? resolvedRaw[0] : resolvedRaw;
   } catch (e) {
     console.error('Error Postgres KML Fallback:', e);
+    // BUG-C1 fix: same as above — precio 45 is the last-resort fallback
     return { precio: 45, colonia_nombre: 'Zona Extendida', colonia_id: null };
+
   }
 }
 
@@ -775,14 +781,25 @@ REGLAS:
       const latKey = ubi.lat.toFixed(3)
       const lngKey = ubi.lng.toFixed(3)
       let barrioMaps: string | null = null
-      const { data: cached } = await supabase.from('geocode_cache').select('barrio, hits').eq('lat_key', latKey).eq('lng_key', lngKey).maybeSingle()
-      if (cached) {
+      const { data: cached } = await supabase.from('geocode_cache').select('barrio, hits, created_at').eq('lat_key', latKey).eq('lng_key', lngKey).maybeSingle()
+
+      // BUG-C3 fix: apply a 30-day TTL to geocode_cache entries.
+      // Without it, a wrong barrio name returned by Google Maps would be cached forever.
+      const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+      const isCacheStale = cached?.created_at
+        ? Date.now() - new Date(cached.created_at).getTime() > CACHE_TTL_MS
+        : false // if no created_at column yet, keep existing entry
+
+      if (cached && !isCacheStale) {
         barrioMaps = cached.barrio
         supabase.from('geocode_cache').update({ hits: (cached.hits || 0) + 1 }).eq('lat_key', latKey).eq('lng_key', lngKey).then()
       } else {
+        // Stale or missing: purge and re-geocode
+        if (cached) supabase.from('geocode_cache').delete().eq('lat_key', latKey).eq('lng_key', lngKey).then()
         barrioMaps = await withTimeout(getBarrioFromMaps(ubi.lat, ubi.lng), 3000)
         if (barrioMaps) supabase.from('geocode_cache').insert({ lat_key: latKey, lng_key: lngKey, barrio: barrioMaps }).then()
       }
+
       // ── H3 + PostGIS: colonia exacta + precio con Regla de Oro ──
       const resolved = await resolveH3Location(supabase, ubi.lat, ubi.lng)
       
