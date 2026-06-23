@@ -1006,9 +1006,38 @@ export async function handleButtonEvent(
     return await handleCalificacion(supabase, fromPhone, buttonId)
   }
 
-  // ── Términos y Condiciones ──
+  // ── Términos y Condiciones / Intercepción de Confirmación de Pedido ──
   const upId = buttonId.toUpperCase()
-  if (upId === 'ACEPTAR_TERMINOS' || upId === 'RECHAZAR_TERMINOS' || upId === 'ACEPTAR' || upId === 'RECHAZAR') {
+  if (upId === 'ACEPTAR' || upId === 'RECHAZAR' || upId === 'ACEPTAR_TERMINOS' || upId === 'RECHAZAR_TERMINOS') {
+    
+    // 1. Revisar si el cliente está respondiendo a una confirmación de pedido activo
+    if (upId === 'ACEPTAR' || upId === 'RECHAZAR') {
+      const { data: pedidoActivo } = await supabase
+        .from('pedidos')
+        .select('id, descripcion, restaurante')
+        .eq('cliente_tel', from10)
+        .in('estado', ['asignado', 'recibido'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (pedidoActivo) {
+        if (upId === 'ACEPTAR') {
+          const detalle = pedidoActivo.descripcion || 'tus productos';
+          const rest = pedidoActivo.restaurante || 'el restaurante';
+          const link = `https://www.app-estrella.shop/success?ticket=${pedidoActivo.id}`;
+          const text = `✅ *Pedido Confirmado*\n\nAquí tienes el detalle de tu orden en *${rest}*:\n_${detalle}_\n\nRevisa el estado de tu pedido aquí: ${link}`;
+          await sendWA(fromPhone, text);
+        } else {
+          // RECHAZAR
+          await supabase.from('pedidos').update({ estado: 'cancelado' }).eq('id', pedidoActivo.id);
+          await sendWA(fromPhone, `❌ Tu pedido en *${pedidoActivo.restaurante || 'el restaurante'}* ha sido cancelado.`);
+        }
+        return new Response('OK', { status: 200 });
+      }
+    }
+
+    // 2. Si no hay pedido activo, asumimos que es el flujo de Términos y Condiciones
     return await handleTerminos(supabase, fromPhone, buttonId)
   }
 

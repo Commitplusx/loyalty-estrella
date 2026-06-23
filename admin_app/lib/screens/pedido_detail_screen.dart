@@ -224,6 +224,18 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
         ? const Color(0xFFEA580C) 
         : color;
 
+    double? finalLat = pedido.lat;
+    double? finalLng = pedido.lng;
+
+    if (finalLat == null || finalLng == null) {
+      final regex = RegExp(r'https:\/\/www\.google\.com\/maps\?q=([0-9.-]+),([0-9.-]+)');
+      final match = regex.firstMatch(pedido.descripcion ?? '');
+      if (match != null) {
+        finalLat = double.tryParse(match.group(1)!);
+        finalLng = double.tryParse(match.group(2)!);
+      }
+    }
+
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       physics: const BouncingScrollPhysics(),
@@ -301,8 +313,8 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
         const SizedBox(height: 24),
 
         // ── GPS Card ──
-        if (pedido.lat != null && pedido.lng != null)
-          _GpsCard(lat: pedido.lat!, lng: pedido.lng!),
+        if (finalLat != null && finalLng != null)
+          _GpsCard(lat: finalLat, lng: finalLng),
 
         // ── Tarjeta de Detalles Minimalista ──
         Padding(

@@ -20,6 +20,10 @@ serve(async (req) => {
       return new Response(JSON.stringify({ message: "No es un pedido pendiente." }), { status: 200 });
     }
 
+    if (record.tipo_pedido === "tienda") {
+      return new Response(JSON.stringify({ message: "Es un pedido para tienda, no se envía notificación al admin/repartidor." }), { status: 200 });
+    }
+
     if (payload.type === "UPDATE" && oldRecord && oldRecord.estado === "pendiente") {
       return new Response(JSON.stringify({ message: "El pedido ya era pendiente, se ignoró." }), { status: 200 });
     }
@@ -50,7 +54,7 @@ serve(async (req) => {
       android: {
         priority: "high" as const,
         notification: {
-          channelId: "high_importance_channel",
+          channelId: "high_importance_channel_v2",
           sound: "alarm", // Reproducirá res/raw/alarm.ogg nativamente
         },
       },

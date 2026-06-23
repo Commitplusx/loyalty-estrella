@@ -21,7 +21,7 @@ class MainActivity: FlutterFragmentActivity() {
                 .build()
 
             val channel = NotificationChannel(
-                "high_importance_channel",
+                "high_importance_channel_v2",
                 "Notificaciones de Pedidos",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {

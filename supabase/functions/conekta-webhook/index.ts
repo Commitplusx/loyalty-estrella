@@ -135,7 +135,7 @@ serve(async (req) => {
     const { data: pedidoData, error: updateError } = await supabase
       .from('pedidos')
       .update({ 
-        estado: 'asignado',
+        estado: 'pendiente',
         estado_pago: 'pagado',
         updated_at: new Date().toISOString()
       })
