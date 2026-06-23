@@ -60,11 +60,19 @@ final repartidoresListProvider = StreamProvider.autoDispose<List<Map<String, dyn
   yield networkData;
 });
 
-class PedidosScreen extends ConsumerWidget {
+class PedidosScreen extends ConsumerStatefulWidget {
   const PedidosScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PedidosScreen> createState() => _PedidosScreenState();
+}
+
+class _PedidosScreenState extends ConsumerState<PedidosScreen> {
+  /// null = Todos, 'comida' | 'mandadito' | 'restaurante_delivery'
+  String? _sourceFilter;
+
+  @override
+  Widget build(BuildContext context) {
     final pedidosAsync = ref.watch(pedidosActivosProvider);
     final isDark = ref.watch(themeProvider) == ThemeMode.dark;
     final bg = Theme.of(context).scaffoldBackgroundColor;
@@ -94,6 +102,15 @@ class PedidosScreen extends ConsumerWidget {
           ),
           const SizedBox(width: 8),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: _SourceFilterBar(
+            selected: _sourceFilter,
+            onChanged: (val) => setState(() => _sourceFilter = val),
+            isDark: isDark,
+            primary: primary,
+          ),
+        ),
       ),
       floatingActionButton: !ref.watch(isAdminProvider) ? null : Padding(
         padding: const EdgeInsets.only(bottom: 100.0, right: 8.0),
@@ -130,7 +147,12 @@ class PedidosScreen extends ConsumerWidget {
             ],
           ),
         ),
-        data: (pedidos) {
+        data: (allPedidos) {
+          // Aplicar filtro por tipo de pedido
+          final pedidos = _sourceFilter == null
+              ? allPedidos
+              : allPedidos.where((p) => p.tipoPedido == _sourceFilter).toList();
+
           if (pedidos.isEmpty) {
             return Center(
               child: Column(
@@ -144,13 +166,21 @@ class PedidosScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'No hay pedidos activos en este momento.',
+                    _sourceFilter == null
+                        ? 'No hay pedidos activos en este momento.'
+                        : 'No hay pedidos de este tipo.',
                     style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 14),
                   ),
                 ],
               ),
             );
           }
+
+          // Conteos por tipo (para el banner)
+          final countWeb = allPedidos.where((p) => p.tipoPedido == 'comida').length;
+          final countMandadito = allPedidos.where((p) => p.tipoPedido == 'mandadito').length;
+          final countRest = allPedidos.where((p) => p.tipoPedido == 'restaurante_delivery').length;
+          final tiposPresentes = [if (countWeb > 0) 'comida', if (countMandadito > 0) 'mandadito', if (countRest > 0) 'restaurante_delivery'];
 
           // Agrupar por estado para mostrar secciones
           final pendientes = pedidos.where((p) => p.estado == 'pendiente').toList();
@@ -165,7 +195,10 @@ class PedidosScreen extends ConsumerWidget {
               // Banner de resumen minimalista
               Padding(
                 padding: const EdgeInsets.only(bottom: 24, top: 8),
-                child: Row(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
                       '${pedidos.length} Activos',
@@ -176,23 +209,17 @@ class PedidosScreen extends ConsumerWidget {
                         letterSpacing: -0.3,
                       ),
                     ),
-                    const SizedBox(width: 12),
                     if (enCamino.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFF6B35).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '${enCamino.length} en camino',
-                          style: const TextStyle(
-                            color: Color(0xFFFF6B35), 
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
+                      _MiniCountChip(label: '${enCamino.length} en camino', color: const Color(0xFFFF6B35)),
+                    // Chips de tipo solo cuando hay más de 1 tipo presente
+                    if (tiposPresentes.length > 1) ...[
+                      if (countWeb > 0)
+                        _MiniCountChip(label: '🌐 $countWeb Web', color: const Color(0xFF3B82F6)),
+                      if (countMandadito > 0)
+                        _MiniCountChip(label: '🛵 $countMandadito Mandadito', color: const Color(0xFFF97316)),
+                      if (countRest > 0)
+                        _MiniCountChip(label: '🏪 $countRest Rest.', color: const Color(0xFF10B981)),
+                    ],
                   ],
                 ),
               ),
@@ -403,15 +430,24 @@ class _PedidoTile extends StatelessWidget {
                             style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 11, fontWeight: FontWeight.w500),
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            origenStr,
-                            style: TextStyle(
-                              color: onSurface.withValues(alpha: 0.9),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  origenStr,
+                                  style: TextStyle(
+                                    color: onSurface.withValues(alpha: 0.9),
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 15,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              _SourceBadge(tipoPedido: pedido.tipoPedido),
+                            ],
                           ),
                         ],
                       ),
@@ -473,6 +509,130 @@ class _PedidoTile extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Source badge ─────────────────────────────────────────────────────────────
+
+class _SourceBadge extends StatelessWidget {
+  final String tipoPedido;
+  const _SourceBadge({required this.tipoPedido});
+
+  @override
+  Widget build(BuildContext context) {
+    final (String label, Color color) = switch (tipoPedido) {
+      'mandadito'            => ('🛵 Mandadito', const Color(0xFFF97316)),
+      'restaurante_delivery' => ('🏪 Restaurante', const Color(0xFF10B981)),
+      _                      => ('🌐 Web', const Color(0xFF3B82F6)),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 0.8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.1,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Mini count chip (banner) ──────────────────────────────────────────────────
+
+class _MiniCountChip extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _MiniCountChip({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Source filter bar (AppBar bottom) ─────────────────────────────────────────
+
+class _SourceFilterBar extends StatelessWidget {
+  final String? selected;
+  final ValueChanged<String?> onChanged;
+  final bool isDark;
+  final Color primary;
+
+  const _SourceFilterBar({
+    required this.selected,
+    required this.onChanged,
+    required this.isDark,
+    required this.primary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final chips = [
+      (null,                    'Todos',         ''),
+      ('comida',                '🌐 Web',         ''),
+      ('mandadito',             '🛵 Mandadito',   ''),
+      ('restaurante_delivery',  '🏪 Restaurante', ''),
+    ];
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        itemCount: chips.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final (value, label, _) = chips[i];
+          final isActive = selected == value;
+          return GestureDetector(
+            onTap: () => onChanged(isActive ? null : value),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+              decoration: BoxDecoration(
+                color: isActive
+                    ? (isDark ? Colors.white : Colors.black)
+                    : (isDark ? Colors.white.withValues(alpha: 0.07) : Colors.black.withValues(alpha: 0.06)),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: isActive
+                      ? (isDark ? Colors.black : Colors.white)
+                      : (isDark ? Colors.white70 : Colors.black54),
+                  fontSize: 13,
+                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
