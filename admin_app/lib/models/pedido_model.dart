@@ -99,6 +99,7 @@ class PedidoModel {
       case 'recibido':   return 'Recibido';
       case 'en_camino':  return 'En Camino';
       case 'entregado':  return 'Entregado';
+      case 'cancelado':  return 'Cancelado'; // BUG 7 fix
       default:           return estado;
     }
   }

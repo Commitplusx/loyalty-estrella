@@ -141,7 +141,7 @@ serve(async (req) => {
       })
       .eq('wb_message_id', pedidoId)
       .eq('estado', 'pendiente_pago')  // Guard: evitar procesamiento doble
-      .select('id, cliente_nombre, restaurante, descripcion, total, direccion')
+      .select('id, cliente_nombre, restaurante, restaurante_id, descripcion, total, direccion')
       .maybeSingle()  // maybeSingle en vez de single para no lanzar error si no hay filas
 
     if (updateError) {
@@ -158,12 +158,24 @@ serve(async (req) => {
 
     console.log(`[${requestId}] ✅ Pedido ${pedidoId} marcado como asignado`)
 
-    // ── NOTIFICACIÓN AL RESTAURANTE ───────────────────────────
-    const { data: restData } = await supabase
-      .from('restaurantes')
-      .select('telefono')
-      .ilike('nombre', restauranteNombre)
-      .single()
+    // BUG 2 fix: look up restaurant by ID if available, fall back to name search
+    let restData: any = null
+    if (pedidoData.restaurante_id) {
+      const { data } = await supabase
+        .from('restaurantes')
+        .select('telefono')
+        .eq('id', pedidoData.restaurante_id)
+        .maybeSingle()
+      restData = data
+    }
+    if (!restData && restauranteNombre) {
+      const { data } = await supabase
+        .from('restaurantes')
+        .select('telefono')
+        .ilike('nombre', `%${restauranteNombre}%`)
+        .maybeSingle()
+      restData = data
+    }
 
     const restTelefono = restData?.telefono || null
 

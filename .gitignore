@@ -33,3 +33,4 @@ restaurantes-estrella/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+estrella-app-admin-firebase-adminsdk*.json

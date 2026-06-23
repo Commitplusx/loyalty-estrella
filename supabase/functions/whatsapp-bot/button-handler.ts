@@ -1014,9 +1014,9 @@ export async function handleButtonEvent(
     if (upId === 'ACEPTAR' || upId === 'RECHAZAR') {
       const { data: pedidoActivo } = await supabase
         .from('pedidos')
-        .select('id, descripcion, restaurante')
+        .select('id, wb_message_id, descripcion, restaurante')
         .eq('cliente_tel', from10)
-        .in('estado', ['asignado', 'recibido'])
+        .in('estado', ['pendiente', 'asignado', 'recibido'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -1025,7 +1025,9 @@ export async function handleButtonEvent(
         if (upId === 'ACEPTAR') {
           const detalle = pedidoActivo.descripcion || 'tus productos';
           const rest = pedidoActivo.restaurante || 'el restaurante';
-          const link = `https://www.app-estrella.shop/success?ticket=${pedidoActivo.id}`;
+          // BUG 3 fix: use wb_message_id (ticket corto) and correct URL params
+          const ticketParam = pedidoActivo.wb_message_id || pedidoActivo.id;
+          const link = `https://www.app-estrella.shop/success?pedido=${ticketParam}&success=true`;
           const text = `✅ *Pedido Confirmado*\n\nAquí tienes el detalle de tu orden en *${rest}*:\n_${detalle}_\n\nRevisa el estado de tu pedido aquí: ${link}`;
           await sendWA(fromPhone, text);
         } else {
