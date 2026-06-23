@@ -200,6 +200,33 @@ function extraerReferencias(ubi1?: UbicacionMandadito, ubi2?: UbicacionMandadito
 
 
 
+// BUG-A1 fix: moved to module scope (was incorrectly nested inside avanzarFlujoMandadito)
+async function extraerOrigenDestinoIA(texto: string): Promise<{ origen: string|null, destino: string|null, nombreCortoOrigen: string|null }> {
+  try {
+    const key = Deno.env.get('DEEPSEEK_API_KEY') || Deno.env.get('OPENAI_API_KEY')
+    if (!key) return { origen: null, destino: null, nombreCortoOrigen: null }
+    const url = Deno.env.get('DEEPSEEK_API_KEY') ? 'https://api.deepseek.com/chat/completions' : 'https://api.openai.com/v1/chat/completions'
+    const model = Deno.env.get('DEEPSEEK_API_KEY') ? 'deepseek-chat' : 'gpt-4o-mini'
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({
+        model,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: 'Extrae "origen" (de dónde recogen) y "destino" (a dónde entregan) de este mensaje de mandadito. Además, extrae un "nombreCortoOrigen" (solo el lugar, ej. "Domino\'s", "Aurrera", "Casa"). Si solo hay un lugar, ponlo en "origen" y "destino" null. Responde en JSON estricto.' },
+          { role: 'user', content: texto }
+        ]
+      })
+    })
+    const json = await res.json()
+    const content = json.choices[0].message.content.trim().replace(/```json/gi, '').replace(/```/g, '')
+    return JSON.parse(content)
+  } catch (e) {
+    return { origen: null, destino: null, nombreCortoOrigen: null }
+  }
+}
+
 // Avanza la máquina de estados cuando el cliente responde
 export async function avanzarFlujoMandadito(supabase: any, fromPhone: string, from10: string, currentState: any, ubicacionRecibida: UbicacionMandadito) {
   
@@ -341,32 +368,6 @@ export async function avanzarFlujoMandadito(supabase: any, fromPhone: string, fr
     await cotizarMandaditoFinal(supabase, fromPhone, from10, originalState)
     return
   }
-
-async function extraerOrigenDestinoIA(texto: string): Promise<{ origen: string|null, destino: string|null, nombreCortoOrigen: string|null }> {
-  try {
-    const key = Deno.env.get('DEEPSEEK_API_KEY') || Deno.env.get('OPENAI_API_KEY')
-    if (!key) return { origen: null, destino: null, nombreCortoOrigen: null }
-    const url = Deno.env.get('DEEPSEEK_API_KEY') ? 'https://api.deepseek.com/chat/completions' : 'https://api.openai.com/v1/chat/completions'
-    const model = Deno.env.get('DEEPSEEK_API_KEY') ? 'deepseek-chat' : 'gpt-4o-mini'
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify({
-        model,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: 'Extrae "origen" (de dónde recogen) y "destino" (a dónde entregan) de este mensaje de mandadito. Además, extrae un "nombreCortoOrigen" (solo el lugar, ej. "Domino\'s", "Aurrera", "Casa"). Si solo hay un lugar, ponlo en "origen" y "destino" null. Responde en JSON estricto.' },
-          { role: 'user', content: texto }
-        ]
-      })
-    })
-    const json = await res.json()
-    const content = json.choices[0].message.content.trim().replace(/```json/gi, '').replace(/```/g, '')
-    return JSON.parse(content)
-  } catch (e) {
-    return { origen: null, destino: null, nombreCortoOrigen: null }
-  }
-}
 
 
   if (currentState.step === 1) {

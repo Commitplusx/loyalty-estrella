@@ -106,13 +106,18 @@ Deno.serve(async (req: Request) => {
     const rateLimitKey = `rate_limit_${from10}`
     const { data: rlData } = await supabase.from('bot_memory').select('history').eq('phone', rateLimitKey).maybeSingle()
     let timestamps = ((rlData?.history as number[]) || []).filter((t: number) => t > Date.now() - 60000)
-    if (timestamps.length >= 12) {
-      if (timestamps.length === 12) await sendWA(fromPhone, `Estas enviando demasiados mensajes. Espera 1 minuto.`)
+    // BUG-A3 fix: >= 13 blocks (message is dropped). At exactly 12 we warn but
+    // still process the current message. Previous code warned on 12 AND dropped
+    // it, which silently lost the user's request with no bot response.
+    if (timestamps.length >= 13) {
+      if (timestamps.length === 13) await sendWA(fromPhone, `Estas enviando demasiados mensajes. Espera 1 minuto.`)
       timestamps.push(Date.now())
       await supabase.from('bot_memory').upsert({ phone: rateLimitKey, history: timestamps, updated_at: new Date().toISOString() })
       return new Response('OK', { status: 200 })
     }
     timestamps.push(Date.now())
+    if (timestamps.length === 12) await sendWA(fromPhone, `⚠️ Vas muy rápido. Si sigues enviando mensajes en el siguiente minuto, el bot pausará temporalmente.`)
+
     await supabase.from('bot_memory').upsert({ phone: rateLimitKey, history: timestamps, updated_at: new Date().toISOString() })
 
     // ── ROLES ──

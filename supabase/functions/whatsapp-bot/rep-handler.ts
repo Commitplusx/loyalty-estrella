@@ -480,23 +480,26 @@ export async function handleRepMessage(
       return new Response('OK', { status: 200 })
     }
 
-    // Flujos de dos pasos: el estado guarda el cmd intermedio
-    await clearRepState(supabase, from10)
+    // BUG-A2 fix: removed premature global clearRepState().
+    // Each branch clears state itself. Multi-step commands (LOYALTY_NOMBRE,
+    // LOYALTY_COLONIA, DIRECCION_NUEVA, NOREGISTRADO_NOMBRE) need the state
+    // intact when ejecutarComando reads it via getRepState() internally.
 
-    // INFO, QR, SCORE_TEL, NOREGISTRADO_TEL: el valor es un teléfono
-    if (cmd === 'INFO')             { await ejecutarComando(supabase, fromPhone, from10, 'INFO', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
-    if (cmd === 'QR')               { await ejecutarComando(supabase, fromPhone, from10, 'QR', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
-    if (cmd === 'SCORE')            { await ejecutarComando(supabase, fromPhone, from10, 'SCORE_TEL', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
-    if (cmd === 'NOREGISTRADO')     { await ejecutarComando(supabase, fromPhone, from10, 'NOREGISTRADO_TEL', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
-    if (cmd === 'NOREGISTRADO_NOMBRE') { await setRepState(supabase, from10, repState); await ejecutarComando(supabase, fromPhone, from10, 'NOREGISTRADO_NOMBRE', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
-    if (cmd === 'DIRECCION')        { await ejecutarComando(supabase, fromPhone, from10, 'DIRECCION_TEL', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
-    if (cmd === 'DIRECCION_NUEVA')  { await setRepState(supabase, from10, repState); await ejecutarComando(supabase, fromPhone, from10, 'DIRECCION_NUEVA', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
-    if (cmd === 'CUPON')            { await ejecutarComando(supabase, fromPhone, from10, 'CUPON', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
-    if (cmd === 'SOS')              { await ejecutarComando(supabase, fromPhone, from10, 'SOS', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
-    // Loyalty flujo multi-paso
-    if (cmd === 'LOYALTY')         { await ejecutarComando(supabase, fromPhone, from10, 'LOYALTY', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
-    if (cmd === 'LOYALTY_NOMBRE')  { await setRepState(supabase, from10, repState); await ejecutarComando(supabase, fromPhone, from10, 'LOYALTY_NOMBRE', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
-    if (cmd === 'LOYALTY_COLONIA') { await setRepState(supabase, from10, repState); await ejecutarComando(supabase, fromPhone, from10, 'LOYALTY_COLONIA', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+    // Single-step commands: clear state then execute
+    if (cmd === 'INFO')         { await clearRepState(supabase, from10); await ejecutarComando(supabase, fromPhone, from10, 'INFO', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+    if (cmd === 'QR')           { await clearRepState(supabase, from10); await ejecutarComando(supabase, fromPhone, from10, 'QR', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+    if (cmd === 'SCORE')        { await clearRepState(supabase, from10); await ejecutarComando(supabase, fromPhone, from10, 'SCORE_TEL', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+    if (cmd === 'NOREGISTRADO') { await clearRepState(supabase, from10); await ejecutarComando(supabase, fromPhone, from10, 'NOREGISTRADO_TEL', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+    if (cmd === 'DIRECCION')    { await clearRepState(supabase, from10); await ejecutarComando(supabase, fromPhone, from10, 'DIRECCION_TEL', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+    if (cmd === 'CUPON')        { await clearRepState(supabase, from10); await ejecutarComando(supabase, fromPhone, from10, 'CUPON', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+    if (cmd === 'SOS')          { await clearRepState(supabase, from10); await ejecutarComando(supabase, fromPhone, from10, 'SOS', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+    if (cmd === 'LOYALTY')      { await clearRepState(supabase, from10); await ejecutarComando(supabase, fromPhone, from10, 'LOYALTY', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+
+    // Multi-step commands: preserve state (ejecutarComando reads it with getRepState internally)
+    if (cmd === 'NOREGISTRADO_NOMBRE') { await ejecutarComando(supabase, fromPhone, from10, 'NOREGISTRADO_NOMBRE', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+    if (cmd === 'DIRECCION_NUEVA')     { await ejecutarComando(supabase, fromPhone, from10, 'DIRECCION_NUEVA', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+    if (cmd === 'LOYALTY_NOMBRE')      { await ejecutarComando(supabase, fromPhone, from10, 'LOYALTY_NOMBRE', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
+    if (cmd === 'LOYALTY_COLONIA')     { await ejecutarComando(supabase, fromPhone, from10, 'LOYALTY_COLONIA', trimCmd, isRep.nombre); return new Response('OK', { status: 200 }) }
   }
 
   // ── Comandos de texto directos (retrocompatibilidad) ──────────────────────
