@@ -48,10 +48,10 @@ export async function handleClientFlow(
   if (!clienteDB || clienteDB.acepta_terminos === false) {
     await sendInteractiveButtons(
       fromPhone,
-      `🌟 *¡Hola! Bienvenido a Estrella Delivery.*\n\nSomos la mejor plataforma para pedir comida de tus lugares favoritos y ganar recompensas 🍕🛵\n\nPara darte la atención que mereces, cuéntanos:\n*¿Quieres pedir comida o eres un restaurante aliado?*`,
+      `🌟 *¡Hola! Bienvenido a Estrella Delivery.*\n\n¿Eres cliente o restaurante?`,
       [
-        { id: 'REG_TIPO_CLIENTE',     title: '🍔 Pedir Comida' },
-        { id: 'REG_TIPO_RESTAURANTE', title: '🏪 Soy Negocio' }
+        { id: 'REG_TIPO_CLIENTE',     title: '👤 Cliente' },
+        { id: 'REG_TIPO_RESTAURANTE', title: '🏪 Restaurante' }
       ]
     )
     return new Response('OK', { status: 200 })
