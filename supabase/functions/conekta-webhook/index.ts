@@ -156,7 +156,8 @@ serve(async (req) => {
       return new Response('Ya procesado', { status: 200 })
     }
 
-    console.log(`[${requestId}] ✅ Pedido ${pedidoId} marcado como asignado`)
+    console.log(`[${requestId}] ✅ Pedido ${pedidoId} marcado como pendiente (pago confirmado)`)
+
 
     // BUG 2 fix: look up restaurant by ID if available, fall back to name search
     let restData: any = null

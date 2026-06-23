@@ -16,7 +16,11 @@ export async function handleClientFlow(
     return new Response('OK', { status: 200 })
   }
 
+  // BUG-B3 fix: if it's an image but no active restaurant-registration flow exists,
+  // previously returned null causing complete silence. Now we check the flow state first,
+  // and only fall through to the 'not understood' response for unhandled image messages.
   if (msgType !== 'text' && msgType !== 'location' && msgType !== 'image') return null
+
 
   // ── Modo pausa (admin habló directamente con el cliente desde Chatwoot) ──
   const { data: pausaData } = await supabase.from('bot_memory')
@@ -108,6 +112,14 @@ export async function handleClientFlow(
 
   const clienteCtx = clienteDB ? { ...clienteDB, ubicacionesGuardadas } : null;
 
+  // BUG-B3 fix: image messages without an active flow previously dispatched an
+  // empty string to whatsapp-ai and left the user with no response.
+  // Now we respond immediately and skip the AI call for unhandled images.
+  if (msgType === 'image') {
+    await sendWA(fromPhone, `Por favor envíanos la información en *texto*. ¡Gracias! 😊`)
+    return new Response('OK', { status: 200 })
+  }
+
   // ── Despacho asíncrono a whatsapp-ai (evita timeout de Meta) ──
   
   // @ts-ignore
@@ -126,3 +138,4 @@ export async function handleClientFlow(
 
   return new Response('OK', { status: 200 })
 }
+

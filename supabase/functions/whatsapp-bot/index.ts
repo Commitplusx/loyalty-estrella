@@ -560,8 +560,10 @@ Deno.serve(async (req: Request) => {
           const bufferKey = `buffer_mandadito_${from10}_${uniqueId}`
           await supabase.from('bot_memory').insert({ phone: bufferKey, history: [userText, Date.now()], updated_at: new Date().toISOString() })
           
-          // Esperar 3.5 segundos a ver si manda más mensajes
-          await new Promise(r => setTimeout(r, 3500))
+          // BUG-B2 fix: reduced from 3500ms to 1800ms to stay within Meta's 20s timeout.
+          // Edge function cold start (~50ms) + AI call (~3-5s) + this debounce must stay < 20s.
+          await new Promise(r => setTimeout(r, 1800))
+
           
           // Leer todos los mensajes del buffer de este número en la ventana de tiempo
           const { data: allBufData } = await supabase.from('bot_memory').select('phone, history').ilike('phone', `buffer_mandadito_${from10}_%`)

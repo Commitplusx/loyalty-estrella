@@ -532,8 +532,12 @@ export async function handleRepMessage(
             ]
           }]
         )
-        // Pre-cargar el teléfono en estado para que el siguiente paso lo use directo
-        await setRepState(supabase, from10, { cmd: 'INFO', prefill: posibleTel })
+        // BUG-B4 fix: store prefill WITHOUT cmd so that if the repartidor types
+        // a free-text message instead of pressing a button, it doesn't accidentally
+        // trigger the INFO command with the typed text as the phone number.
+        // The prefill is picked up only when a REP_CMD_* button is actually pressed.
+        await setRepState(supabase, from10, { prefill: posibleTel })
+
       } else {
         await sendInteractiveList(
           fromPhone,

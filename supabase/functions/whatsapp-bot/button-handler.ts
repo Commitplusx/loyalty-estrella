@@ -44,10 +44,15 @@ export async function handleButtonEvent(
       await supabase.from('clientes').update({ reputacion: rep }).eq('id', c.id)
       await sendWA(fromPhone, `${repIcon[rep] || '✅'} Calificación guardada: *${c.nombre}* → *${rep}*`)
     } else {
-      await handleRepButtons(supabase, fromPhone, buttonId)
+      // BUG-B1 fix: always fetch repData so handleRepButtons never receives undefined.
+      // Without it, repData?.nombre would be undefined causing broken log entries.
+      const { data: repRow } = await supabase.from('repartidores').select('id, nombre, alias').eq('telefono', from10).maybeSingle()
+      const repData = repRow ?? { id: '', nombre: 'Repartidor', alias: '' }
+      await handleRepButtons(supabase, fromPhone, buttonId, repData)
     }
     return new Response('OK', { status: 200 })
   }
+
 
   // ── Admin: Estadísticas interactive actions (EST_VER_) ──
   if (esAdmin && buttonId.startsWith('EST_VER_')) {
