@@ -544,6 +544,47 @@ Dueño de restaurante (WhatsApp)
                      │
              perfil_completo = TRUE ✅
                      │
+                     │
              Aparece en /restaurantes (app cliente)
              y en PublicLandingPage (portal)
 ```
+
+---
+
+## 12. Arquitectura de Flujos Asíncronos y Pagos (Conekta)
+
+El ecosistema opera bajo una arquitectura distribuida orientada a eventos (Event-Driven). Los flujos más críticos dependen de transiciones de estado precisas y del manejo de concurrencia.
+
+### 12.1. Patrón "Fallback" de Doble Vía (Double-Check en Checkout)
+
+Cuando el cliente paga con tarjeta (Conekta), es redirigido a `SuccessPage.tsx`. El reto técnico es saber **cuándo** el webhook de Conekta aprobó el pago en nuestro backend, sin depender de recargas manuales.
+
+Implementamos un mecanismo dual gestionado por referencias de React (`useRef`):
+1.  **Vía Primaria (WebSockets):** `supabase.channel('wait-payment')`. Reacciona en milisegundos cuando la Edge Function modifica la base de datos.
+2.  **Vía Secundaria (Short-Polling HTTP):** `setInterval` cada 3 segundos como respaldo si los WebSockets son bloqueados por VPNs o fallos de conexión.
+3.  **Coordinación (Mutex Local):** Variables como `resolvedRef.current` actúan como semáforos. Quien reciba el estado de `pendiente` primero (Socket o HTTP), bloquea la bandera y mata el proceso competidor (`clearInterval`), asegurando que eventos únicos (como lanzar confeti o borrar el carrito) ocurran exactamente una vez $O(1)$.
+
+### 12.2. Idempotencia en Pagos (Webhook Conekta)
+
+El endpoint de Deno (`conekta-webhook/index.ts`) está diseñado para ser **idempotente**. Conekta puede reenviar el mismo evento `order.paid` múltiples veces debido a latencias de red.
+
+**Implementación de Seguridad:**
+El backend aplica un `Guard` explícito a nivel de base de datos usando `UPDATE ... WHERE estado = 'pendiente_pago'`.
+Si Conekta envía un evento duplicado, la segunda consulta fallará inofensivamente (devuelve 0 filas afectadas) porque el pedido ya no está en `pendiente_pago`. Esto evita procesamientos dobles y que se envíen múltiples mensajes de WhatsApp al restaurante aliado.
+
+### 12.3. Máquina de Estados (State Machine)
+
+El ciclo de vida logístico está modelado como una máquina de estados finitos dentro de la columna `estado` de la tabla `pedidos`. Las transiciones están fuertemente acopladas y el frontend (Web) y la App Móvil (Flutter) asumen este flujo unidireccional:
+
+```mermaid
+graph LR
+    A[pendiente_pago] -->|Webhook Conekta| B(pendiente)
+    C[Pago en Efectivo] --> B(pendiente)
+    B -->|App Flutter| D(asignado)
+    D -->|App Flutter| E(recibido)
+    E -->|App Flutter| F(en_camino)
+    F -->|App Flutter| G[entregado]
+    A -->|Timeout / Error| X[cancelado / rechazado]
+```
+
+**Regla Estricta:** Las mutaciones a este campo solo se permiten desde entornos autenticados (App de Flutter) o Edge Functions. El RLS (Row Level Security) bloquea activamente intentos de `UPDATE` desde el cliente Web público.
