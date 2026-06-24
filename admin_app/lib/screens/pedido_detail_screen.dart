@@ -411,6 +411,7 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
                 isLast: true,
                 isFirst: (pedido.clienteNombre == null || pedido.clienteNombre!.isEmpty) && (pedido.direccion == null || pedido.direccion!.isEmpty)
               ),
+            ],
           ),
         ),
 
