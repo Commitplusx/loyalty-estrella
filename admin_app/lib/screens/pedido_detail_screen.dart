@@ -385,6 +385,12 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
                   title: 'Descripción', 
                   value: pedido.descripcion ?? 'Sin descripción', 
                   isFirst: pedido.restaurante == null || pedido.restaurante!.isEmpty,
+                  isLast: false
+                ),
+                _InfoRow(
+                  icon: Icons.payments_outlined,
+                  title: 'Método de Pago',
+                  value: pedido.metodoPago == 'en_linea' ? '💳 Ya Pagado (En línea)' : '💵 Efectivo (Cobrar)',
                   isLast: true
                 ),
               ],
