@@ -93,7 +93,21 @@ hora_apertura         text            -- legacy, usar horarios
 hora_cierre           text            -- legacy, usar horarios
 programa_lealtad_activo boolean
 es_socio              boolean
-direccion             text
+direccion             text            -- dirección en texto (fallback)
+lat                   float           -- ✅ coordenada exacta (fuente de verdad para rutas)
+lng                   float           -- ✅ coordenada exacta (fuente de verdad para rutas)
+latitud               float           -- alias legacy (mismo propósito que lat)
+longitud              float           -- alias legacy (mismo propósito que lng)
+maps_url              text            -- link de Google Maps (solo referencia visual)
+etiqueta_zona         text            -- 'verde' (núcleo) | 'rojo' (periferia)
+```
+
+> **⚠️ REGLA DE UBICACIÓN:** La fuente de verdad para coordenadas son `lat` y `lng`. Se capturan desde la app Flutter (admin_app) mediante un mapa interactivo con pin arrastrable. El campo `maps_url` es solo referencia y NO se usa para cálculos de ruta.
+>
+> **Jerarquía de fallback para rutas (PublicMenuView.tsx):**
+> 1. `lat` + `lng` → Coordenadas exactas (máxima precisión)
+> 2. `direccion` → Texto de dirección (geocodificado por Google)
+> 3. `nombre + ", México"` → Último recurso
 ```
 
 > **⚠️ IMPORTANTE:** El campo `correo` aquí es el email real del negocio (para soporte/contacto). El email usado en Supabase Auth es `aliado_${telefono}@app-estrella.shop`. Son distintos. Ver §5.
@@ -301,6 +315,38 @@ PortalPage
    - Si perfil incompleto → el onboarding prioriza el paso de completar perfil
    - Si perfil completo → tour normal de todas las secciones
 
+### `PublicMenuView.tsx` — Flujo de Checkout (4 pasos)
+
+El carrito del cliente usa un drawer lateral con 4 pasos secuenciales:
+
+```
+Paso 1 — Resumen del pedido
+  └─ Lista de productos, cantidades, subtotal
+
+Paso 2 — Datos personales
+  └─ Nombre + Teléfono (10 dígitos, validado)
+  └─ Avanza SOLO si teléfono es válido
+
+Paso 3 — Entrega + Mapa
+  └─ Toggle: 'A domicilio' | 'Recoger en tienda'
+  └─ Si domicilio:
+       ├─ Botón GPS "Encontrar mi ubicación" (con animación de carga)
+       ├─ GoogleMap con pin arrastrable (dark style)
+       ├─ DirectionsService → dibuja ruta desde el restaurante al cliente
+       │   Jerarquía de origen: lat/lng → direccion texto → nombre+México
+       └─ Mensaje de éxito: "¡Listo! Tenemos tu dirección"
+
+Paso 4 — Pago
+  └─ Efectivo | En línea (Conekta)
+```
+
+**Estado persistido en `sessionStorage`:** carrito, nombre, teléfono, tipo entrega, dirección, método pago.
+
+**Librerías clave:**
+- `@react-google-maps/api`: `useLoadScript`, `GoogleMap`, `Marker`, `DirectionsService`, `DirectionsRenderer`
+- `framer-motion`: animaciones del drawer y transiciones de pasos
+- `lucide-react`: iconografía
+
 ### Visibilidad pública (`PublicLandingPage`)
 El directorio de restaurantes filtra:
 ```sql
@@ -309,6 +355,18 @@ WHERE activo = true AND perfil_completo = true
 ORDER BY nombre
 ```
 Un restaurante recién aprobado NO aparece hasta que el dueño completa su perfil.
+
+### `src/lib/supabase.ts` — Interfaz `Restaurante`
+La interfaz TypeScript incluye los campos de ubicación:
+```ts
+export interface Restaurante {
+  // ...otros campos
+  direccion: string | null
+  maps_url?: string | null
+  lat?: number | null      // ✅ coordenada exacta
+  lng?: number | null      // ✅ coordenada exacta
+}
+```
 
 ---
 
@@ -334,6 +392,65 @@ Un restaurante recién aprobado NO aparece hasta que el dueño completa su perfi
 
 ---
 
+## 7.5 App Interna Admin — `admin_app/` (Flutter)
+
+Panel de administración móvil para el equipo interno de Estrella Delivery. **No es público.**
+
+### Stack
+- **Flutter** + **Riverpod** (state management) + **GoRouter** (navegación)
+- **Supabase Dart SDK** para DB y Auth
+- **google_maps_flutter** para mapas interactivos
+- **geolocator** para GPS del dispositivo
+
+### Pantallas principales (`lib/screens/`)
+
+| Pantalla | Archivo | Qué hace |
+|---|---|---|
+| Dashboard | `dashboard_screen.dart` | Resumen de pedidos, ingresos, estadísticas |
+| Pedidos | `pedidos_screen.dart` | Lista de pedidos con badges por origen (Web/Mandadito/Restaurante) y filtros |
+| Detalle Pedido | `pedido_detail_screen.dart` | BottomSheet con info del pedido, cambio de estado |
+| Repartidores | `repartidores_screen.dart` | Lista de repartidores activos |
+| Detalle Repartidor | `repartidor_detail_screen.dart` | BottomSheet con info y asignaciones |
+| Clientes | `clients_screen.dart` | Búsqueda y gestión de clientes VIP |
+| Detalle Cliente | `client_detail_screen.dart` | Glassmorphism premium, billetera VIP, QR |
+| Configuración | `config_screen.dart` | Gestión de restaurantes, zonas, promos |
+| Mapa de Zonas | `mapa_zonas_screen.dart` | Editor visual de zonas de cobertura |
+| Scanner | `scanner_screen.dart` | Escáner QR para validar clientes |
+
+### `config_screen.dart` — Configuración de Restaurantes
+
+El sheet `_LocalFormSheet` permite crear y editar restaurantes. Incluye:
+
+```
+Campos del formulario:
+├─ Nombre del restaurante
+├─ Teléfono (10 dígitos)
+├─ Ubicación del restaurante (NUEVO flujo):
+│   ├─ Badge verde con coords actuales (lat, lng) en tiempo real
+│   ├─ Botón "📡 Usar mi ubicación actual" → GPS automático
+│   ├─ Botón "🗺️ Seleccionar en mapa" → toggle mapa interactivo
+│   └─ GoogleMap (dark style tipo Rappi) 300px con:
+│       ├─ Estilo oscuro personalizado (_darkMapStyle)
+│       ├─ Pin verde arrastrable (onDragEnd actualiza lat/lng)
+│       ├─ onTap → coloca pin al tocar el mapa
+│       ├─ onCameraMove → actualiza coords en TIEMPO REAL al mover
+│       ├─ gestureRecognizers → captura gestos dentro del ListView
+│       └─ Overlay inferior: coordenadas lat/lng en monospace verde
+├─ Dirección (texto, opcional)
+├─ Etiqueta de zona (verde/rojo)
+└─ Toggle Activo/Inactivo
+```
+
+**Al guardar:** `lat` y `lng` se escriben directamente en `restaurantes` de Supabase.
+
+**Variables de entorno Flutter:**
+```
+SUPABASE_URL y SUPABASE_ANON_KEY se inyectan en compile-time via --dart-define
+GOOGLE_MAPS_API_KEY se configura en AndroidManifest.xml / AppDelegate.swift
+```
+
+---
+
 ## 8. Bot de WhatsApp — `whatsapp-bot/`
 
 El bot vive en `supabase/functions/whatsapp-bot/` y es el sistema más complejo del proyecto.
@@ -345,6 +462,7 @@ Recibe todos los webhooks de WhatsApp y los distribuye:
 Mensaje entra
     │
     ├── ¿Es botón/lista interactiva? → button-handler.ts
+
     ├── ¿Es multimedia (imagen/audio)? → media-handler.ts
     ├── ¿Es texto?
     │       ├── ¿Usuario es admin? → admin-handler.ts
@@ -385,6 +503,16 @@ Al recibir un mensaje, el bot identifica al usuario consultando estas tablas en 
 3. Hardcoded ADMIN_PHONES env → es admin
 4. `clientes` WHERE telefono = from10 → es cliente registrado
 5. Si ninguno → es visitante nuevo
+
+### Bot AI (`whatsapp-bot/ai.ts`) — Acciones de ubicación
+
+El system prompt del admin y del repartidor incluye la acción:
+```
+- UBICACION_RESTAURANTE: Cuando el admin/repartidor pide la ubicación o dirección
+  de un restaurante (ej. '¿dónde está X?', 'ubícame el restaurante Y').
+  Extrae: restaurante (nombre del restaurante).
+  → admin-handler.ts consulta lat/lng en Supabase y envía pin de WhatsApp.
+```
 
 ---
 
