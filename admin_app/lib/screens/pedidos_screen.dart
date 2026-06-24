@@ -14,6 +14,8 @@ import '../core/user_role.dart';
 import '../core/user_role.dart';
 import '../core/cache_helper.dart';
 import '../core/ui_helpers.dart';
+import 'package:geolocator/geolocator.dart';
+import 'pedido_detail_screen.dart';
 
 // Provider de pedidos activos usando stream realtime directo
 final pedidosActivosProvider = StreamProvider.autoDispose<List<PedidoModel>>((ref) {
@@ -26,18 +28,18 @@ final pedidosActivosProvider = StreamProvider.autoDispose<List<PedidoModel>>((re
         .stream(primaryKey: ['id'])
         .eq('repartidor_id', userId)
         .order('created_at', ascending: false)
+        .limit(150)
         .map((list) {
-      final activeList = list.where((m) => !['entregado', 'cancelado'].contains(m['estado'])).toList();
-      return activeList.map((m) => PedidoModel.fromMap(m)).toList();
+      return list.map((m) => PedidoModel.fromMap(m)).toList();
     });
   } else {
     return supabase
         .from('pedidos')
         .stream(primaryKey: ['id'])
         .order('created_at', ascending: false)
+        .limit(150)
         .map((list) {
-      final activeList = list.where((m) => !['entregado', 'cancelado'].contains(m['estado'])).toList();
-      return activeList.map((m) => PedidoModel.fromMap(m)).toList();
+      return list.map((m) => PedidoModel.fromMap(m)).toList();
     });
   }
 });
@@ -70,6 +72,7 @@ class PedidosScreen extends ConsumerStatefulWidget {
 class _PedidosScreenState extends ConsumerState<PedidosScreen> {
   /// null = Todos, 'comida' | 'mandadito' | 'restaurante_delivery'
   String? _sourceFilter;
+  String _statusFilter = 'activos';
 
   @override
   Widget build(BuildContext context) {
@@ -148,10 +151,25 @@ class _PedidosScreenState extends ConsumerState<PedidosScreen> {
           ),
         ),
         data: (allPedidos) {
+          // Aplicar filtro por estado
+          final pedidosPorEstado = allPedidos.where((p) {
+            if (_statusFilter == 'activos') return !['entregado', 'cancelado'].contains(p.estado);
+            if (_statusFilter == 'pendientes') return p.estado == 'pendiente';
+            if (_statusFilter == 'en_camino') return p.estado == 'en_camino';
+            if (_statusFilter == 'entregados') return p.estado == 'entregado';
+            if (_statusFilter == 'cancelados') return p.estado == 'cancelado';
+            return true; // 'todos'
+          }).toList();
+
           // Aplicar filtro por tipo de pedido
           final pedidos = _sourceFilter == null
-              ? allPedidos
-              : allPedidos.where((p) => p.tipoPedido == _sourceFilter).toList();
+              ? pedidosPorEstado
+              : pedidosPorEstado.where((p) {
+                  if (_sourceFilter == 'domicilio') {
+                    return p.tipoPedido == 'domicilio' || p.tipoPedido == 'tienda' || p.tipoPedido == 'comida';
+                  }
+                  return p.tipoPedido == _sourceFilter;
+                }).toList();
 
           if (pedidos.isEmpty) {
             return Center(
@@ -177,21 +195,39 @@ class _PedidosScreenState extends ConsumerState<PedidosScreen> {
           }
 
           // Conteos por tipo (para el banner)
-          final countWeb = allPedidos.where((p) => p.tipoPedido == 'comida').length;
+          final countWeb = allPedidos.where((p) => p.tipoPedido == 'domicilio' || p.tipoPedido == 'tienda').length;
           final countMandadito = allPedidos.where((p) => p.tipoPedido == 'mandadito').length;
           final countRest = allPedidos.where((p) => p.tipoPedido == 'restaurante_delivery').length;
-          final tiposPresentes = [if (countWeb > 0) 'comida', if (countMandadito > 0) 'mandadito', if (countRest > 0) 'restaurante_delivery'];
+          final tiposPresentes = [if (countWeb > 0) 'domicilio', if (countMandadito > 0) 'mandadito', if (countRest > 0) 'restaurante_delivery'];
 
           // Agrupar por estado para mostrar secciones
           final pendientes = pedidos.where((p) => p.estado == 'pendiente').toList();
           final enCamino = pedidos.where((p) => p.estado == 'en_camino').toList();
           final recibidos = pedidos.where((p) => p.estado == 'recibido').toList();
           final asignados = pedidos.where((p) => p.estado == 'asignado').toList();
-          final otros = pedidos.where((p) => !['pendiente', 'en_camino', 'recibido', 'asignado'].contains(p.estado)).toList();
+          final entregados = pedidos.where((p) => p.estado == 'entregado').toList();
+          final cancelados = pedidos.where((p) => p.estado == 'cancelado').toList();
+          final otros = pedidos.where((p) => !['pendiente', 'en_camino', 'recibido', 'asignado', 'entregado', 'cancelado'].contains(p.estado)).toList();
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
             children: [
+              // Chips de Estado
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    _StatusChip(label: 'Activos', isSelected: _statusFilter == 'activos', onTap: () => setState(() => _statusFilter = 'activos')),
+                    _StatusChip(label: 'Pendientes', isSelected: _statusFilter == 'pendientes', onTap: () => setState(() => _statusFilter = 'pendientes')),
+                    _StatusChip(label: 'En Camino', isSelected: _statusFilter == 'en_camino', onTap: () => setState(() => _statusFilter = 'en_camino')),
+                    _StatusChip(label: 'Entregados', isSelected: _statusFilter == 'entregados', onTap: () => setState(() => _statusFilter = 'entregados')),
+                    _StatusChip(label: 'Cancelados', isSelected: _statusFilter == 'cancelados', onTap: () => setState(() => _statusFilter = 'cancelados')),
+                    _StatusChip(label: 'Todos', isSelected: _statusFilter == 'todos', onTap: () => setState(() => _statusFilter = 'todos')),
+                  ],
+                ),
+              ),
+
               // Banner de resumen minimalista
               Padding(
                 padding: const EdgeInsets.only(bottom: 24, top: 8),
@@ -227,35 +263,49 @@ class _PedidosScreenState extends ConsumerState<PedidosScreen> {
               if (pendientes.isNotEmpty) ...[
                 _SectionHeader(title: 'Pendientes (Sin Repartidor)', count: pendientes.length, color: const Color(0xFFEA580C), isDark: isDark),
                 const SizedBox(height: 8),
-                ...pendientes.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
+                ...pendientes.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => PedidoDetailScreen.show(context, p.id))),
                 const SizedBox(height: 20),
               ],
 
               if (enCamino.isNotEmpty) ...[
                 _SectionHeader(title: 'En Camino', count: enCamino.length, color: const Color(0xFFFF6B35), isDark: isDark),
                 const SizedBox(height: 8),
-                ...enCamino.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
+                ...enCamino.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => PedidoDetailScreen.show(context, p.id))),
                 const SizedBox(height: 20),
               ],
 
               if (recibidos.isNotEmpty) ...[
                 _SectionHeader(title: 'En Restaurante', count: recibidos.length, color: Theme.of(context).colorScheme.secondary, isDark: isDark),
                 const SizedBox(height: 8),
-                ...recibidos.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
+                ...recibidos.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => PedidoDetailScreen.show(context, p.id))),
                 const SizedBox(height: 20),
               ],
 
               if (asignados.isNotEmpty) ...[
                 _SectionHeader(title: 'Asignados', count: asignados.length, color: const Color(0xFF60A5FA), isDark: isDark),
                 const SizedBox(height: 8),
-                ...asignados.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
+                ...asignados.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => PedidoDetailScreen.show(context, p.id))),
                 const SizedBox(height: 20),
               ],
 
               if (otros.isNotEmpty) ...[
                 _SectionHeader(title: 'Otros', count: otros.length, color: Colors.grey, isDark: isDark),
                 const SizedBox(height: 8),
-                ...otros.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
+                ...otros.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => PedidoDetailScreen.show(context, p.id))),
+                const SizedBox(height: 20),
+              ],
+
+              if (entregados.isNotEmpty) ...[
+                _SectionHeader(title: 'Entregados', count: entregados.length, color: const Color(0xFF10B981), isDark: isDark),
+                const SizedBox(height: 8),
+                ...entregados.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => PedidoDetailScreen.show(context, p.id))),
+                const SizedBox(height: 20),
+              ],
+
+              if (cancelados.isNotEmpty) ...[
+                _SectionHeader(title: 'Cancelados', count: cancelados.length, color: Colors.red, isDark: isDark),
+                const SizedBox(height: 8),
+                ...cancelados.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => PedidoDetailScreen.show(context, p.id))),
               ],
               
               const SizedBox(height: 100), // Espacio para el Bottom Nav Bar flotante
@@ -517,7 +567,7 @@ class _PedidoTile extends StatelessWidget {
 // ── Source badge ─────────────────────────────────────────────────────────────
 
 class _SourceBadge extends StatelessWidget {
-  final String tipoPedido;
+  final String? tipoPedido;
   const _SourceBadge({required this.tipoPedido});
 
   @override
@@ -593,7 +643,7 @@ class _SourceFilterBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final chips = [
       (null,                    'Todos',         ''),
-      ('comida',                '🌐 Web',         ''),
+      ('domicilio',             '🌐 Web',         ''),
       ('mandadito',             '🛵 Mandadito',   ''),
       ('restaurante_delivery',  '🏪 Restaurante', ''),
     ];
@@ -710,6 +760,7 @@ class _NuevoPedidoSheetState extends ConsumerState<_NuevoPedidoSheet> {
   bool _esRestaurante = false;
   bool _esOtroRest = false;
   bool _loading = false;
+  bool _gettingLocation = false;
 
   @override
   void dispose() {
@@ -719,6 +770,36 @@ class _NuevoPedidoSheetState extends ConsumerState<_NuevoPedidoSheet> {
     _descCtrl.dispose();
     _dirCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _getLocation() async {
+    setState(() => _gettingLocation = true);
+    try {
+      bool svcOn = await Geolocator.isLocationServiceEnabled();
+      if (!svcOn) throw 'Activa el GPS del dispositivo';
+
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+        throw 'Permiso de ubicación denegado';
+      }
+
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      final link = 'https://maps.google.com/?q=${pos.latitude},${pos.longitude}';
+      
+      if (_dirCtrl.text.trim().isNotEmpty) {
+        _dirCtrl.text = '${_dirCtrl.text.trim()} - $link';
+      } else {
+        _dirCtrl.text = link;
+      }
+      PremiumToast.show(context, title: 'Ubicación obtenida', description: 'Enlace añadido a la dirección');
+    } catch (e) {
+      PremiumToast.show(context, title: 'Error', description: e.toString(), isError: true);
+    } finally {
+      if (mounted) setState(() => _gettingLocation = false);
+    }
   }
 
   Future<void> _crear() async {
@@ -908,6 +989,23 @@ class _NuevoPedidoSheetState extends ConsumerState<_NuevoPedidoSheet> {
               style: TextStyle(color: textColor),
               decoration: _inputDeco('📍 Dirección de entrega (opcional)', Icons.location_on_rounded, inputFill, labelColor),
             ),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _gettingLocation ? null : _getLocation,
+                icon: _gettingLocation 
+                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.my_location_rounded, size: 16),
+                label: Text(_gettingLocation ? 'Obteniendo GPS...' : 'Obtener mi ubicación (Link de Maps)', style: const TextStyle(fontSize: 12)),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFFF6B35),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ),
             const SizedBox(height: 10),
 
             // Dropdown de repartidores
@@ -970,6 +1068,28 @@ class _NuevoPedidoSheetState extends ConsumerState<_NuevoPedidoSheet> {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+class _StatusChip extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+  
+  const _StatusChip({required this.label, required this.isSelected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8.0),
+      child: ChoiceChip(
+        label: Text(label, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+        selected: isSelected,
+        onSelected: (_) => onTap(),
+        selectedColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+        backgroundColor: Theme.of(context).cardColor,
+      ),
+    );
+  }
+}
 
 String _timeAgo(DateTime? dt) {
   if (dt == null) return '';
