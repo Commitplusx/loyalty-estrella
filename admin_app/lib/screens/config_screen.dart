@@ -921,20 +921,62 @@ class _LocalFormSheetState extends ConsumerState<_LocalFormSheet> {
                                 lng = pos.longitude;
                               });
                             },
+                            onCameraMove: (position) {
+                              // Actualiza coords en tiempo real al mover la cámara
+                              setState(() {
+                                lat = position.target.latitude;
+                                lng = position.target.longitude;
+                              });
+                            },
                           ),
-                          // Instrucciones flotantes
+                          // Instrucciones flotantes arriba
                           Positioned(
                             top: 8, left: 8, right: 8,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(
                                 color: Colors.black.withOpacity(0.75),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: const Text(
-                                'Toca el mapa o arrastra el pin verde para ajustar la posición exacta del local',
-                                style: TextStyle(color: Colors.white, fontSize: 11),
+                                'Toca el mapa o arrastra el pin verde',
+                                style: TextStyle(color: Colors.white70, fontSize: 10),
                                 textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                          // 📍 Overlay de coordenadas en tiempo real — parte inferior
+                          Positioned(
+                            bottom: 10, left: 10, right: 10,
+                            child: AnimatedOpacity(
+                              opacity: lat != null ? 1.0 : 0.0,
+                              duration: const Duration(milliseconds: 300),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0f172a).withOpacity(0.92),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFF10B981).withOpacity(0.5)),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(Icons.location_on_rounded, color: Color(0xFF10B981), size: 14),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      lat != null
+                                          ? '${lat!.toStringAsFixed(6)},  ${lng!.toStringAsFixed(6)}'
+                                          : '',
+                                      style: const TextStyle(
+                                        color: Color(0xFF10B981),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        fontFamily: 'monospace',
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
