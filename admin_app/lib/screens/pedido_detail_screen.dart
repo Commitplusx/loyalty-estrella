@@ -26,6 +26,53 @@ class PedidoDetailScreen extends ConsumerWidget {
   final String pedidoId;
   const PedidoDetailScreen({super.key, required this.pedidoId});
 
+  static Future<void> show(BuildContext context, String pedidoId) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85, maxChildSize: 0.95, minChildSize: 0.5,
+        builder: (ctx, scrollController) => Container(
+          decoration: BoxDecoration(
+            color: isDark ? theme.scaffoldBackgroundColor : const Color(0xFFF8FAFC),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          ),
+          child: Column(
+            children: [
+              Center(child: Container(margin: const EdgeInsets.symmetric(vertical: 16), width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(10)))),
+              Expanded(
+                child: Consumer(
+                  builder: (context, ref, child) {
+                    final asyncVal = ref.watch(_pedidoProvider(pedidoId));
+                    return asyncVal.when(
+                       loading: () => Center(child: CircularProgressIndicator(color: theme.colorScheme.primary)),
+                       error: (e, _) => Center(child: Text('Error: $e', style: TextStyle(color: theme.colorScheme.error))),
+                       data: (pedido) => pedido == null 
+                         ? Center(child: Text('Pedido no encontrado', style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.5)))) 
+                         : _PedidoBody(
+                             pedido: pedido, 
+                             scrollController: scrollController, 
+                             onEstadoActualizado: () {
+                               ref.invalidate(_pedidoProvider(pedidoId));
+                               ref.invalidate(statsProvider);
+                               ref.invalidate(pedidosActivosProvider);
+                             }
+                           )
+                    );
+                  }
+                )
+              )
+            ]
+          )
+        )
+      )
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pedidoAsync = ref.watch(_pedidoProvider(pedidoId));
@@ -61,8 +108,9 @@ class PedidoDetailScreen extends ConsumerWidget {
 class _PedidoBody extends ConsumerStatefulWidget {
   final PedidoModel pedido;
   final VoidCallback onEstadoActualizado;
+  final ScrollController? scrollController;
 
-  const _PedidoBody({required this.pedido, required this.onEstadoActualizado});
+  const _PedidoBody({required this.pedido, required this.onEstadoActualizado, this.scrollController});
 
   @override
   ConsumerState<_PedidoBody> createState() => _PedidoBodyState();
@@ -237,6 +285,7 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
     }
 
     return ListView(
+      controller: widget.scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       physics: const BouncingScrollPhysics(),
       children: [
@@ -316,27 +365,10 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
         if (finalLat != null && finalLng != null)
           _GpsCard(lat: finalLat, lng: finalLng),
 
-        // ── Tarjeta de Detalles Minimalista ──
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 12),
-          child: Text(
-            'Información',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: theme.colorScheme.onSurface.withOpacity(0.9),
-            ),
-          ),
-        ),
-        
+        // ── Detalles de la Orden ──
+        _SectionTitle(title: 'Detalles de la Orden', icon: Icons.receipt_long_rounded),
         Container(
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: isDark ? [] : [
-              BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))
-            ],
-          ),
+          decoration: BoxDecoration(color: isDark ? const Color(0xFF1E1E1E) : Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))]),
           child: Column(
             children: [
               if (pedido.tipoPedido == 'mandadito') ...[
@@ -344,26 +376,73 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
                 if (pedido.origen != null) _InfoRow(icon: Icons.flight_takeoff_rounded, title: 'Origen', value: pedido.origen!),
                 if (pedido.destino != null) _InfoRow(icon: Icons.flight_land_rounded, title: 'Destino', value: pedido.destino!),
                 _InfoRow(icon: Icons.payment_rounded, title: 'Pago', value: pedido.metodoPago == 'transferencia' ? 'Transferencia' : 'Efectivo'),
-                _InfoRow(icon: Icons.attach_money_rounded, title: 'Precio', value: '\$${pedido.precioEntrega ?? 0}'),
-              ] else if (pedido.restaurante != null && pedido.restaurante!.isNotEmpty) ...[
-                _InfoRow(icon: Icons.storefront_rounded, title: 'Restaurante', value: pedido.restaurante!, isFirst: true),
+                _InfoRow(icon: Icons.attach_money_rounded, title: 'Precio', value: '\$${pedido.precioEntrega ?? 0}', isLast: true),
+              ] else ...[
+                if (pedido.restaurante != null && pedido.restaurante!.isNotEmpty)
+                  _InfoRow(icon: Icons.storefront_rounded, title: 'Restaurante', value: pedido.restaurante!, isFirst: true),
+                _InfoRow(
+                  icon: Icons.subject_rounded, 
+                  title: 'Descripción', 
+                  value: pedido.descripcion ?? 'Sin descripción', 
+                  isFirst: pedido.restaurante == null || pedido.restaurante!.isEmpty,
+                  isLast: true
+                ),
               ],
-              _InfoRow(
-                icon: Icons.subject_rounded, 
-                title: 'Descripción', 
-                value: pedido.descripcion, 
-                isFirst: pedido.restaurante == null && pedido.tipoPedido != 'mandadito'
-              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 24),
+
+        // ── Cliente y Entrega ──
+        _SectionTitle(title: 'Cliente y Entrega', icon: Icons.person_pin_circle_rounded),
+        Container(
+          decoration: BoxDecoration(color: isDark ? const Color(0xFF1E1E1E) : Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))]),
+          child: Column(
+            children: [
               if (pedido.clienteNombre != null && pedido.clienteNombre!.isNotEmpty)
-                _InfoRow(icon: Icons.person_outline_rounded, title: 'Cliente', value: pedido.clienteNombre!),
+                _InfoRow(icon: Icons.person_outline_rounded, title: 'Cliente', value: pedido.clienteNombre!, isFirst: true),
               if (pedido.direccion != null && pedido.direccion!.isNotEmpty)
-                _InfoRow(icon: Icons.location_on_outlined, title: 'Dirección', value: pedido.direccion!),
+                _InfoRow(icon: Icons.location_on_outlined, title: 'Dirección', value: pedido.direccion!, isFirst: pedido.clienteNombre == null || pedido.clienteNombre!.isEmpty),
               _InfoRow(
                 icon: Icons.phone_outlined, 
                 title: 'Teléfono', 
-                value: '•••• •••• ${pedido.clienteTel.length >= 4 ? pedido.clienteTel.substring(pedido.clienteTel.length - 4) : pedido.clienteTel}'
+                value: pedido.clienteTel,
+                isLast: true,
+                isFirst: (pedido.clienteNombre == null || pedido.clienteNombre!.isEmpty) && (pedido.direccion == null || pedido.direccion!.isEmpty)
               ),
-              _InfoRow(icon: Icons.access_time_rounded, title: 'Asignado', value: _formatDateTime(pedido.createdAt)),
+          ),
+        ),
+
+        // ── Botón GPS ──
+        if (finalLat != null && finalLng != null) ...[
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: () => launchUrl(
+              Uri.parse('https://www.google.com/maps/search/?api=1&query=$finalLat,$finalLng'), 
+              mode: LaunchMode.externalApplication
+            ),
+            icon: const Icon(Icons.map_rounded),
+            label: const Text('Ver Ubicación en Mapa', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981).withOpacity(0.15),
+              foregroundColor: const Color(0xFF10B981),
+              minimumSize: const Size(double.infinity, 56),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              elevation: 0,
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 24),
+
+        // ── Seguimiento ──
+        _SectionTitle(title: 'Seguimiento', icon: Icons.access_time_filled_rounded),
+        Container(
+          decoration: BoxDecoration(color: isDark ? const Color(0xFF1E1E1E) : Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))]),
+          child: Column(
+            children: [
+              _InfoRow(icon: Icons.access_time_rounded, title: 'Asignado', value: _formatDateTime(pedido.createdAt), isFirst: true),
               _InfoRow(icon: Icons.update_rounded, title: 'Actualizado', value: _formatDateTime(pedido.updatedAt), isLast: true),
             ],
           ),
@@ -465,15 +544,15 @@ class _InfoRow extends StatelessWidget {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 margin: const EdgeInsets.only(top: 2),
-                child: Icon(icon, size: 20, color: theme.colorScheme.primary.withOpacity(0.8)),
+                child: Icon(icon, size: 18, color: theme.colorScheme.primary.withOpacity(0.8)),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -481,19 +560,19 @@ class _InfoRow extends StatelessWidget {
                     Text(
                       title,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: FontWeight.w500,
                         color: theme.colorScheme.onSurface.withOpacity(0.4),
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       value,
                       style: TextStyle(
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: theme.colorScheme.onSurface.withOpacity(0.9),
-                        height: 1.4,
+                        height: 1.3,
                       ),
                     ),
                   ],
@@ -503,7 +582,7 @@ class _InfoRow extends StatelessWidget {
           ),
         ),
         if (!isLast)
-          Divider(height: 1, thickness: 1, color: theme.dividerColor.withOpacity(0.4), indent: 56, endIndent: 20),
+          Divider(height: 1, thickness: 1, color: theme.dividerColor.withOpacity(0.4), indent: 46, endIndent: 16),
       ],
     );
   }
@@ -697,3 +776,37 @@ class _GpsCard extends StatelessWidget {
   }
 }
 
+class _SectionTitle extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  const _SectionTitle({required this.title, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF6B35).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 18, color: const Color(0xFFFF6B35)),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: theme.colorScheme.onSurface.withOpacity(0.9),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
