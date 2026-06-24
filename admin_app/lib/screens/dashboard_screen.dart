@@ -1,4 +1,5 @@
 // lib/screens/dashboard_screen.dart — Minimalist Premium Dashboard
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -33,6 +34,19 @@ final statsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   }
 });
 
+final weeklyStatsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final isAdmin = ref.watch(isAdminProvider);
+  if (isAdmin) {
+    return ref.read(dashboardServiceProvider).getWeeklyStats();
+  } else {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return [];
+    final repId = await ref.read(repartidorServiceProvider).getRepartidorIdByUserId(userId);
+    if (repId == null) return [];
+    return ref.read(dashboardServiceProvider).getWeeklyStats(repartidorId: repId);
+  }
+});
+
 final topRestaurantesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   return ref.read(dashboardServiceProvider).getTopRestaurantes();
 });
@@ -47,6 +61,9 @@ class DashboardScreen extends ConsumerWidget {
     final isAdmin = ref.watch(isAdminProvider);
     final themeMode = ref.watch(themeProvider);
     final userNameAsync = ref.watch(userNameProvider);
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    debugPrint('🚀 DashboardScreen build disparado | themeMode: $themeMode | isDark: $isDark');
 
     final hour = DateTime.now().hour;
     final greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
@@ -66,37 +83,57 @@ class DashboardScreen extends ConsumerWidget {
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           slivers: [
-            // ── Minimalist AppBar ──
+            // ── Premium Glassmorphism AppBar ──
             SliverAppBar(
               expandedHeight: 100,
               pinned: true,
-              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              backgroundColor: Colors.transparent,
               elevation: 0,
-              flexibleSpace: FlexibleSpaceBar(
-                titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
-                title: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      greeting,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: cs.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.5,
+              flexibleSpace: ClipRRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).brightness == Brightness.dark 
+                          ? Colors.black.withOpacity(0.4) 
+                          : Colors.white.withOpacity(0.7),
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white.withOpacity(0.05)
+                              : Colors.black.withOpacity(0.05),
+                          width: 1,
+                        ),
                       ),
                     ),
-                    Text(
-                      userName,
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: cs.onSurface,
-                        letterSpacing: -0.5,
+                    child: FlexibleSpaceBar(
+                      titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
+                      title: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            greeting,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          Text(
+                            userName,
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              color: cs.onSurface,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
               actions: [
@@ -130,15 +167,50 @@ class DashboardScreen extends ConsumerWidget {
                   // ── Bento Box Grid ──
                   if (isAdmin) ...[
                     Text(
-                      'Herramientas',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: cs.onSurface,
-                        letterSpacing: -0.3,
+                  // ── Estadísticas Semanales (Gráfico) ──
+                  const SizedBox(height: 32),
+                  Text(
+                    'Rendimiento Semanal',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: cs.onSurface,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _WeeklyChartCard(weeklyAsync: ref.watch(weeklyStatsProvider)),
+
+                  // ── Exportación a PDF (Admin) ──
+                  if (isAdmin) ...[
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        try {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Generando PDF...')),
+                          );
+                          await ref.read(pdfServiceProvider).generateAndPrintCorteCaja();
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error al generar PDF: $e')),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.picture_as_pdf_rounded),
+                      label: const Text('Exportar Corte a PDF'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: cs.primaryContainer,
+                        foregroundColor: cs.onPrimaryContainer,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                  ],
+
+                  // ── Top Restaurantes ──
+                  if (isAdmin) ...[
+                    const SizedBox(height: 32),
                     _BentoGrid(),
                     const SizedBox(height: 32),
                   ],
@@ -220,7 +292,10 @@ class _ThemeSwitcher extends ConsumerWidget {
           size: 20,
           color: cs.onSurfaceVariant,
         ),
-        onPressed: () => ref.read(themeProvider.notifier).cycleTheme(),
+        onPressed: () {
+          debugPrint('🔘 Botón de Tema presionado. Cambiando...');
+          ref.read(themeProvider.notifier).cycleTheme();
+        },
       ),
     );
   }
@@ -281,28 +356,36 @@ class _VitalStatsCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              Text(
-                '${stats['servicios'] ?? 0}',
-                style: TextStyle(
-                  color: theme.colorScheme.onSurface,
-                  fontSize: 56,
-                  fontWeight: FontWeight.w900,
-                  height: 1.0,
-                  letterSpacing: -2,
-                ),
+              TweenAnimationBuilder<double>(
+                duration: const Duration(milliseconds: 1500),
+                curve: Curves.easeOutCubic,
+                tween: Tween<double>(begin: 0, end: (stats['servicios'] ?? 0).toDouble()),
+                builder: (context, value, child) {
+                  return Text(
+                    value.toInt().toString(),
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface,
+                      fontSize: 56,
+                      fontWeight: FontWeight.w900,
+                      height: 1.0,
+                      letterSpacing: -2,
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 24),
               Row(
                 children: [
                   if (isAdmin) _MiniStat(
                     label: 'Ingresos Hoy', 
-                    value: '\$${(stats['ganancias'] ?? 0.0).toStringAsFixed(2)}',
+                    value: stats['ganancias'] ?? 0.0,
+                    isCurrency: true,
                     color: const Color(0xFF10B981),
                   ),
                   if (isAdmin) const SizedBox(width: 32),
                   _MiniStat(
                     label: 'Gratis Hoy', 
-                    value: '${stats['gratis'] ?? 0}',
+                    value: stats['gratis'] ?? 0,
                     color: theme.colorScheme.onSurface.withOpacity(0.8),
                   ),
                 ],
@@ -317,9 +400,10 @@ class _VitalStatsCard extends StatelessWidget {
 
 class _MiniStat extends StatelessWidget {
   final String label;
-  final String value;
+  final num value;
+  final bool isCurrency;
   final Color? color;
-  const _MiniStat({required this.label, required this.value, this.color});
+  const _MiniStat({required this.label, required this.value, this.isCurrency = false, this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -331,9 +415,17 @@ class _MiniStat extends StatelessWidget {
           style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(color: color ?? Theme.of(context).colorScheme.onSurface, fontSize: 18, fontWeight: FontWeight.w800),
+        TweenAnimationBuilder<double>(
+          duration: const Duration(milliseconds: 1500),
+          curve: Curves.easeOutCubic,
+          tween: Tween<double>(begin: 0, end: value.toDouble()),
+          builder: (context, val, child) {
+            final formatted = isCurrency ? '\$${val.toStringAsFixed(2)}' : val.toInt().toString();
+            return Text(
+              formatted,
+              style: TextStyle(color: color ?? Theme.of(context).colorScheme.onSurface, fontSize: 18, fontWeight: FontWeight.w800),
+            );
+          },
         ),
       ],
     );
@@ -734,13 +826,26 @@ class _TopRestaurantesWidget extends StatelessWidget {
                   
                   final rankColor = getRankColor();
 
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: isDark ? [] : [
+                        BoxShadow(
+                          color: cs.primary.withOpacity(0.04),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                      border: Border.all(color: isDark ? Colors.white.withOpacity(0.02) : Colors.black.withOpacity(0.02)),
+                    ),
                     child: Row(
                       children: [
                         Container(
-                          width: 34,
-                          height: 34,
+                          width: 38,
+                          height: 38,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: i < 3 ? rankColor.withOpacity(0.15) : cs.onSurface.withOpacity(0.04),
@@ -752,7 +857,7 @@ class _TopRestaurantesWidget extends StatelessWidget {
                             style: TextStyle(
                               color: i < 3 ? rankColor : cs.onSurface.withOpacity(0.6),
                               fontWeight: FontWeight.w900,
-                              fontSize: 15,
+                              fontSize: 16,
                             ),
                           ),
                         ),
@@ -770,23 +875,23 @@ class _TopRestaurantesWidget extends StatelessWidget {
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF27272A) : const Color(0xFFF4F4F5),
-                            borderRadius: BorderRadius.circular(12),
+                            color: isDark ? const Color(0xFF2A2A2D) : const Color(0xFFF4F4F5),
+                            borderRadius: BorderRadius.circular(14),
                             border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03)),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.shopping_bag_rounded, size: 14, color: rankColor.withOpacity(0.8)),
+                              Icon(Icons.shopping_bag_rounded, size: 16, color: rankColor.withOpacity(0.9)),
                               const SizedBox(width: 6),
                               Text(
                                 '${item['pedidos']}',
                                 style: TextStyle(
-                                  fontSize: 13,
+                                  fontSize: 14,
                                   fontWeight: FontWeight.w900,
-                                  color: cs.onSurface.withOpacity(0.8),
+                                  color: cs.onSurface.withOpacity(0.9),
                                 ),
                               ),
                             ],
@@ -800,6 +905,110 @@ class _TopRestaurantesWidget extends StatelessWidget {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Gráfico Semanal ────────────────────────────────────────────────────────
+class _WeeklyChartCard extends StatelessWidget {
+  final AsyncValue<List<Map<String, dynamic>>> weeklyAsync;
+
+  const _WeeklyChartCard({required this.weeklyAsync});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).colorScheme.primary;
+
+    return Container(
+      width: double.infinity,
+      height: 220,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF16161E) : Colors.white,
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
+        boxShadow: isDark ? [] : [
+          BoxShadow(
+            color: primaryColor.withOpacity(0.06),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: weeklyAsync.when(
+        loading: () => Center(child: CircularProgressIndicator(color: primaryColor)),
+        error: (e, _) => Center(child: Text('Error: $e', style: TextStyle(color: Theme.of(context).colorScheme.error))),
+        data: (stats) {
+          if (stats.isEmpty) return const Center(child: Text('Sin datos'));
+
+          // Encontrar el valor máximo para la escala Y
+          double maxY = 0;
+          for (var s in stats) {
+            if ((s['ganancias'] as double) > maxY) maxY = s['ganancias'] as double;
+          }
+          if (maxY == 0) maxY = 100; // default si está vacío
+
+          return LineChart(
+            LineChartData(
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                horizontalInterval: maxY > 0 ? (maxY / 4 == 0 ? 1 : maxY / 4) : 1,
+                getDrawingHorizontalLine: (value) => FlLine(color: isDark ? Colors.white10 : Colors.black12, strokeWidth: 1, dashArray: [5, 5]),
+              ),
+              titlesData: FlTitlesData(
+                show: true,
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 22,
+                    getTitlesWidget: (value, meta) {
+                      final int index = value.toInt();
+                      if (index >= 0 && index < stats.length) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            stats[index]['day'] as String,
+                            style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        );
+                      }
+                      return const SizedBox();
+                    },
+                  ),
+                ),
+              ),
+              borderData: FlBorderData(show: false),
+              minX: 0,
+              maxX: (stats.length - 1).toDouble(),
+              minY: 0,
+              maxY: maxY * 1.2,
+              lineBarsData: [
+                LineChartBarData(
+                  spots: stats.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value['ganancias'] as double)).toList(),
+                  isCurved: true,
+                  color: primaryColor,
+                  barWidth: 4,
+                  isStrokeCapRound: true,
+                  dotData: const FlDotData(show: false),
+                  belowBarData: BarAreaData(
+                    show: true,
+                    gradient: LinearGradient(
+                      colors: [primaryColor.withOpacity(0.3), primaryColor.withOpacity(0.0)],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

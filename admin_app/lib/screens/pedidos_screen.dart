@@ -1,6 +1,7 @@
 // lib/screens/pedidos_screen.dart
 // Pantalla de gestión de pedidos — Rediseño Premium con soporte de tema claro/oscuro.
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -413,8 +414,43 @@ class _PedidoTile extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      child: BouncingCard(
-        onTap: onTap,
+      child: Dismissible(
+        key: Key('pedido_${pedido.id}'),
+        direction: (pedido.estado == 'pendiente' || pedido.estado == 'asignado' || pedido.estado == 'en_camino' || pedido.estado == 'recogido') 
+            ? DismissDirection.startToEnd 
+            : DismissDirection.none,
+        background: Container(
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.only(left: 20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF10B981),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: const [
+              Icon(Icons.check_circle_outline, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Avanzar Estado', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+        confirmDismiss: (direction) async {
+          HapticFeedback.heavyImpact();
+          String nextState = '';
+          if (pedido.estado == 'pendiente' || pedido.estado == 'asignado') nextState = 'en_camino';
+          else if (pedido.estado == 'en_camino') nextState = 'recogido';
+          else if (pedido.estado == 'recogido') nextState = 'entregado';
+          
+          if (nextState.isNotEmpty) {
+            await supabase.from('pedidos').update({'estado': nextState}).eq('id', pedido.id);
+          }
+          return false; // Supabase trigger o el provider redibujará la lista. No remover de inmediato para evitar errores visuales rápidos.
+        },
+        child: BouncingCard(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            onTap();
+          },
         child: Material(
           color: Colors.transparent,
           child: Container(
@@ -510,7 +546,11 @@ class _PedidoTile extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(width: 6),
-                              _SourceBadge(tipoPedido: pedido.tipoPedido),
+                              Hero(
+                                tag: 'pedido_icon_${pedido.id}',
+                                child: _SourceBadge(tipoPedido: pedido.tipoPedido),
+                              ),
+                              const SizedBox(width: 6),
                             ],
                           ),
                         ],

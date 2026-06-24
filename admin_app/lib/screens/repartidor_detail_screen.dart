@@ -23,7 +23,7 @@ final historialFiltradoProvider = FutureProvider.autoDispose
   return ref.read(repartidorServiceProvider).getHistorialServicios(id);
 });
 
-class RepartidorDetailScreen extends ConsumerStatefulWidget {
+class RepartidorDetailScreen extends ConsumerWidget {
   final String repartidorId;
   final String nombre;
 
@@ -33,11 +33,100 @@ class RepartidorDetailScreen extends ConsumerStatefulWidget {
     required this.nombre,
   });
 
+  static Future<void> show(BuildContext context, String repartidorId, [String nombre = '']) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85, maxChildSize: 0.95, minChildSize: 0.5,
+        builder: (ctx, scrollController) => Container(
+          decoration: BoxDecoration(
+            color: isDark ? theme.scaffoldBackgroundColor : const Color(0xFFF8FAFC),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          ),
+          child: Column(
+            children: [
+              Center(child: Container(margin: const EdgeInsets.symmetric(vertical: 16), width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(10)))),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(nombre, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    Consumer(
+                      builder: (context, ref, _) => IconButton(
+                        icon: const Icon(Icons.refresh_rounded),
+                        onPressed: () {
+                          ref.invalidate(historialFiltradoProvider(repartidorId));
+                          ref.invalidate(repartidorDetailProvider(repartidorId));
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: _RepartidorBody(
+                  repartidorId: repartidorId,
+                  nombre: nombre,
+                  scrollController: scrollController,
+                ),
+              )
+            ]
+          )
+        )
+      )
+    );
+  }
+
   @override
-  ConsumerState<RepartidorDetailScreen> createState() => _RepartidorDetailScreenState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final onSurface = colorScheme.onSurface;
+    final surfaceColor = colorScheme.surface;
+
+    return Scaffold(
+      backgroundColor: surfaceColor,
+      appBar: AppBar(
+        title: Text(nombre, style: TextStyle(color: onSurface, fontWeight: FontWeight.w800)),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh_rounded, color: onSurface.withValues(alpha: 0.7)),
+            onPressed: () {
+              ref.invalidate(historialFiltradoProvider(repartidorId));
+              ref.invalidate(repartidorDetailProvider(repartidorId));
+            },
+          ),
+        ],
+      ),
+      body: _RepartidorBody(
+        repartidorId: repartidorId,
+        nombre: nombre,
+      ),
+    );
+  }
 }
 
-class _RepartidorDetailScreenState extends ConsumerState<RepartidorDetailScreen> {
+class _RepartidorBody extends ConsumerStatefulWidget {
+  final String repartidorId;
+  final String nombre;
+  final ScrollController? scrollController;
+
+  const _RepartidorBody({
+    required this.repartidorId,
+    required this.nombre,
+    this.scrollController,
+  });
+
+  @override
+  ConsumerState<_RepartidorBody> createState() => _RepartidorBodyState();
+}
+
+class _RepartidorBodyState extends ConsumerState<_RepartidorBody> {
   // Fecha seleccionada para filtrar (null = hoy)
   late DateTime _fechaSeleccionada;
   late DateTime _hoy;
@@ -81,26 +170,13 @@ class _RepartidorDetailScreenState extends ConsumerState<RepartidorDetailScreen>
     final colorScheme = Theme.of(context).colorScheme;
     final onSurface = colorScheme.onSurface;
     final cardColor = Theme.of(context).cardColor;
-    final surfaceColor = colorScheme.surface;
     
     final dias = _diasRecientes(7);
 
     return Scaffold(
-      backgroundColor: surfaceColor,
-      appBar: AppBar(
-        title: Text(widget.nombre, style: TextStyle(color: onSurface, fontWeight: FontWeight.w800)),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.refresh_rounded, color: onSurface.withValues(alpha: 0.7)),
-            onPressed: () {
-              ref.invalidate(historialFiltradoProvider(widget.repartidorId));
-              ref.invalidate(repartidorDetailProvider(widget.repartidorId));
-            },
-          ),
-        ],
-      ),
+      backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'hacer_cuentas',
+        heroTag: 'hacer_cuentas_${widget.repartidorId}',
         onPressed: () => historyAsync.whenData((all) {
           final hoyServicios = _filtrarPorFecha(all);
           final completados = hoyServicios.where((s) => s['estado'] == 'completado').toList();
@@ -283,6 +359,7 @@ class _RepartidorDetailScreenState extends ConsumerState<RepartidorDetailScreen>
                     child: serviciosDia.isEmpty
                         ? _EmptyDayView(esHoy: _esHoy(_fechaSeleccionada))
                         : ListView.separated(
+                            controller: widget.scrollController,
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
                             itemCount: serviciosDia.length,
                             separatorBuilder: (_, __) => const SizedBox(height: 10),

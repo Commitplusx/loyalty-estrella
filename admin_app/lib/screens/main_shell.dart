@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart';
 import '../core/user_role.dart';
 import '../core/supabase_config.dart';
 import '../core/ui_helpers.dart';
+import '../core/connectivity_provider.dart';
 import 'dashboard_screen.dart' show statsProvider;
 import 'pedidos_screen.dart' show pedidosActivosProvider;
 
@@ -54,6 +55,9 @@ class _MainShellState extends ConsumerState<MainShell> {
     final isAdmin = ref.watch(isAdminProvider);
     final pendingAsync = isAdmin ? ref.watch(pendingSolicitudesProvider) : null;
     final pendingCount = pendingAsync?.valueOrNull ?? 0;
+    
+    final isConnectedAsync = ref.watch(connectivityProvider);
+    final isConnected = isConnectedAsync.valueOrNull ?? true;
     
     final pedidosCountAsync = ref.watch(pendingPedidosCountProvider);
     final pedidosCount = pedidosCountAsync.valueOrNull ?? 0;
@@ -163,6 +167,45 @@ class _MainShellState extends ConsumerState<MainShell> {
                             setState(() => _isExpanded = false);
                             context.go(tabs[i].route);
                           },
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // ── Alerta Sin Conexión ──
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 500),
+                  curve: Curves.easeOutBack,
+                  top: isConnected ? -100 : MediaQuery.of(context).padding.top + 10,
+                  left: 16,
+                  right: 16,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withOpacity(0.85),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.red.withOpacity(0.5)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.wifi_off_rounded, color: Colors.white),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text('Sin Conexión a Internet', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  Text('Trabajando en modo offline. Los pedidos no se actualizarán.', style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),

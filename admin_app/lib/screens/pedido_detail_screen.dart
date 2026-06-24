@@ -302,16 +302,22 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
           ),
           child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: bannerColor.withOpacity(0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  estaAtrasado ? Icons.timer_off_rounded : _estadoIcon(pedido.estado), 
-                  color: bannerColor, 
-                  size: 32
+              Hero(
+                tag: 'pedido_icon_${pedido.id}',
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: bannerColor.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      estaAtrasado ? Icons.timer_off_rounded : _estadoIcon(pedido.estado), 
+                      color: bannerColor, 
+                      size: 32
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 16),
@@ -450,19 +456,6 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
 
         const SizedBox(height: 24),
 
-        // ── Seguimiento ──
-        _SectionTitle(title: 'Seguimiento', icon: Icons.access_time_filled_rounded),
-        Container(
-          decoration: BoxDecoration(color: isDark ? const Color(0xFF1E1E1E) : Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))]),
-          child: Column(
-            children: [
-              _InfoRow(icon: Icons.access_time_rounded, title: 'Asignado', value: _formatDateTime(pedido.createdAt), isFirst: true),
-              _InfoRow(icon: Icons.update_rounded, title: 'Actualizado', value: _formatDateTime(pedido.updatedAt), isLast: true),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 32),
 
         // ── Acción Principal ──
         if (pedido.siguienteEstado != null)

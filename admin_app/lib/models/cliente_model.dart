@@ -12,6 +12,7 @@ class ClienteModel {
   final double? costoEnvio;
   final String rango;
   final double saldoBilletera;
+  final bool aceptaTerminos;
 
   const ClienteModel({
     required this.id,
@@ -27,6 +28,7 @@ class ClienteModel {
     this.costoEnvio,
     this.rango = 'bronce',
     this.saldoBilletera = 0.0,
+    this.aceptaTerminos = false,
   });
 
   int get enviosParaGratis {
@@ -50,6 +52,7 @@ class ClienteModel {
       costoEnvio: map['costo_envio'] != null ? (map['costo_envio'] as num).toDouble() : null,
       rango: map['rango'] ?? 'bronce',
       saldoBilletera: map['saldo_billetera'] != null ? (map['saldo_billetera'] as num).toDouble() : 0.0,
+      aceptaTerminos: map['acepta_terminos'] == true,
     );
   }
 

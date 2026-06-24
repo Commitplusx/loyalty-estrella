@@ -10,6 +10,7 @@ import '../core/supabase_config.dart';
 import '../core/user_role.dart';
 import '../core/ui_helpers.dart';
 import '../core/cache_helper.dart';
+import 'repartidor_detail_screen.dart';
 
 final myRepartidorIdProvider = FutureProvider.autoDispose<String?>((ref) async {
   final user = supabase.auth.currentUser;
@@ -649,7 +650,7 @@ class _RepartidoresTab extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(16),
                 onTap: () {
                     if (isAdmin) {
-                      context.push('/repartidores/${r['id']}?nombre=${Uri.encodeComponent(r['alias'] ?? r['nombre'])}');
+                      RepartidorDetailScreen.show(context, r['id'].toString(), r['alias'] ?? r['nombre'] ?? '');
                     } else {
                       onSelect(r['id'].toString(), r['alias'] ?? r['nombre']);
                     }

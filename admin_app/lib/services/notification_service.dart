@@ -23,7 +23,7 @@ class NotificationService {
     );
 
     await flutterLocalNotificationsPlugin.initialize(
-      initializationSettings,
+      settings: initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse notificationResponse) async {
         // Al tocar la notificación
         if (notificationResponse.payload != null) {

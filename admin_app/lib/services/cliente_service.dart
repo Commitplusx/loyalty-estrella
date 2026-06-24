@@ -78,6 +78,38 @@ class ClienteService {
     }
   }
 
+  Future<bool> actualizarNombre(String clienteId, String nuevoNombre) async {
+    try {
+      await supabase.from('clientes').update({'nombre': nuevoNombre}).eq('id', clienteId);
+      return true;
+    } catch (e) {
+      print('Error en actualizarNombre: $e');
+      return false;
+    }
+  }
+
+  Future<bool> enviarTerminos(String telefono, String nombre) async {
+    try {
+      debugPrint('Enviando términos a $telefono, $nombre...');
+      final res = await supabase.functions.invoke(
+        'whatsapp-bot',
+        body: {
+          'action': 'enviar_terminos',
+          'telefono': telefono,
+          'nombre': nombre,
+        },
+      );
+      debugPrint('Respuesta Edge Function: status=${res.status}, body=${res.data}');
+      return res.status == 200;
+    } on FunctionException catch (e) {
+      debugPrint('FunctionException en enviarTerminos: status=${e.status}, reason=${e.reasonPhrase}, details=${e.details}');
+      return false;
+    } catch (e) {
+      debugPrint('Error general en enviarTerminos: $e');
+      return false;
+    }
+  }
+
   /// Registra un envío escaneando el QR del cliente.
   Future<ScanResultModel> registrarEnvio(String codigoQr) async {
     try {

@@ -77,6 +77,58 @@ class DashboardService {
     };
   }
 
+  /// Obtiene estadísticas de ganancias de los últimos 7 días
+  Future<List<Map<String, dynamic>>> getWeeklyStats({String? repartidorId}) async {
+    final now = DateTime.now();
+    // 6 days ago + today = 7 days
+    final startOf7DaysAgo = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6)).toUtc().toIso8601String();
+    
+    var query = supabase
+        .from('pedidos')
+        .select('precio_entrega, metodo_pago, estado, updated_at')
+        .gte('updated_at', startOf7DaysAgo)
+        .eq('estado', 'entregado');
+        
+    if (repartidorId != null) {
+      query = query.eq('repartidor_id', repartidorId);
+    }
+
+    final response = await query;
+    final pedidos = response as List<dynamic>;
+
+    // Prepare exactly 7 days
+    final List<Map<String, dynamic>> result = [];
+    final weekDays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+    for (int i = 6; i >= 0; i--) {
+      final date = now.subtract(Duration(days: i));
+      result.add({
+        'day': weekDays[date.weekday - 1],
+        'date': '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+        'ganancias': 0.0,
+      });
+    }
+
+    for (var p in pedidos) {
+      final dt = DateTime.tryParse(p['updated_at'] ?? '')?.toLocal();
+      if (dt == null) continue;
+      
+      final dateStr = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+      
+      final precio = (p['precio_entrega'] as num?)?.toDouble() ?? 0.0;
+      final metodoPago = p['metodo_pago'] as String? ?? '';
+      
+      if (precio > 0 && metodoPago.toLowerCase() != 'billetera') {
+        final dayIndex = result.indexWhere((element) => element['date'] == dateStr);
+        if (dayIndex != -1) {
+          result[dayIndex]['ganancias'] = (result[dayIndex]['ganancias'] as double) + precio;
+        }
+      }
+    }
+    
+    return result;
+  }
+
   /// Obtiene los restaurantes más pedidos de la última semana (Top 5)
   Future<List<Map<String, dynamic>>> getTopRestaurantes() async {
     final now = DateTime.now();

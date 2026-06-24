@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../services/cliente_service.dart';
 import '../models/cliente_model.dart';
 import '../core/ui_helpers.dart';
-
+import 'client_detail_screen.dart';
 final clientesProvider = FutureProvider.autoDispose.family<List<ClienteModel>, String>(
   (ref, busqueda) async {
     return ref.read(clienteServiceProvider).getClientes(busqueda: busqueda);
@@ -21,6 +21,7 @@ class ClientsScreen extends ConsumerStatefulWidget {
 class _ClientsScreenState extends ConsumerState<ClientsScreen> {
   final _searchCtrl = TextEditingController();
   String _busqueda = '';
+  String _filtro = 'Todos';
 
   @override
   void dispose() {
@@ -170,6 +171,34 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
             ),
           ),
           SizedBox(height: 12),
+          // Filtros
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: ['Todos', 'Registrados', 'Express'].map((f) {
+                final selected = _filtro == f;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: Text(f, style: TextStyle(
+                      color: selected ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface,
+                      fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                    )),
+                    selected: selected,
+                    onSelected: (val) {
+                      if (val) setState(() => _filtro = f);
+                    },
+                    backgroundColor: Theme.of(context).cardColor,
+                    selectedColor: const Color(0xFFFF6B35),
+                    checkmarkColor: Theme.of(context).colorScheme.onPrimary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          SizedBox(height: 8),
           // List
           Expanded(
             child: clientesAsync.when(
@@ -180,8 +209,15 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
                 child: Text('Error: $e',
                     style: TextStyle(color: Colors.red)),
               ),
-              data: (clientes) => clientes.isEmpty
-                  ? Center(
+              data: (clientes) {
+                final filtered = clientes.where((c) {
+                  if (_filtro == 'Registrados') return c.aceptaTerminos;
+                  if (_filtro == 'Express') return !c.aceptaTerminos;
+                  return true;
+                }).toList();
+
+                if (filtered.isEmpty) {
+                  return Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -189,21 +225,24 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
                               size: 64, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.24)),
                           SizedBox(height: 12),
                           Text(
-                            _busqueda.isEmpty
+                            _busqueda.isEmpty && _filtro == 'Todos'
                                 ? 'No hay clientes registrados'
-                                : 'Sin resultados para "$_busqueda"',
+                                : 'Sin resultados',
                             style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38)),
                           ),
                         ],
                       ),
-                    )
-                  : ListView.separated(
+                    );
+                }
+
+                return ListView.separated(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                      itemCount: clientes.length,
+                      itemCount: filtered.length,
                       separatorBuilder: (_, __) => SizedBox(height: 10),
                       itemBuilder: (ctx, i) =>
-                          _ClienteTile(cliente: clientes[i]),
-                    ),
+                          _ClienteTile(cliente: filtered[i]),
+                    );
+              },
             ),
           ),
         ],
@@ -232,7 +271,7 @@ class _ClienteTile extends StatelessWidget {
     final progress = (cliente.totalEnvios % 5) / 5;
 
     return InkWell(
-      onTap: () => context.push('/clients/${cliente.id}'),
+      onTap: () => ClientDetailScreen.show(context, cliente.id),
       borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -278,6 +317,24 @@ class _ClienteTile extends StatelessWidget {
                           ),
                         ),
                       ),
+                      if (!cliente.aceptaTerminos) ...[
+                        SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '🤫 Express',
+                            style: TextStyle(
+                              color: Colors.grey,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
                       if (cliente.tieneGratisDisponible) ...[
                         SizedBox(width: 8),
                         Container(
