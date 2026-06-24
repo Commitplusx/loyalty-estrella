@@ -553,6 +553,37 @@ class _LocalFormSheet extends ConsumerStatefulWidget {
   ConsumerState<_LocalFormSheet> createState() => _LocalFormSheetState();
 }
 
+// ── Estilo oscuro tipo Rappi/Uber para el mapa ─────────────────────────────
+const String _darkMapStyle = '''
+[
+  {"elementType":"geometry","stylers":[{"color":"#0f172a"}]},
+  {"elementType":"labels.text.fill","stylers":[{"color":"#94a3b8"}]},
+  {"elementType":"labels.text.stroke","stylers":[{"color":"#0f172a"}]},
+  {"featureType":"administrative","elementType":"geometry","stylers":[{"color":"#1e293b"}]},
+  {"featureType":"administrative.country","elementType":"labels.text.fill","stylers":[{"color":"#94a3b8"}]},
+  {"featureType":"administrative.locality","elementType":"labels.text.fill","stylers":[{"color":"#cbd5e1"}]},
+  {"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#f97316"}]},
+  {"featureType":"poi","elementType":"geometry","stylers":[{"color":"#1e293b"}]},
+  {"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#132e26"}]},
+  {"featureType":"poi.park","elementType":"labels.text.fill","stylers":[{"color":"#34d399"}]},
+  {"featureType":"poi.business","stylers":[{"visibility":"on"}]},
+  {"featureType":"poi.medical","elementType":"labels.text.fill","stylers":[{"color":"#f87171"}]},
+  {"featureType":"poi.school","elementType":"labels.text.fill","stylers":[{"color":"#60a5fa"}]},
+  {"featureType":"road","elementType":"geometry","stylers":[{"color":"#1e293b"}]},
+  {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#0f172a"}]},
+  {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#334155"}]},
+  {"featureType":"road.highway","elementType":"geometry.stroke","stylers":[{"color":"#1e293b"}]},
+  {"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#f97316"}]},
+  {"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#1e293b"}]},
+  {"featureType":"road.local","elementType":"geometry","stylers":[{"color":"#1a2744"}]},
+  {"featureType":"transit","elementType":"geometry","stylers":[{"color":"#1e293b"}]},
+  {"featureType":"transit.station","elementType":"labels.text.fill","stylers":[{"color":"#a78bfa"}]},
+  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#0c1a2e"}]},
+  {"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#38bdf8"}]},
+  {"featureType":"water","elementType":"labels.text.stroke","stylers":[{"color":"#0c1a2e"}]}
+]
+''';
+
 class _LocalFormSheetState extends ConsumerState<_LocalFormSheet> {
   final nombreCtrl = TextEditingController();
   final telCtrl    = TextEditingController();
@@ -847,7 +878,10 @@ class _LocalFormSheetState extends ConsumerState<_LocalFormSheet> {
                                   : const LatLng(16.7519, -92.6376), // Comitán de Domínguez por defecto
                               zoom: 16,
                             ),
-                            onMapCreated: (ctrl) => _mapController = ctrl,
+                            onMapCreated: (ctrl) {
+                              _mapController = ctrl;
+                              ctrl.setMapStyle(_darkMapStyle);
+                            },
                             myLocationEnabled: true,
                             myLocationButtonEnabled: false,
                             zoomControlsEnabled: false,
