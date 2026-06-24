@@ -9,6 +9,7 @@ import '../services/gasto_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter/gestures.dart';
 
 final promosProvider = FutureProvider.autoDispose((ref) async {
   final data = await supabase
@@ -850,6 +851,13 @@ class _LocalFormSheetState extends ConsumerState<_LocalFormSheet> {
                             myLocationButtonEnabled: false,
                             zoomControlsEnabled: false,
                             mapType: MapType.normal,
+                            // ← Esto hace que el mapa capture los gestos
+                            // aunque esté dentro de un ListView/ScrollView
+                            gestureRecognizers: {
+                              Factory<OneSequenceGestureRecognizer>(
+                                () => EagerGestureRecognizer(),
+                              ),
+                            },
                             markers: lat != null && lng != null
                                 ? {
                                     Marker(
