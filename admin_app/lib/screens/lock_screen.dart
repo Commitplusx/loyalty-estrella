@@ -26,7 +26,6 @@ class _LockScreenState extends State<LockScreen> with SingleTickerProviderStateM
     _animCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000));
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeIn);
     _animCtrl.forward();
-    _authenticate();
   }
 
   @override
@@ -151,7 +150,7 @@ class _LockScreenState extends State<LockScreen> with SingleTickerProviderStateM
                         ),
                         const SizedBox(height: 32),
                         const Text(
-                          'Estrella Seguro',
+                          'Protegido',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 26,
@@ -182,7 +181,7 @@ class _LockScreenState extends State<LockScreen> with SingleTickerProviderStateM
                                 children: [
                                   Icon(Icons.fingerprint_rounded, color: Theme.of(context).colorScheme.primary),
                                   const SizedBox(width: 12),
-                                  Text('Desbloquear', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 16)),
+                                  Text('Desbloquear con Huella', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 16)),
                                 ],
                               ),
                             ),
@@ -206,7 +205,7 @@ class _LockScreenState extends State<LockScreen> with SingleTickerProviderStateM
                             if (!context.mounted) return;
                             context.go('/login');
                           },
-                          child: Text('Cerrar Sesión', style: TextStyle(color: Colors.white.withOpacity(0.4))),
+                          child: Text('Ingresar con Contraseña', style: TextStyle(color: Colors.white.withOpacity(0.4))),
                         )
                       ],
                     ),
