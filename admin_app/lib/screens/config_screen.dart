@@ -10,6 +10,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart';
 
 final promosProvider = FutureProvider.autoDispose((ref) async {
   final data = await supabase
