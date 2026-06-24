@@ -21,6 +21,8 @@ class PedidoModel {
   final String? origen;
   final String? destino;
   final double? precioEntrega;
+  final double? total;               // Nuevo
+  final String? notas;               // Nuevo
 
   const PedidoModel({
     required this.id,
@@ -41,6 +43,8 @@ class PedidoModel {
     this.origen,
     this.destino,
     this.precioEntrega,
+    this.total,
+    this.notas,
   });
 
   factory PedidoModel.fromMap(Map<String, dynamic> map) {
@@ -60,11 +64,13 @@ class PedidoModel {
       repartidorNombre: map['repartidores'] != null
           ? (map['repartidores'] as Map<String, dynamic>)['nombre'] as String?
           : null,
-      tipoPedido: map['tipo_pedido'] as String? ?? 'comida',
+      tipoPedido: map['tipo_pedido'] as String? ?? 'domicilio',
       metodoPago: map['metodo_pago'] as String? ?? 'efectivo',
       origen: map['origen'] as String?,
       destino: map['destino'] as String?,
       precioEntrega: (map['precio_entrega'] as num?)?.toDouble(),
+      total: (map['total'] as num?)?.toDouble(),
+      notas: map['notas'] as String?,
     );
   }
 

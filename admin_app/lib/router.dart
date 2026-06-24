@@ -25,8 +25,11 @@ import 'screens/solicitudes_screen.dart';
 
 
 
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: '/lock',
     // Deep links: https://www.app-estrella.shop/pedido/:id
     // iOS/Android App Links intercept and open this route directly
@@ -118,10 +121,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/gastos',
             pageBuilder: (ctx, state) => _buildPageWithTransition(const GastosScreen(), state),
-          ),
-          GoRoute(
-            path: '/clients/:id',
-            pageBuilder: (ctx, state) => _buildPageWithTransition(ClientDetailScreen(clienteId: state.pathParameters['id']!), state),
           ),
           GoRoute(
             path: '/repartidores',

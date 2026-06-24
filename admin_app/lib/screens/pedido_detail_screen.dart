@@ -391,8 +391,15 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
                   icon: Icons.payments_outlined,
                   title: 'Método de Pago',
                   value: pedido.metodoPago == 'en_linea' ? '💳 Ya Pagado (En línea)' : '💵 Efectivo (Cobrar)',
-                  isLast: true
+                  isLast: pedido.metodoPago == 'en_linea' || pedido.total == null
                 ),
+                if (pedido.metodoPago == 'efectivo' && pedido.total != null)
+                  _InfoRow(
+                    icon: Icons.attach_money_rounded,
+                    title: 'Total a Cobrar',
+                    value: '\$${pedido.total!.toStringAsFixed(2)}',
+                    isLast: true
+                  ),
               ],
             ],
           ),

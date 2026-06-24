@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -54,7 +55,7 @@ void main() async {
   await FirebaseMessaging.instance.subscribeToTopic('admins');
 
   // Evitar que Google Fonts intente descargar fuentes en runtime (crash en release)
-  GoogleFonts.config.allowRuntimeFetching = false;
+  GoogleFonts.config.allowRuntimeFetching = true;
 
   await Supabase.initialize(
     url: 'https://jdrrkpvodnqoljycixbg.supabase.co',
@@ -63,6 +64,17 @@ void main() async {
   );
 
   await NotificationService().init();
+
+  // Escuchar cuando el usuario toca una notificación push real de Firebase
+  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    final String? pedidoId = message.data['pedido_id'] ?? message.data['id'];
+    if (pedidoId != null) {
+      final context = rootNavigatorKey.currentContext;
+      if (context != null) {
+        context.go('/pedidos/$pedidoId');
+      }
+    }
+  });
 
   // Escuchar inserts (efectivo) y updates (cuando pagan con tarjeta y pasa a pendiente)
   Supabase.instance.client.channel('public:pedidos').onPostgresChanges(

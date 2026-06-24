@@ -1,5 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:go_router/go_router.dart';
+import '../router.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -21,11 +23,15 @@ class NotificationService {
     );
 
     await flutterLocalNotificationsPlugin.initialize(
-      settings: initializationSettings,
+      initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse notificationResponse) async {
         // Al tocar la notificación
         if (notificationResponse.payload != null) {
           print('Notificación tocada con payload: ${notificationResponse.payload}');
+          final context = rootNavigatorKey.currentContext;
+          if (context != null) {
+            context.go('/pedidos/${notificationResponse.payload}');
+          }
         }
       },
     );
