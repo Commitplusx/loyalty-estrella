@@ -8,6 +8,7 @@ import '../services/repartidor_service.dart';
 import '../services/gasto_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 final promosProvider = FutureProvider.autoDispose((ref) async {
   final data = await supabase
@@ -562,6 +563,8 @@ class _LocalFormSheetState extends ConsumerState<_LocalFormSheet> {
   bool _isLoadingGps  = false;
   bool _isSaving      = false;
   String? _errorMsg;
+  GoogleMapController? _mapController;
+  bool _showMap = false;
 
   bool get _isEditing => widget.local != null;
 
@@ -586,6 +589,7 @@ class _LocalFormSheetState extends ConsumerState<_LocalFormSheet> {
     telCtrl.dispose();
     dirCtrl.dispose();
     mapsUrlCtrl.dispose();
+    _mapController?.dispose();
     super.dispose();
   }
 
@@ -741,23 +745,6 @@ class _LocalFormSheetState extends ConsumerState<_LocalFormSheet> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Maps URL field
-                  _buildLabel('Link de Google Maps ✨ (Opcional)'),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: mapsUrlCtrl,
-                    keyboardType: TextInputType.url,
-                    decoration: InputDecoration(
-                      hintText: 'https://maps.app.goo.gl/...',
-                      filled: true,
-                      fillColor: Colors.grey.shade900.withOpacity(0.5),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      prefixIcon: const Icon(Icons.map_rounded, color: Colors.blueAccent),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
                   // Phone field
                   _buildLabel('WhatsApp / Teléfono (10 dígitos) *'),
                   const SizedBox(height: 6),
@@ -769,14 +756,159 @@ class _LocalFormSheetState extends ConsumerState<_LocalFormSheet> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Address / GPS section
-                  _buildLabel('Ubicación del local (Dirección o Link)'),
+                  // ── Ubicación del restaurante ──
+                  _buildLabel('📍 Ubicación del Restaurante'),
+                  const SizedBox(height: 8),
+
+                  // Si ya tiene coordenadas, mostrar badge verde
+                  if (lat != null && lng != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withOpacity(0.1),
+                        border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Coordenadas: ${lat!.toStringAsFixed(5)}, ${lng!.toStringAsFixed(5)}',
+                              style: const TextStyle(color: Color(0xFF10B981), fontSize: 12, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Botón principal: Detectar mi ubicación (GPS)
+                  SizedBox(
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1D4ED8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: _isLoadingGps ? null : () async {
+                        await _obtenerUbicacion();
+                        if (lat != null && lng != null) {
+                          setState(() => _showMap = true);
+                          _mapController?.animateCamera(
+                            CameraUpdate.newLatLng(LatLng(lat!, lng!)),
+                          );
+                        }
+                      },
+                      icon: _isLoadingGps
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Icon(Icons.my_location_rounded, color: Colors.white),
+                      label: Text(
+                        _isLoadingGps ? 'Detectando...' : '📡 Usar mi ubicación actual',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Botón secundario: Abrir/cerrar mapa manual
+                  SizedBox(
+                    height: 44,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () => setState(() => _showMap = !_showMap),
+                      icon: Icon(_showMap ? Icons.map_rounded : Icons.pin_drop_rounded, size: 18),
+                      label: Text(_showMap ? 'Ocultar mapa' : '🗺️ Seleccionar en mapa (arrastra el pin)'),
+                    ),
+                  ),
+
+                  // Mapa interactivo con pin arrastrable
+                  if (_showMap) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      height: 250,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Stack(
+                        children: [
+                          GoogleMap(
+                            initialCameraPosition: CameraPosition(
+                              target: lat != null && lng != null
+                                  ? LatLng(lat!, lng!)
+                                  : const LatLng(16.7519, -92.6376), // Comitán de Domínguez por defecto
+                              zoom: 16,
+                            ),
+                            onMapCreated: (ctrl) => _mapController = ctrl,
+                            myLocationEnabled: true,
+                            myLocationButtonEnabled: false,
+                            zoomControlsEnabled: false,
+                            mapType: MapType.normal,
+                            markers: lat != null && lng != null
+                                ? {
+                                    Marker(
+                                      markerId: const MarkerId('restaurante'),
+                                      position: LatLng(lat!, lng!),
+                                      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+                                      draggable: true,
+                                      onDragEnd: (newPos) {
+                                        setState(() {
+                                          lat = newPos.latitude;
+                                          lng = newPos.longitude;
+                                        });
+                                      },
+                                    ),
+                                  }
+                                : {},
+                            onLongPress: (pos) {
+                              setState(() {
+                                lat = pos.latitude;
+                                lng = pos.longitude;
+                              });
+                            },
+                            onTap: (pos) {
+                              setState(() {
+                                lat = pos.latitude;
+                                lng = pos.longitude;
+                              });
+                            },
+                          ),
+                          // Instrucciones flotantes
+                          Positioned(
+                            top: 8, left: 8, right: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.75),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Text(
+                                'Toca el mapa o arrastra el pin verde para ajustar la posición exacta del local',
+                                style: TextStyle(color: Colors.white, fontSize: 11),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+
+                  // Campo de texto de dirección (opcional, de apoyo)
+                  _buildLabel('Dirección (texto, opcional)'),
                   const SizedBox(height: 6),
                   TextField(
                     controller: dirCtrl,
                     minLines: 1,
-                    maxLines: 3,
-                    decoration: _inputDeco('Dirección, referencia o pega link de Google Maps'),
+                    maxLines: 2,
+                    decoration: _inputDeco('Ej: Av. Central 123, Centro, Comitán'),
                   ),
                   const SizedBox(height: 16),
 
@@ -798,26 +930,6 @@ class _LocalFormSheetState extends ConsumerState<_LocalFormSheet> {
                     },
                   ),
                   const SizedBox(height: 10),
-
-                  // GPS button
-                  SizedBox(
-                    height: 48,
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: lat != null ? accent : Colors.white24),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                      onPressed: _isLoadingGps ? null : _obtenerUbicacion,
-                      icon: _isLoadingGps
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                          : Icon(lat != null ? Icons.location_on_rounded : Icons.my_location_rounded,
-                              color: lat != null ? accent : null),
-                      label: Text(
-                        lat != null ? 'Coordenadas capturadas ✅' : 'Capturar ubicación GPS exacta',
-                        style: TextStyle(color: lat != null ? accent : null),
-                      ),
-                    ),
-                  ),
 
                   // Active toggle (edit only)
                   if (_isEditing) ...[
