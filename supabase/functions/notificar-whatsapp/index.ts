@@ -314,12 +314,13 @@ serve(async (req: Request) => {
       const { restaurante, descripcion, ticket_id, tipo_entrega } = payload
       const adminPhoneRaw = Deno.env.get('ADMIN_PHONE_BILLETERA') || Deno.env.get('ADMIN_PHONE') || (Deno.env.get('ADMIN_PHONES') ?? '').split(',')[0]?.trim()
       
+      const icono = tipo_entrega === 'tienda' ? '🏪' : '🛵'
+      const etiqueta = tipo_entrega === 'tienda' ? 'Recoger en Tienda' : 'A Domicilio'
+      const mensajeAdmin = `🚨 *NUEVO PEDIDO WEB (#${ticket_id})*\n\n🏪 Restaurante: ${restaurante}\n📦 Entrega: ${etiqueta} ${icono}\n\n${descripcion}`
+
+      // 1. Notificar al Admin
       if (adminPhoneRaw && adminPhoneRaw.length > 0) {
         const adminTelFormateado = formatTel(adminPhoneRaw)
-        const icono = tipo_entrega === 'tienda' ? '🏪' : '🛵'
-        const etiqueta = tipo_entrega === 'tienda' ? 'Recoger en Tienda' : 'A Domicilio'
-        const mensajeAdmin = `🚨 *NUEVO PEDIDO WEB (#${ticket_id})*\n\n🏪 Restaurante: ${restaurante}\n📦 Entrega: ${etiqueta} ${icono}\n\n${descripcion}`
-
         const resAdm = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
           method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -327,8 +328,35 @@ serve(async (req: Request) => {
             text: { body: mensajeAdmin }
           })
         }, 15000)
-        if (!resAdm.ok) console.error(`WA error nueva_orden_admin:`, await resAdm.text())
+        if (!resAdm.ok) console.error(`WA error nueva_orden_admin (admin):`, await resAdm.text())
       }
+
+      // 2. Notificar al Restaurante directamente (si tiene teléfono registrado y activo)
+      if (restaurante) {
+        const { data: restData } = await supabase
+          .from('restaurantes')
+          .select('telefono')
+          .ilike('nombre', `%${restaurante}%`)
+          .eq('activo', true)
+          .limit(1)
+          .maybeSingle();
+
+        if (restData?.telefono) {
+          const restTelFormateado = formatTel(restData.telefono);
+          const mensajeRest = `🔔 *¡NUEVO PEDIDO RECIBIDO! (#${ticket_id})*\n\n📦 Tipo de Entrega: ${etiqueta} ${icono}\n\n📝 *Detalles del pedido:*\n${descripcion}\n\nPor favor, comienza a prepararlo. Te avisaremos cuando el repartidor vaya en camino (o el cliente si es recoger en tienda).`;
+
+          const resRest = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+            method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messaging_product: 'whatsapp', recipient_type: 'individual', to: restTelFormateado, type: 'text',
+              text: { body: mensajeRest }
+            })
+          }, 15000);
+          
+          if (!resRest.ok) console.error(`WA error nueva_orden_admin (restaurante):`, await resRest.text());
+        }
+      }
+
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
     }
 
