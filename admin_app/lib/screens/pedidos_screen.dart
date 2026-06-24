@@ -171,26 +171,49 @@ class _PedidosScreenState extends ConsumerState<PedidosScreen> {
                   return p.tipoPedido == _sourceFilter;
                 }).toList();
 
+          // Extraer la barra de filtros
+          final statusFilterChips = SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.only(bottom: 12, left: 16, right: 16, top: 16),
+            child: Row(
+              children: [
+                _StatusChip(label: 'Activos', isSelected: _statusFilter == 'activos', onTap: () => setState(() => _statusFilter = 'activos')),
+                _StatusChip(label: 'Pendientes', isSelected: _statusFilter == 'pendientes', onTap: () => setState(() => _statusFilter = 'pendientes')),
+                _StatusChip(label: 'En Camino', isSelected: _statusFilter == 'en_camino', onTap: () => setState(() => _statusFilter = 'en_camino')),
+                _StatusChip(label: 'Entregados', isSelected: _statusFilter == 'entregados', onTap: () => setState(() => _statusFilter = 'entregados')),
+                _StatusChip(label: 'Cancelados', isSelected: _statusFilter == 'cancelados', onTap: () => setState(() => _statusFilter = 'cancelados')),
+                _StatusChip(label: 'Todos', isSelected: _statusFilter == 'todos', onTap: () => setState(() => _statusFilter = 'todos')),
+              ],
+            ),
+          );
+
           if (pedidos.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.check_circle_outline_rounded, color: onSurface.withValues(alpha: 0.05), size: 100),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Todo al día',
-                    style: TextStyle(color: onSurface.withValues(alpha: 0.6), fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.5),
+            return Column(
+              children: [
+                statusFilterChips,
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.check_circle_outline_rounded, color: onSurface.withValues(alpha: 0.05), size: 100),
+                        const SizedBox(height: 24),
+                        Text(
+                          'Todo al día',
+                          style: TextStyle(color: onSurface.withValues(alpha: 0.6), fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.5),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _sourceFilter == null
+                              ? 'No hay pedidos activos en este momento.'
+                              : 'No hay pedidos de este tipo.',
+                          style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 14),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _sourceFilter == null
-                        ? 'No hay pedidos activos en este momento.'
-                        : 'No hay pedidos de este tipo.',
-                    style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 14),
-                  ),
-                ],
-              ),
+                ),
+              ],
             );
           }
 
@@ -209,26 +232,14 @@ class _PedidosScreenState extends ConsumerState<PedidosScreen> {
           final cancelados = pedidos.where((p) => p.estado == 'cancelado').toList();
           final otros = pedidos.where((p) => !['pendiente', 'en_camino', 'recibido', 'asignado', 'entregado', 'cancelado'].contains(p.estado)).toList();
 
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+          return Column(
             children: [
-              // Chips de Estado
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
+              statusFilterChips,
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
                   children: [
-                    _StatusChip(label: 'Activos', isSelected: _statusFilter == 'activos', onTap: () => setState(() => _statusFilter = 'activos')),
-                    _StatusChip(label: 'Pendientes', isSelected: _statusFilter == 'pendientes', onTap: () => setState(() => _statusFilter = 'pendientes')),
-                    _StatusChip(label: 'En Camino', isSelected: _statusFilter == 'en_camino', onTap: () => setState(() => _statusFilter = 'en_camino')),
-                    _StatusChip(label: 'Entregados', isSelected: _statusFilter == 'entregados', onTap: () => setState(() => _statusFilter = 'entregados')),
-                    _StatusChip(label: 'Cancelados', isSelected: _statusFilter == 'cancelados', onTap: () => setState(() => _statusFilter = 'cancelados')),
-                    _StatusChip(label: 'Todos', isSelected: _statusFilter == 'todos', onTap: () => setState(() => _statusFilter = 'todos')),
-                  ],
-                ),
-              ),
-
-              // Banner de resumen minimalista
+                    // Banner de resumen minimalista
               Padding(
                 padding: const EdgeInsets.only(bottom: 24, top: 8),
                 child: Wrap(
@@ -310,10 +321,13 @@ class _PedidosScreenState extends ConsumerState<PedidosScreen> {
               
               const SizedBox(height: 100), // Espacio para el Bottom Nav Bar flotante
             ],
-          );
-        },
-      ),
+          ),
+        ),
+      ],
     );
+  },
+),
+);
   }
 
   Future<void> _mostrarNuevoPedido(BuildContext context, WidgetRef ref) async {
