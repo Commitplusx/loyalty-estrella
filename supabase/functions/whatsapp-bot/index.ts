@@ -46,6 +46,28 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // ── APP RPC (FLUTTER) ──
+  const authHeader = req.headers.get('Authorization')
+  if (authHeader) {
+    try {
+      const body = JSON.parse(await req.text())
+      if (body.action === 'enviar_terminos') {
+        const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+        const { telefono, nombre } = body
+        if (!telefono) return new Response('Missing telefono', { status: 400 })
+        // Quitar espacios y dejar ultimos 10, o todo. El whatsapp.ts maneja "52" + tel
+        const tel10 = extract10Digits(telefono)
+        const resTemplate = await sendWATemplate(`52${tel10}`, 'estrella_terminos_condiciones', [nombre ?? 'Cliente Express'])
+        if (!resTemplate.ok) return new Response(resTemplate.error, { status: 500 })
+        return new Response('OK', { status: 200 })
+      }
+      return new Response('Unknown Action', { status: 400 })
+    } catch (e) {
+      console.error('RPC Error:', e)
+      return new Response('RPC Error', { status: 500 })
+    }
+  }
+
   // ── VALIDACION HMAC ──
   const appSecret = Deno.env.get('WHATSAPP_APP_SECRET')
   let bodyText    = ''
@@ -534,10 +556,29 @@ Deno.serve(async (req: Request) => {
 
     // ── 5. B2B RESTAURANTE ──
     if (cachedRestData && userLabel === 'restaurante') {
+      let isB2bState = false
+      if (msgType === 'text') {
+        const txt = (msg.text?.body as string).trim().toLowerCase()
+        const isReserved = ['hola', 'menu', 'menú', '/ayuda'].includes(txt)
+        if (!isReserved) {
+          const { data } = await supabase.from('bot_memory').select('history').eq('phone', `b2b_state_${from10}`).maybeSingle()
+          if (data) isB2bState = true
+        } else {
+          isB2bState = true
+        }
+      }
+
+      if (!isB2bState && (msgType === 'text' || msgType === 'location')) {
+        const { handleRestaurantDeliveryMessage } = await import('./restaurant-delivery-handler.ts')
+        const delRes = await handleRestaurantDeliveryMessage(supabase, fromPhone, from10, cachedRestData, msgType, msg)
+        if (delRes) return await exitSafely(delRes)
+      }
+
       const { handleRestaurantCommand } = await import('./restaurant-b2b-handler.ts')
       const res = await handleRestaurantCommand(supabase, fromPhone, from10, cachedRestData.id, cachedRestData.nombre, msgType, msg)
       if (res) return await exitSafely(res)
     }
+
 
     // ── 6. MÁQUINA DE ESTADOS: MANDADITOS (TEXTO) ──
     if (msgType === 'text' && userLabel === 'cliente') {

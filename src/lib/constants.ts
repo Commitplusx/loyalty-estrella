@@ -36,8 +36,8 @@ export const VALOR_CANJE_ESTIMADO = PRECIO_ENVIO_NORMAL;
 /** Mapa de transiciones válidas: estado_destino → estados_origen permitidos */
 export const TRANSICIONES_PEDIDO: Record<string, string[]> = {
   aceptado:  ['asignado'],
-  recibido:  ['aceptado', 'asignado', 'pendiente'],
+  recibido:  ['aceptado', 'asignado', 'pendiente', 'en_cocina', 'listo_para_recoger'],
   en_camino: ['recibido'],
   entregado: ['en_camino'],
-  cancelado: ['asignado', 'aceptado', 'pendiente', 'recibido', 'en_camino'],
+  cancelado: ['asignado', 'aceptado', 'pendiente', 'recibido', 'en_camino', 'en_cocina', 'listo_para_recoger'],
 };

@@ -331,13 +331,17 @@ Paso 3 — Entrega + Mapa
   └─ Toggle: 'A domicilio' | 'Recoger en tienda'
   └─ Si domicilio:
        ├─ Botón GPS "Encontrar mi ubicación" (con animación de carga)
-       ├─ GoogleMap con pin arrastrable (dark style)
-       ├─ DirectionsService → dibuja ruta desde el restaurante al cliente
-       │   Jerarquía de origen: lat/lng → direccion texto → nombre+México
-       └─ Mensaje de éxito: "¡Listo! Tenemos tu dirección"
+       ├─ GoogleMap con `gestureHandling: greedy` (tipo Rappi/Uber)
+       ├─ DirectionsService → dibuja ruta. DirectionsRenderer usa `suppressMarkers: true`
+       ├─ El pin de ubicación se mantiene exacto sobre el GPS del usuario.
+       └─ Se eliminó el input de texto de dirección para evitar fricción. Todo es 100% coordenadas.
 
 Paso 4 — Pago
   └─ Efectivo | En línea (Conekta)
+
+Footer Fijo (Sticky Footer)
+  └─ Visible en todos los pasos.
+  └─ Muestra en tiempo real el costo de Envío (destacado en color de marca) y el Total a pagar.
 ```
 
 **Estado persistido en `sessionStorage`:** carrito, nombre, teléfono, tipo entrega, dirección, método pago.

@@ -102,10 +102,12 @@ class PedidoModel {
       case 'pendiente_pago': return 'Pendiente de Pago';
       case 'pendiente':  return 'Pendiente (Sin asignar)';
       case 'asignado':   return 'Asignado';
+      case 'en_cocina':  return 'En Cocina';
+      case 'listo_para_recoger': return 'Listo para Recoger';
       case 'recibido':   return 'Recibido';
       case 'en_camino':  return 'En Camino';
       case 'entregado':  return 'Entregado';
-      case 'cancelado':  return 'Cancelado'; // BUG 7 fix
+      case 'cancelado':  return 'Cancelado';
       default:           return estado;
     }
   }
@@ -114,9 +116,11 @@ class PedidoModel {
 
   String? get siguienteEstado {
     switch (estado) {
-      case 'pendiente_pago': return 'pendiente'; // Debería pasar a pendiente cuando se pague, pero por ahora permitimos avanzar manual
+      case 'pendiente_pago': return 'pendiente';
       case 'pendiente': return 'asignado';
       case 'asignado':  return 'recibido';
+      case 'en_cocina': return 'recibido';
+      case 'listo_para_recoger': return 'recibido';
       case 'recibido':  return 'en_camino';
       case 'en_camino': return 'entregado';
       default:          return null;

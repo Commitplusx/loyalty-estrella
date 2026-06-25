@@ -136,7 +136,28 @@ class PedidoService {
       try {
         attempts++;
         final user = supabase.auth.currentUser;
-        
+        // Obtener estado actual para evitar regresar (Race condition con restaurante)
+        final currentData = await supabase.from('pedidos').select('estado').eq('id', pedidoId).single();
+        final currentState = currentData['estado'] as String;
+
+        final priority = {
+          'pendiente_pago': 0, 'pendiente': 1, 'asignado': 2, 'en_cocina': 3, 
+          'listo_para_recoger': 4, 'recibido': 5, 'en_camino': 6, 'entregado': 7, 'cancelado': 8
+        };
+
+        final currentPriority = priority[currentState] ?? -1;
+        final newPriority = priority[nuevoEstado] ?? -1;
+
+        if (newPriority < currentPriority) {
+          print('AVISO: Intento de regresar estado de $currentState a $nuevoEstado bloqueado.');
+          // Si el repartidor intentaba aceptar ('asignado') un pedido que ya está en cocina, SOLO le asignamos su ID sin cambiar estado
+          if (nuevoEstado == 'asignado' && user != null) {
+            await supabase.from('pedidos').update({'repartidor_id': user.id}).eq('id', pedidoId);
+          }
+          success = true;
+          break;
+        }
+
         await supabase
             .from('pedidos')
             .update({

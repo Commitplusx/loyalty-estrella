@@ -251,6 +251,21 @@ export async function handleRestaurantCommand(
     return new Response('OK', { status: 200 })
   }
 
+  // ── CONFIRMACIÓN DE ENVÍO DE DELIVERY ─────────────────────────────────────
+  if (isInteractive && buttonId.startsWith('REST_DELIVERY_')) {
+    if (buttonId.startsWith('REST_DELIVERY_CONFIRM_')) {
+      const { confirmarRestaurantDelivery } = await import('./restaurant-delivery-handler.ts')
+      const res = await confirmarRestaurantDelivery(supabase, fromPhone, from10, { id: restauranteId, nombre: nombreRest }, buttonId)
+      return res
+    }
+    if (buttonId === 'REST_DELIVERY_CANCEL') {
+      await supabase.from('bot_memory').delete().eq('phone', `rest_delivery_confirm_${from10}`)
+      await supabase.from('bot_memory').delete().eq('phone', `rest_delivery_buf_${from10}`)
+      await sendWA(fromPhone, `❌ Envío cancelado.`)
+      return new Response('OK', { status: 200 })
+    }
+  }
+
   // 2. Procesamiento de Texto (Máquina de Estados o Comandos directos)
   if (msgType === 'text') {
     const { data: memData } = await supabase.from('bot_memory').select('history, updated_at').eq('phone', `b2b_state_${from10}`).maybeSingle()

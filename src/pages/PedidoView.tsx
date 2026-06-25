@@ -147,6 +147,8 @@ export function PedidoView() {
     switch (pedido.estado) {
       case 'asignado':
       case 'aceptado':
+      case 'en_cocina':
+      case 'listo_para_recoger':
         return (
           <Button 
             onClick={() => handleActualizarEstado('recibido')} 

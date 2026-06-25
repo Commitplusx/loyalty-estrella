@@ -361,6 +361,45 @@ serve(async (req: Request) => {
     }
 
 
+    if (tipo === 'comida_lista') {
+      const { pedido_id, restaurante } = payload
+      
+      // Obtener el teléfono del repartidor asignado
+      const { data: pedidoData } = await supabase
+        .from('pedidos')
+        .select('repartidor_id')
+        .eq('id', pedido_id)
+        .single();
+        
+      let repartidorTel = null;
+      if (pedidoData?.repartidor_id) {
+        const { data: repData } = await supabase
+          .from('repartidores')
+          .select('telefono')
+          .eq('user_id', pedidoData.repartidor_id)
+          .single();
+        repartidorTel = repData?.telefono;
+      }
+      
+      if (repartidorTel) {
+        const telFormateado = formatTel(repartidorTel)
+        const numeroOrden = generarNumeroOrden(pedido_id)
+        const mensaje = `🛎️ *¡La comida está lista! (#${numeroOrden})*\n\nEl restaurante *${restaurante || 'Asignado'}* acaba de marcar el pedido como listo para recoger.\n\nPuedes pasar directamente a la cocina por él. 🏃‍♂️💨`
+        
+        const res = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+          method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text',
+            text: { body: mensaje }
+          })
+        }, 15000);
+        
+        if (!res.ok) console.error(`WA error comida_lista:`, await res.text());
+      }
+      
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+    }
+
     if (tipo === 'canje_billetera') {
       const { cliente_tel, cliente_nombre, codigo_canje, monto, saldo_restante } = payload
       const telFormateado = formatTel(cliente_tel)

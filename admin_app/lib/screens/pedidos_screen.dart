@@ -416,7 +416,7 @@ class _PedidoTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       child: Dismissible(
         key: Key('pedido_${pedido.id}'),
-        direction: (pedido.estado == 'pendiente' || pedido.estado == 'asignado' || pedido.estado == 'en_camino' || pedido.estado == 'recogido') 
+        direction: (pedido.estado == 'pendiente' || pedido.estado == 'asignado' || pedido.estado == 'en_cocina' || pedido.estado == 'listo_para_recoger' || pedido.estado == 'en_camino' || pedido.estado == 'recibido') 
             ? DismissDirection.startToEnd 
             : DismissDirection.none,
         background: Container(
@@ -437,12 +437,17 @@ class _PedidoTile extends StatelessWidget {
         confirmDismiss: (direction) async {
           HapticFeedback.heavyImpact();
           String nextState = '';
-          if (pedido.estado == 'pendiente' || pedido.estado == 'asignado') nextState = 'en_camino';
-          else if (pedido.estado == 'en_camino') nextState = 'recogido';
-          else if (pedido.estado == 'recogido') nextState = 'entregado';
+          if (pedido.estado == 'pendiente' || pedido.estado == 'pendiente_pago') nextState = 'asignado';
+          else if (pedido.estado == 'asignado' || pedido.estado == 'en_cocina' || pedido.estado == 'listo_para_recoger') nextState = 'recibido';
+          else if (pedido.estado == 'recibido') nextState = 'en_camino';
+          else if (pedido.estado == 'en_camino') nextState = 'entregado';
           
           if (nextState.isNotEmpty) {
-            await supabase.from('pedidos').update({'estado': nextState}).eq('id', pedido.id);
+            final updateData = {'estado': nextState};
+            if (pedido.estado == 'pendiente' || pedido.repartidorId == null) {
+              updateData['repartidor_id'] = supabase.auth.currentUser?.id ?? '';
+            }
+            await supabase.from('pedidos').update(updateData).eq('id', pedido.id);
           }
           return false; // Supabase trigger o el provider redibujará la lista. No remover de inmediato para evitar errores visuales rápidos.
         },
@@ -613,6 +618,7 @@ class _PedidoTile extends StatelessWidget {
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -1158,6 +1164,8 @@ Color _estadoColor(String estado) {
   switch (estado) {
     case 'pendiente': return const Color(0xFFEA580C);
     case 'asignado':  return const Color(0xFF60A5FA);
+    case 'en_cocina': return const Color(0xFFEAB308);
+    case 'listo_para_recoger': return const Color(0xFF14B8A6);
     case 'recibido':  return const Color(0xFF10B981);
     case 'en_camino': return const Color(0xFFFF6B35);
     case 'entregado': return const Color(0xFF8B5CF6);
@@ -1168,6 +1176,8 @@ Color _estadoColor(String estado) {
 IconData _estadoIcon(String estado) {
   switch (estado) {
     case 'asignado':  return Icons.assignment_rounded;
+    case 'en_cocina': return Icons.soup_kitchen_rounded;
+    case 'listo_para_recoger': return Icons.shopping_bag_rounded;
     case 'recibido':  return Icons.handshake_rounded;
     case 'en_camino': return Icons.delivery_dining_rounded;
     case 'entregado': return Icons.check_circle_rounded;

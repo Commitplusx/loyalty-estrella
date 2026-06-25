@@ -68,7 +68,7 @@ HERRAMIENTAS DISPONIBLES:
 - AGREGAR_REPARTIDOR / ELIMINAR_REPARTIDOR: Úsalo ÚNICAMENTE para agregar o eliminar a un repartidor (mensajero/empleado) del sistema. Requiere clienteNombre, clienteTel.
 - AGREGAR_CLIENTE: Úsalo para registrar a un CLIENTE en el sistema de lealtad. Requiere clienteNombre, clienteTel y opcionalmente colonia. (Ej: "registra a Juan Pérez 9631234567")
 - CARGAR_SALDO: Requiere clienteTel, montoSaldo.
-- UBICACION_RESTAURANTE: Requiere restaurante.
+- UBICACION_RESTAURANTE: Cuando el admin pide la ubicación o dirección de un restaurante (ej. '¿dónde está X?', 'ubícame el restaurante Y', 'mándame la ubi de Z'). Extrae: restaurante (nombre del restaurante).
 - ANUNCIO_REPARTIDORES: Requiere descripcion.
 - REVISAR_ENTREGADOS: diasAtras (0=hoy, 1=ayer, N=hace N días).
 - VER_RESTAURANTES, VER_REPARTIDORES, VER_VIPS, VER_PEDIDOS, ESTADISTICAS, REPORTE_SEMANAL, VER_ATRASOS.
@@ -120,7 +120,7 @@ HERRAMIENTAS DISPONIBLES:
 - AGREGAR_REPARTIDOR / ELIMINAR_REPARTIDOR: Úsalo ÚNICAMENTE para agregar o eliminar a un repartidor (mensajero/empleado) del sistema. Requiere clienteNombre, clienteTel.
 - AGREGAR_CLIENTE: Úsalo para registrar a un CLIENTE en el sistema de lealtad. Requiere clienteNombre, clienteTel y opcionalmente colonia. (Ej: "registra a Juan P�rez 9631234567")
 - CARGAR_SALDO: Requiere clienteTel, montoSaldo.
-- UBICACION_RESTAURANTE: Requiere restaurante.
+- UBICACION_RESTAURANTE: Cuando el repartidor pide la ubicación o dirección de un restaurante (ej. '¿dónde está X?', 'ubícame el restaurante Y', 'mándame la ubi de Z'). Extrae: restaurante (nombre del restaurante).
 - ANUNCIO_REPARTIDORES: Requiere descripcion.
 - REVISAR_ENTREGADOS: diasAtras (0=hoy, 1=ayer, N=hace N días).
 - VER_RESTAURANTES, VER_REPARTIDORES, VER_VIPS, VER_PEDIDOS, ESTADISTICAS, REPORTE_SEMANAL, VER_ATRASOS.

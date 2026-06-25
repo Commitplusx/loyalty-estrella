@@ -164,9 +164,6 @@ class DashboardScreen extends ConsumerWidget {
                     const SizedBox(height: 32),
                   ],
 
-                  // ── Bento Box Grid ──
-                  if (isAdmin) ...[
-                    Text(
                   // ── Estadísticas Semanales (Gráfico) ──
                   const SizedBox(height: 32),
                   Text(
