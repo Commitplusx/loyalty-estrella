@@ -12,7 +12,6 @@ import '../services/repartidor_service.dart';
 import '../core/supabase_config.dart';
 import '../core/theme_provider.dart';
 import '../core/user_role.dart';
-import '../core/user_role.dart';
 import '../core/cache_helper.dart';
 import '../core/ui_helpers.dart';
 import 'package:geolocator/geolocator.dart';
