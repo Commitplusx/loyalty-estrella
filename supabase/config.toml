@@ -117,3 +117,25 @@ entrypoint = "./functions/mercadopago-checkout/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/mercadopago-checkout/*.html" ]
+
+[functions.mercadopago-onboarding]
+enabled = true
+verify_jwt = false
+import_map = "./functions/mercadopago-onboarding/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/mercadopago-onboarding/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/mercadopago-onboarding/*.html" ]
+
+[functions.mercadopago-oauth-callback]
+enabled = true
+verify_jwt = false
+import_map = "./functions/mercadopago-oauth-callback/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/mercadopago-oauth-callback/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/mercadopago-oauth-callback/*.html" ]

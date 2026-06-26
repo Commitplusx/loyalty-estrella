@@ -31,7 +31,10 @@ final pedidosActivosProvider = StreamProvider.autoDispose<List<PedidoModel>>((re
         .order('created_at', ascending: false)
         .limit(150)
         .map((list) {
-      return list.map((m) => PedidoModel.fromMap(m)).toList();
+      return list
+          .where((m) => m['estado'] != 'pendiente_pago')
+          .map((m) => PedidoModel.fromMap(m))
+          .toList();
     });
   } else {
     return supabase
@@ -40,7 +43,10 @@ final pedidosActivosProvider = StreamProvider.autoDispose<List<PedidoModel>>((re
         .order('created_at', ascending: false)
         .limit(150)
         .map((list) {
-      return list.map((m) => PedidoModel.fromMap(m)).toList();
+      return list
+          .where((m) => m['estado'] != 'pendiente_pago')
+          .map((m) => PedidoModel.fromMap(m))
+          .toList();
     });
   }
 });

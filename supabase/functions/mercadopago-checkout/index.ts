@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,8 +24,39 @@ serve(async (req) => {
     } = await req.json()
 
     // Preparar el payload para Mercado Pago
-    const mpAccessToken = Deno.env.get('MP_ACCESS_TOKEN')
-    if (!mpAccessToken) throw new Error("MP_ACCESS_TOKEN no configurado en Supabase")
+    // 1. Intentar obtener el token del restaurante
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
+    let mpAccessToken = null
+
+    // Obtenemos el ID del restaurante del pedido original para buscar su token
+    const { data: pedidoData } = await supabaseClient
+      .from('pedidos')
+      .select('restaurante')
+      .eq('wb_message_id', pedidoId)
+      .single()
+
+    if (pedidoData?.restaurante) {
+      const { data: restData } = await supabaseClient
+        .from('restaurantes')
+        .select('mp_access_token')
+        .eq('nombre', pedidoData.restaurante)
+        .single()
+      
+      if (restData?.mp_access_token) {
+        mpAccessToken = restData.mp_access_token
+      }
+    }
+
+    // 2. Fallback al token global si el restaurante no ha vinculado su cuenta
+    if (!mpAccessToken) {
+      mpAccessToken = Deno.env.get('MP_ACCESS_TOKEN')
+    }
+
+    if (!mpAccessToken) throw new Error("MP_ACCESS_TOKEN no configurado. El restaurante debe vincular su cuenta de Mercado Pago.")
 
     const mpItems = items.map((item: any) => ({
       title: item.item.nombre,
@@ -55,13 +87,19 @@ serve(async (req) => {
       }];
     }
 
+    // MP requiere HTTPS para back_urls, si es localhost usamos la URL de prod
+    const isLocalhost = originUrl.includes('localhost') || originUrl.includes('127.0.0.1');
+    const safeOriginUrl = isLocalhost ? 'https://restaurantes-app-estrella.shop' : originUrl;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://jdrrkpvodnqoljycixbg.supabase.co';
+
     const payload = {
       items: preferenceItems,
       back_urls: {
-        success: `${originUrl}/success?pedido=${pedidoId}`,
-        failure: `${originUrl}/?cart=open`,
-        pending: `${originUrl}/?cart=open`
+        success: `${safeOriginUrl}/success?pedido=${pedidoId}`,
+        failure: `${safeOriginUrl}/?cart=open`,
+        pending: `${safeOriginUrl}/?cart=open`
       },
+      notification_url: `${supabaseUrl}/functions/v1/mercadopago-webhook?pedido=${pedidoId}`,
       auto_return: "approved",
       external_reference: pedidoId.toString(),
       statement_descriptor: "ESTRELLA EATS"
@@ -81,7 +119,7 @@ serve(async (req) => {
 
     if (!mpResponse.ok) {
       console.error("Mercado Pago Error:", mpData)
-      throw new Error("Error al crear preferencia en Mercado Pago")
+      throw new Error(`Mercado Pago Error: ${mpData.message || mpData.error || 'Desconocido'}`)
     }
 
     // Retornar la URL de inicio
