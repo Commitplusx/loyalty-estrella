@@ -334,7 +334,17 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
                         letterSpacing: 0.5,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
+                    Text(
+                      'EST-${pedido.id.replaceAll('-', '').substring(pedido.id.replaceAll('-', '').length - 5).toUpperCase()}',
+                      style: TextStyle(
+                        color: bannerColor.withValues(alpha: 0.7),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
                     Text(
                       estaAtrasado ? 'Este pedido requiere atención inmediata.' : _estadoSubtitulo(pedido.estado),
                       style: theme.textTheme.bodySmall?.copyWith(

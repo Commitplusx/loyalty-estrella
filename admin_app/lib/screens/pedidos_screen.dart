@@ -516,13 +516,28 @@ class _PedidoTile extends StatelessWidget {
                         ],
                       ],
                     ),
-                    Text(
-                      timeAgo, 
-                      style: TextStyle(
-                        color: timeAgo == 'ahora' ? Colors.red : onSurface.withValues(alpha: 0.4), 
-                        fontSize: 12, 
-                        fontWeight: timeAgo == 'ahora' ? FontWeight.bold : FontWeight.w400
-                      )
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          timeAgo,
+                          style: TextStyle(
+                            color: timeAgo == 'ahora' ? Colors.red : onSurface.withValues(alpha: 0.4),
+                            fontSize: 12,
+                            fontWeight: timeAgo == 'ahora' ? FontWeight.bold : FontWeight.w400,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'EST-${pedido.id.replaceAll('-', '').substring(pedido.id.replaceAll('-', '').length - 5).toUpperCase()}',
+                          style: TextStyle(
+                            color: onSurface.withValues(alpha: 0.3),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
