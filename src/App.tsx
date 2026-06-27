@@ -13,6 +13,7 @@ import { RestaurantesPage } from '@/pages/client/RestaurantesPage';
 import { RestauranteMenuPage } from '@/pages/client/RestauranteMenuPage';
 import MapEditor from '@/pages/MapEditor';
 import H3MapEditor from '@/pages/admin/H3MapEditor';
+import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import './App.css';
 
 function AnimatedRoutes() {
@@ -27,6 +28,7 @@ function AnimatedRoutes() {
           <Route path="/" element={<Home />} />
           <Route path="/map-editor" element={<MapEditor />} />
           <Route path="/h3-editor" element={<H3MapEditor />} />
+          <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/cliente" element={<ClienteView />} />
           <Route path="/clientes" element={<ClienteView />} />
           <Route path="/loyalty/:tel" element={<ClienteView />} />

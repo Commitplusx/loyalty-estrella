@@ -7,7 +7,8 @@ import { logError } from '../_shared/utils.ts'
 const WA_TOKEN    = Deno.env.get('WHATSAPP_TOKEN')!
 const WA_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_ID')!
 
-const WA_BASE = `https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`
+const WA_VERSION = Deno.env.get('WA_API_VERSION') || 'v22.0'
+const WA_BASE = `https://graph.facebook.com/${WA_VERSION}/${WA_PHONE_ID}/messages`
 const WA_HEADERS = () => ({
   Authorization: `Bearer ${WA_TOKEN}`,
   'Content-Type': 'application/json',

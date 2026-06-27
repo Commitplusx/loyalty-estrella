@@ -3,8 +3,10 @@
 // ══════════════════════════════════════════════════════════════════════════════
 // Elimina código duplicado entre whatsapp-bot y notificar-whatsapp.
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') || 'https://app-estrella.shop'
+
 export const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
@@ -58,10 +60,14 @@ export function generateCloudinaryVIPCard(
 }
 
 
-/** Genera link al pedido con key de acceso (primeros 8 chars del UUID sin guiones) */
-export function pedidoLink(pedidoId: string): string {
+/**
+ * Genera link al pedido.
+ * NOTA: Si el pedido tiene access_token (columna UUID dedicada), úsalo.
+ * Si no (registros viejos), cae al fallback del slice del UUID.
+ */
+export function pedidoLink(pedidoId: string, accessToken?: string): string {
   const BASE_LINK = 'https://www.app-estrella.shop/pedido'
-  const key = pedidoId.replace(/-/g, '').slice(0, 8)
+  const key = accessToken || pedidoId.replace(/-/g, '').slice(0, 8)
   return `${BASE_LINK}/${pedidoId}?key=${key}`
 }
 

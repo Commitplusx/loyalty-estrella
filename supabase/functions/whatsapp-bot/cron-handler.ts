@@ -7,7 +7,7 @@ export async function handleCronEvent(supabase: any, body: any): Promise<Respons
     const limiteInferior  = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
 
     const { data: clientes } = await supabase.from('clientes')
-      .select('id, telefono, nombre, notas_crm')
+      .select('id, telefono, nombre')
       .gte('created_at', limiteInferior)
       .lte('created_at', limiteSuperior)
       .eq('acepta_terminos', true)
@@ -15,16 +15,27 @@ export async function handleCronEvent(supabase: any, body: any): Promise<Respons
 
     if (clientes) {
       for (const c of clientes) {
-        if (c.notas_crm?.includes('[PROMO_5H]')) continue
+        // ✅ Deduplicar con cliente_eventos (antes usaba [PROMO_5H] en notas_crm)
+        const { data: yaEnviado } = await supabase
+          .from('cliente_eventos')
+          .select('id')
+          .eq('cliente_id', c.id)
+          .eq('tipo', 'PROMO_5H')
+          .maybeSingle()
+        if (yaEnviado) continue
 
         const promoImg = body.promoUrl || 'https://res.cloudinary.com/dlgcf3cht/image/upload/v1731610444/promo_doble_puntos.png'
         const nombre   = c.nombre ? c.nombre.split(' ')[0] : 'Cliente'
         const caption  = `🎁 *¡Hola ${nombre}!* Queremos darte una bienvenida especial.\n\nSolo por HOY, si haces tu primer pedido a través de *Estrella Delivery*, ganarás el **DOBLE DE PUNTOS** ⭐⭐ en tu Tarjeta VIP.\n\n¿Qué se te antoja pedir? 🛵💨`
 
-        const res    = await sendWAImage(`52${c.telefono}`, promoImg, caption)
-        const status = res.ok ? 'Enviada' : 'Fallida'
-        const newNota = c.notas_crm ? `${c.notas_crm}\n[PROMO_5H] ${status}` : `[PROMO_5H] ${status}`
-        await supabase.from('clientes').update({ notas_crm: newNota }).eq('id', c.id)
+        const res = await sendWAImage(`52${c.telefono}`, promoImg, caption)
+
+        // ✅ Registrar en cliente_eventos (ya no se toca notas_crm)
+        await supabase.from('cliente_eventos').insert({
+          cliente_id: c.id,
+          tipo: 'PROMO_5H',
+          metadata: { status: res.ok ? 'Enviada' : 'Fallida' }
+        })
       }
     }
     return new Response('Cron Processed', { status: 200 })
@@ -35,38 +46,49 @@ export async function handleCronEvent(supabase: any, body: any): Promise<Respons
     const hace20Dias = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString()
     const hace7Dias  = new Date(Date.now() - 7  * 24 * 60 * 60 * 1000).toISOString()
 
-    // Clientes que aceptaron T&C pero que no han recibido el mensaje de reactivación en los últimos 7 días
+    // Clientes que aceptaron T&C
     const { data: clientesInactivos } = await supabase.from('clientes')
-      .select('id, telefono, nombre, notas_crm, puntos')
+      .select('id, telefono, nombre, puntos')
       .eq('acepta_terminos', true)
       .not('telefono', 'is', null)
       .limit(50) // BUG FIX: Prevent function timeout
 
     if (!clientesInactivos?.length) return new Response('OK', { status: 200 })
 
+    // Obtener última actividad de TODOS en una sola query (evita N+1)
+    const telefonos = clientesInactivos.map((c: any) => c.telefono).filter(Boolean)
+    const { data: todasActividades } = telefonos.length > 0
+      ? await supabase
+          .from('restaurante_clientes_puntos')
+          .select('cliente_tel, updated_at')
+          .in('cliente_tel', telefonos)
+          .order('updated_at', { ascending: false })
+      : { data: [] }
+
+    // Mapa de última actividad por teléfono
+    const ultimaActividadMap: Record<string, string> = {}
+    for (const act of (todasActividades || [])) {
+      if (!ultimaActividadMap[act.cliente_tel]) {
+        ultimaActividadMap[act.cliente_tel] = act.updated_at
+      }
+    }
+
     let enviados = 0
     for (const c of clientesInactivos) {
-      // Saltar si ya le enviamos reactivación en los últimos 7 días
-      if (c.notas_crm?.includes('[REACTIV]')) {
-        const marcaMatch = c.notas_crm.match(/\[REACTIV (\d{4}-\d{2}-\d{2})\]/)
-        if (marcaMatch) {
-          const fechaMarca = new Date(marcaMatch[1])
-          if (fechaMarca > new Date(hace7Dias)) continue
-        } else {
-          continue
-        }
-      }
-
-      // Verificar inactividad: última actividad en restaurante_clientes_puntos
-      const { data: ultimaActividad } = await supabase
-        .from('restaurante_clientes_puntos')
-        .select('updated_at')
-        .eq('cliente_tel', c.telefono)
-        .order('updated_at', { ascending: false })
+      // ✅ Deduplicar con cliente_eventos (antes parseaba [REACTIV fecha] de notas_crm)
+      const { data: ultimoReactiv } = await supabase
+        .from('cliente_eventos')
+        .select('created_at')
+        .eq('cliente_id', c.id)
+        .eq('tipo', 'REACTIV')
+        .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
 
-      const ultimaFecha = ultimaActividad?.updated_at || null
+      if (ultimoReactiv && new Date(ultimoReactiv.created_at) > new Date(hace7Dias)) continue
+
+      // Verificar inactividad usando el mapa pre-cargado (sin N+1)
+      const ultimaFecha = ultimaActividadMap[c.telefono] || null
       if (ultimaFecha && new Date(ultimaFecha) > new Date(hace20Dias)) continue
 
       const nombre = c.nombre?.split(' ')[0] || 'Cliente'
@@ -89,11 +111,12 @@ export async function handleCronEvent(supabase: any, body: any): Promise<Respons
           )
         }
 
-        const hoy = new Date().toISOString().split('T')[0]
-        const nota = c.notas_crm
-          ? `${c.notas_crm}\n[REACTIV ${hoy}]`
-          : `[REACTIV ${hoy}]`
-        await supabase.from('clientes').update({ notas_crm: nota }).eq('id', c.id)
+        // ✅ Registrar en cliente_eventos (ya no se toca notas_crm)
+        await supabase.from('cliente_eventos').insert({
+          cliente_id: c.id,
+          tipo: 'REACTIV',
+          metadata: { puntos: puntos }
+        })
         enviados++
 
         // Throttle: 400ms entre mensajes para no saturar Meta API
@@ -334,6 +357,138 @@ ESCENARIO 3 (Casa -> Calle):\n${esc3}
       console.error('[CRON_VIGIA_LOGISTICA] Error:', e)
       return new Response('Error interno', { status: 500 })
     }
+  }
+
+  // ── 🎂 Felicitaciones de Cumpleaños (9 AM cada día) ──────────────────────────
+  if (body.event === 'CRON_CUMPLEANOS') {
+    const { sendWA } = await import('./whatsapp.ts')
+    const hoy = new Date()
+    // Extraer mes y día en formato MM-DD para matchear cualquier año
+    const mes = String(hoy.getMonth() + 1).padStart(2, '0')
+    const dia = String(hoy.getDate()).padStart(2, '0')
+    const patronFecha = `%-${mes}-${dia}`
+
+    const { data: cumpleaneros } = await supabase
+      .from('clientes')
+      .select('id, telefono, nombre, puntos, cumpleanos')
+      .like('cumpleanos', patronFecha)
+      .eq('acepta_terminos', true)
+      .not('telefono', 'is', null)
+
+    if (!cumpleaneros?.length) {
+      console.log('[CRON_CUMPLEANOS] Sin cumpleaños hoy.')
+      return new Response('Sin cumpleaños hoy', { status: 200 })
+    }
+
+    let enviados = 0
+    for (const c of cumpleaneros) {
+      const nombre = c.nombre?.split(' ')[0] || 'Cliente'
+      const puntosBono = 50 // Regalo de 50 puntos en cumpleaños
+      const tel = c.telefono
+
+      try {
+        // Verificar que no se haya enviado ya hoy (evitar duplicados si el cron se dispara 2 veces)
+        const { data: yaEnviado } = await supabase
+          .from('cliente_eventos')
+          .select('id')
+          .eq('cliente_id', c.id)
+          .eq('tipo', 'FELICITACION_CUMPLE')
+          .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+          .maybeSingle()
+
+        if (yaEnviado) continue
+
+        // Sumar puntos de regalo
+        await supabase.from('clientes').update({ puntos: (c.puntos || 0) + puntosBono }).eq('id', c.id)
+
+        // Enviar mensaje de felicitación
+        const msg = [
+          `🎂 *¡Feliz Cumpleaños, ${nombre}!* 🎉`,
+          ``,
+          `Hoy es tu día especial y en *Estrella Delivery* queremos celebrarlo contigo.`,
+          ``,
+          `🎁 *REGALO:* Te hemos sumado *${puntosBono} puntos extra* a tu Tarjeta VIP como obsequio de cumpleaños.`,
+          `⭐ Puntos actuales: *${(c.puntos || 0) + puntosBono} pts*`,
+          ``,
+          `¡Que tengas un día increíble! 🥳🎊`,
+          `_— El equipo de Estrella Delivery_`
+        ].join('\n')
+
+        await sendWA(`52${tel}`, msg)
+
+        // Registrar el evento para evitar duplicados
+        await supabase.from('cliente_eventos').insert({
+          cliente_id: c.id,
+          tipo: 'FELICITACION_CUMPLE',
+          metadata: { puntos_regalados: puntosBono, telefono: tel }
+        })
+
+        enviados++
+        await new Promise(r => setTimeout(r, 400)) // throttle
+      } catch (e) {
+        console.error(`[CRON_CUMPLEANOS] Error con ${tel}:`, e)
+      }
+    }
+
+    console.log(`[CRON_CUMPLEANOS] Completado. Mensajes enviados: ${enviados}`)
+    return new Response(`Cumpleaños procesados: ${enviados}`, { status: 200 })
+  }
+
+  // ── 📊 Resumen Diario a Discord (10 PM cada día) ────────────────────────────
+  if (body.event === 'CRON_RESUMEN_DISCORD') {
+    const webhookUrl = Deno.env.get('DISCORD_WEBHOOK_URL')
+    if (!webhookUrl) {
+      console.warn('[CRON_RESUMEN_DISCORD] DISCORD_WEBHOOK_URL no configurado.')
+      return new Response('Sin webhook Discord', { status: 200 })
+    }
+
+    const inicioDia = new Date()
+    inicioDia.setHours(0, 0, 0, 0)
+    const inicioDiaISO = inicioDia.toISOString()
+    const hoy = inicioDia.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
+
+    // Obtener métricas del día en paralelo
+    const [{ data: pedidosHoy }, { data: clientesNuevos }, { data: erroresCriticos }, { data: logsLealtad }] = await Promise.all([
+      supabase.from('pedidos').select('id, estado').gte('created_at', inicioDiaISO),
+      supabase.from('clientes').select('id').gte('created_at', inicioDiaISO),
+      supabase.from('system_logs').select('id, message').eq('level', 'critical').gte('created_at', inicioDiaISO),
+      supabase.from('restaurante_loyalty_log').select('accion').gte('created_at', inicioDiaISO)
+    ])
+
+    const totalPedidos   = pedidosHoy?.length || 0
+    const entregados     = pedidosHoy?.filter((p: any) => p.estado === 'entregado').length || 0
+    const cancelados     = pedidosHoy?.filter((p: any) => p.estado === 'cancelado').length || 0
+    const clientesNuevosCount = clientesNuevos?.length || 0
+    const erroresCount   = erroresCriticos?.length || 0
+    const puntosLogCount = logsLealtad?.filter((l: any) => l.accion === 'sumar_puntos').length || 0
+
+    const estadoEmoji = erroresCount > 3 ? '🔴' : erroresCount > 0 ? '🟡' : '🟢'
+
+    const discordMsg = {
+      embeds: [{
+        title: `📊 Resumen Diario — ${hoy}`,
+        color: erroresCount > 3 ? 0xff0000 : erroresCount > 0 ? 0xffa500 : 0x00c851,
+        fields: [
+          { name: '🛵 Pedidos Totales', value: `**${totalPedidos}**`, inline: true },
+          { name: '✅ Entregados', value: `**${entregados}**`, inline: true },
+          { name: '❌ Cancelados', value: `**${cancelados}**`, inline: true },
+          { name: '👥 Clientes Nuevos', value: `**${clientesNuevosCount}**`, inline: true },
+          { name: '⭐ Transacciones Lealtad', value: `**${puntosLogCount}**`, inline: true },
+          { name: `${estadoEmoji} Errores Críticos`, value: `**${erroresCount}**`, inline: true },
+        ],
+        footer: { text: 'Estrella Delivery — Bot Automático' },
+        timestamp: new Date().toISOString()
+      }]
+    }
+
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(discordMsg)
+    })
+
+    console.log('[CRON_RESUMEN_DISCORD] Resumen enviado a Discord.')
+    return new Response('Resumen Discord enviado', { status: 200 })
   }
 
   return null

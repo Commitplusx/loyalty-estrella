@@ -161,10 +161,16 @@ export async function handleRepButtons(
 
     if (tipo === 'ACEPTAR') {
       const pedidoId = rest.slice(1).join('_')
-      // Actualizar estado a 'recibido' y obtener datos
+      
+      // Guard de idempotencia: solo avanzar si el pedido aún está en un estado
+      // que permita aceptación. Evita que el repartidor revierta accidentalmente
+      // el estado 'en_cocina' o posterior a 'recibido'.
+      const ESTADOS_ACEPTABLES = ['pendiente', 'pagado', 'aceptado', 'asignado']
+      
       const { data: pedido } = await supabase.from('pedidos')
         .update({ estado: 'recibido' })
         .eq('id', pedidoId)
+        .in('estado', ESTADOS_ACEPTABLES)  // <-- Guard clave
         .select('*')
         .maybeSingle()
 
@@ -174,7 +180,7 @@ export async function handleRepButtons(
         msg += `📦 *Detalle:* ${pedido.descripcion || 'Sin descripción'}\n`
         
         if (pedido.restaurante) msg += `🍽️ *Restaurante:* ${pedido.restaurante}\n`
-        if (pedido.origen) msg += `🛫 *Origen:* ${pedido.origen}\n`
+        if (pedido.origen) msg += `🛳️ *Origen:* ${pedido.origen}\n`
         
         if (pedido.cliente_nombre) msg += `👤 *Cliente:* ${pedido.cliente_nombre}\n`
         if (pedido.cliente_tel) {
@@ -193,7 +199,17 @@ export async function handleRepButtons(
         }).catch(err => console.error("Error al notificar al cliente que fue recibido:", err))
 
       } else {
-        await sendWA(fromPhone, `⚠️ El pedido ya no existe o ya fue asignado a alguien más.`)
+        // Si no actualizó ninguna fila, puede ser que el pedido ya estaba en cocina
+        const { data: pedidoActual } = await supabase.from('pedidos')
+          .select('estado, descripcion, restaurante')
+          .eq('id', pedidoId)
+          .maybeSingle()
+        
+        if (pedidoActual && !ESTADOS_ACEPTABLES.includes(pedidoActual.estado)) {
+          await sendWA(fromPhone, `ℹ️ El pedido ya está en estado *${pedidoActual.estado}*. No se puede revertir. El restaurante ya lo está preparando.`)
+        } else {
+          await sendWA(fromPhone, `⚠️ El pedido ya no existe o ya fue asignado a alguien más.`)
+        }
       }
       return true
     }

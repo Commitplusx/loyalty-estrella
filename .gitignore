@@ -34,3 +34,11 @@ restaurantes-estrella/
 /playwright/.cache/
 /playwright/.auth/
 estrella-app-admin-firebase-adminsdk*.json
+
+# Secretos — nunca al repo
+*.pem
+estrella-app-admin-*.json
+flows_private.pem
+private_key.pem
+public_key.pem
+flows_public.pem

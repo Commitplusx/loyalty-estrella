@@ -3,6 +3,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { extract10Digits as _extract10Digits } from '../_shared/utils.ts'
 
 type SupabaseClient = ReturnType<typeof createClient>
 
@@ -18,6 +19,7 @@ export interface PedidoData {
 }
 
 // ── Normalizar teléfono a 10 dígitos ─────────────────────────────────────────
+/** Re-exportada desde _shared/utils.ts para compatibilidad con null/undefined */
 export function extract10Digits(phone: string | null | undefined): string {
   return String(phone || '').replace(/\D/g, '').slice(-10)
 }
