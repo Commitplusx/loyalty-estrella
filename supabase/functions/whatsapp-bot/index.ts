@@ -21,13 +21,24 @@ const SUPABASE_KEY     = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const ADMIN_PHONES_ENV = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHONE') ?? ''
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-auth',
+  }
+
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
   if (req.method === 'GET') {
     const url = new URL(req.url)
     return new Response(url.searchParams.get('hub.challenge') ?? 'Forbidden', {
+      headers: corsHeaders,
       status: url.searchParams.has('hub.challenge') ? 200 : 403
     })
   }
-  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
+  
+  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: corsHeaders })
 
   let errorNotifyPhone = ''
 

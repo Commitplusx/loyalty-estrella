@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+ï»¿import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   Package, CheckCircle2, XCircle, Clock,
   Users, Star, AlertTriangle, Zap, RefreshCw,
   Bike, Bell, BarChart3, Activity, ShieldAlert,
-  CloudRain, TrendingUp, Eye
+  CloudRain, TrendingUp, Eye, Lock
 } from "lucide-react";
 
 interface DashboardMetrics {
@@ -38,6 +38,9 @@ function KCard({icon,label,value,sub,color,pulse=false}:{icon:React.ReactNode;la
 }
 
 export function AdminDashboard() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState("");
+  
   const [m, setM] = useState<DashboardMetrics>({pedidosTotal:0,pedidosEntregados:0,pedidosCancelados:0,pedidosEnCurso:0,clientesNuevos:0,puntosTransacciones:0,erroresCriticos:0,repartidoresActivos:0});
   const [pedidos, setPedidos] = useState<PedidoReciente[]>([]);
   const [errores, setErrores] = useState<ErrorReciente[]>([]);
@@ -48,6 +51,7 @@ export function AdminDashboard() {
   const hoy = useCallback(()=>{ const d=new Date(); d.setHours(0,0,0,0); return d.toISOString(); },[]);
 
   const load = useCallback(async()=>{
+    if (!isAuthenticated) return;
     const inicio = hoy();
     const [r1,r2,r3,r4,r5] = await Promise.all([
       supabase.from("pedidos").select("id,estado").gte("created_at",inicio),
@@ -65,34 +69,59 @@ export function AdminDashboard() {
     });
     setErrores((r3.data||[]) as ErrorReciente[]);
     setUpdated(new Date()); setLoading(false);
-  },[hoy]);
+  },[hoy, isAuthenticated]);
 
   const loadPedidos = useCallback(async()=>{
+    if (!isAuthenticated) return;
     const {data}=await supabase.from("pedidos").select("id,estado,cliente_tel,restaurante,created_at").order("created_at",{ascending:false}).limit(10);
     setPedidos((data||[]) as PedidoReciente[]);
-  },[]);
+  },[isAuthenticated]);
 
-  useEffect(()=>{ load(); loadPedidos();
+  useEffect(()=>{ 
+    if (!isAuthenticated) return;
+    load(); loadPedidos();
     const ch=supabase.channel("dash_live")
       .on("postgres_changes",{event:"*",schema:"public",table:"pedidos"},()=>{load();loadPedidos();})
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"clientes"},()=>load())
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"system_logs"},()=>load())
       .subscribe();
     return ()=>{ supabase.removeChannel(ch); };
-  },[load,loadPedidos]);
+  },[load,loadPedidos,isAuthenticated]);
 
   const cron = async(event:string)=>{
     setCronLoad(event);
     try {
       const {error}=await supabase.functions.invoke("whatsapp-bot",{body:{event},headers:{"x-cron-auth":import.meta.env.VITE_CRON_SECRET||""}});
-      if(error) alert(`Error: ${error.message}`); else { alert(`? ${event} ejecutado`); load(); }
+      if(error) alert(`Error: ${error.message}`); else { alert(`âœ… ${event} ejecutado`); load(); }
     } catch(e:any){ alert(`Error: ${e.message}`); } finally { setCronLoad(""); }
   };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === (import.meta.env.VITE_ADMIN_PASSWORD || "estrella2026")) {
+      setIsAuthenticated(true);
+    } else {
+      alert("ContraseÃ±a incorrecta");
+    }
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div style={{minHeight:"100vh",background:"#0f172a",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',sans-serif"}}>
+        <form onSubmit={handleLogin} style={{background:"rgba(255,255,255,0.05)",padding:"40px",borderRadius:24,border:"1px solid rgba(255,255,255,0.1)",display:"flex",flexDirection:"column",gap:20,width:320,textAlign:"center"}}>
+          <div style={{margin:"0 auto",background:"#6366f1",width:50,height:50,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",color:"white"}}><Lock size={24}/></div>
+          <h2 style={{color:"white",margin:0,fontSize:20,fontWeight:700}}>Acceso Administrador</h2>
+          <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="ContraseÃ±a..." style={{background:"rgba(0,0,0,0.2)",border:"1px solid rgba(255,255,255,0.1)",color:"white",padding:"12px 16px",borderRadius:12,outline:"none",fontSize:14}} autoFocus/>
+          <button type="submit" style={{background:"#6366f1",color:"white",border:"none",padding:"12px",borderRadius:12,fontWeight:600,cursor:"pointer",transition:"opacity 0.2s"}} onMouseOver={e=>e.currentTarget.style.opacity="0.8"} onMouseOut={e=>e.currentTarget.style.opacity="1"}>Ingresar</button>
+        </form>
+      </div>
+    );
+  }
 
   if(loading) return (
     <div style={{minHeight:"100vh",background:"#0f172a",display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{color:"#94a3b8",display:"flex",alignItems:"center",gap:12,fontSize:17}}>
-        <RefreshCw size={20} style={{animation:"spin 1s linear infinite"}}/>Cargando métricas en vivo...
+        <RefreshCw size={20} style={{animation:"spin 1s linear infinite"}}/>Cargando mÃ©tricas en vivo...
       </div>
     </div>
   );
@@ -113,7 +142,7 @@ export function AdminDashboard() {
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"rgba(255,255,255,.35)"}}>
-          <Activity size={13} style={{color:"#10b981"}}/> Live · {fmtTime(updated.toISOString())}
+          <Activity size={13} style={{color:"#10b981"}}/> Live Â· {fmtTime(updated.toISOString())}
           <button onClick={()=>{load();loadPedidos();}} style={{background:"rgba(255,255,255,.07)",border:"none",color:"#94a3b8",borderRadius:8,padding:"5px 9px",cursor:"pointer",marginLeft:4}}>
             <RefreshCw size={13}/>
           </button>
@@ -131,7 +160,7 @@ export function AdminDashboard() {
         <KCard icon={<Users size={15}/>} label="Clientes Nuevos" value={m.clientesNuevos} sub="registrados hoy" color="#f59e0b"/>
         <KCard icon={<Star size={15}/>} label="Lealtad" value={m.puntosTransacciones} sub="transacciones de puntos" color="#a78bfa"/>
         <KCard icon={<Bike size={15}/>} label="Repartidores" value={m.repartidoresActivos} sub="equipo activo" color="#34d399"/>
-        <KCard icon={<ShieldAlert size={15}/>} label="Errores Críticos" value={m.erroresCriticos} sub="últimas 24h" color={m.erroresCriticos>0?"#f43f5e":"#10b981"} pulse={m.erroresCriticos>0}/>
+        <KCard icon={<ShieldAlert size={15}/>} label="Errores CrÃ­ticos" value={m.erroresCriticos} sub="Ãšltimas 24h" color={m.erroresCriticos>0?"#f43f5e":"#10b981"} pulse={m.erroresCriticos>0}/>
       </div>
 
       {/* Main grid */}
@@ -150,7 +179,7 @@ export function AdminDashboard() {
                 <div key={p.id} style={{padding:"13px 22px",borderBottom:"1px solid rgba(255,255,255,.05)",display:"flex",alignItems:"center",gap:12}}>
                   <div style={{width:7,height:7,borderRadius:"50%",background:cfg.color,flexShrink:0}}/>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.restaurante||"Sin restaurante"} ? {p.cliente_tel}</div>
+                    <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.restaurante||"Sin restaurante"} Â· {p.cliente_tel}</div>
                     <div style={{fontSize:11,color:"rgba(255,255,255,.35)",marginTop:2}}>{fmtRel(p.created_at)}</div>
                   </div>
                   <span style={{fontSize:11,fontWeight:600,color:cfg.color,background:`${cfg.color}20`,borderRadius:6,padding:"3px 8px",whiteSpace:"nowrap"}}>{cfg.label}</span>
@@ -165,10 +194,10 @@ export function AdminDashboard() {
           {/* Errores */}
           <div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:16,overflow:"hidden"}}>
             <div style={{padding:"15px 18px",borderBottom:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",gap:8}}>
-              <AlertTriangle size={14} style={{color:m.erroresCriticos>0?"#f43f5e":"#10b981"}}/><span style={{fontWeight:700,fontSize:13}}>Errores Críticos</span>
+              <AlertTriangle size={14} style={{color:m.erroresCriticos>0?"#f43f5e":"#10b981"}}/><span style={{fontWeight:700,fontSize:13}}>Errores CrÃ­ticos</span>
             </div>
             {errores.length===0
-              ? <div style={{padding:"18px",textAlign:"center",color:"#10b981",fontSize:12}}>? Sin errores críticos hoy</div>
+              ? <div style={{padding:"18px",textAlign:"center",color:"#10b981",fontSize:12}}>âœ… Sin errores crÃ­ticos hoy</div>
               : errores.slice(0,4).map(e=>(
                 <div key={e.id} style={{padding:"9px 16px",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
                   <div style={{fontSize:11,fontWeight:600,color:"#fca5a5",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>[{e.source}] {e.message}</div>
@@ -181,14 +210,14 @@ export function AdminDashboard() {
           {/* Cron Actions */}
           <div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:16,overflow:"hidden"}}>
             <div style={{padding:"15px 18px",borderBottom:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",gap:8}}>
-              <Zap size={14} style={{color:"#f59e0b"}}/><span style={{fontWeight:700,fontSize:13}}>Acciones Rápidas</span>
+              <Zap size={14} style={{color:"#f59e0b"}}/><span style={{fontWeight:700,fontSize:13}}>Acciones RÃ¡pidas</span>
             </div>
             <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:7}}>
               {[
-                {event:"CRON_VIGIA_LOGISTICA",label:"Ejecutar Vigía Logística",icon:<Bell size={12}/>,color:"#f59e0b"},
+                {event:"CRON_VIGIA_LOGISTICA",label:"Ejecutar VigÃ­a LogÃ­stica",icon:<Bell size={12}/>,color:"#f59e0b"},
                 {event:"CRON_CLIMA",label:"Verificar Clima",icon:<CloudRain size={12}/>,color:"#06b6d4"},
                 {event:"CRON_RESUMEN_DISCORD",label:"Reporte a Discord",icon:<TrendingUp size={12}/>,color:"#7c3aed"},
-                {event:"CRON_CUMPLEANOS",label:"Enviar Cumpleaños",icon:<Star size={12}/>,color:"#f43f5e"},
+                {event:"CRON_CUMPLEANOS",label:"Enviar CumpleaÃ±os",icon:<Star size={12}/>,color:"#f43f5e"},
               ].map(a=>(
                 <button key={a.event} onClick={()=>cron(a.event)} disabled={!!cronLoad}
                   style={{background:cronLoad===a.event?"rgba(255,255,255,.05)":`${a.color}18`,border:`1px solid ${a.color}45`,color:cronLoad===a.event?"#64748b":a.color,borderRadius:9,padding:"8px 13px",cursor:cronLoad?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:7,fontSize:12,fontWeight:600,transition:"all .2s"}}>
