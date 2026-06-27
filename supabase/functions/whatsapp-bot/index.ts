@@ -44,16 +44,28 @@ Deno.serve(async (req: Request) => {
 
   // ── CRON JOBS INTERNOS ──
   const cronAuth   = req.headers.get('x-cron-auth')
-  const cronSecret = Deno.env.get('CRON_SECRET')
-  if (cronSecret && cronAuth === cronSecret) {
+  if (cronAuth !== null) {
+    const cronSecret = Deno.env.get('CRON_SECRET')
+    // El dashboard envía x-cron-auth vacío si no está VITE_CRON_SECRET, permitimos si no hay CRON_SECRET en el backend,
+    // de lo contrario debe coincidir.
+    if (cronSecret && cronAuth !== cronSecret) {
+      return new Response('Unauthorized Cron Call', { status: 401, headers: corsHeaders })
+    }
+    
     try {
       const body     = JSON.parse(await req.text())
       const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
       const cronRes  = await handleCronEvent(supabase, body)
-      if (cronRes) return cronRes
+      if (cronRes) {
+        for (const [k, v] of Object.entries(corsHeaders)) {
+          cronRes.headers.set(k, v)
+        }
+        return cronRes
+      }
+      return new Response('Cron Processed', { status: 200, headers: corsHeaders })
     } catch (e) {
       console.error('CRON Error:', e)
-      return new Response('Cron Error', { status: 500 })
+      return new Response('Cron Error', { status: 500, headers: corsHeaders })
     }
   }
 
