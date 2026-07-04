@@ -167,7 +167,7 @@ Deno.serve(async (req: Request) => {
     let msgCredenciales = `🎉 *¡Felicidades, ${sol.encargado || 'aliado'}!*\n\n¡Tu restaurante ha sido aprobado por nuestro equipo! 🥳 Ya eres parte oficial de la familia Estrella Eats.\n\nAquí tienes tu Código QR y tu link público para que tus clientes comiencen a pedir:\n👉 ${menuUrl}`;
 
     if (isAuthCreated) {
-      msgCredenciales += `\n\nPara administrar tu menú e información, ingresa a:\n👉 *https://estrella-eats.mx*\n\n_(Usuario: tu número de teléfono *${tel}* / Clave: ${genPassword})_`;
+      msgCredenciales += `\n\nPara administrar tu menú e información, ingresa a:\n👉 *https://restaurantes-app-estrella.shop*\n\n_(Usuario: tu número de teléfono *${tel}* / Clave: ${genPassword})_`;
     }
     await sendWA(sendPhone, msgCredenciales)
 
