@@ -1,0 +1,84 @@
+{
+  "version": "7.3",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "REGISTRO_RESTAURANTE": []
+  },
+  "screens": [
+    {
+      "id": "REGISTRO_RESTAURANTE",
+      "title": "Alta de Restaurante",
+      "data": {},
+      "terminal": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "flow_path",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "1. Datos del Local"
+              },
+              {
+                "type": "TextInput",
+                "label": "Nombre del Negocio",
+                "name": "nombre_restaurante",
+                "input-type": "text",
+                "required": true
+              },
+              {
+                "type": "Dropdown",
+                "label": "Categoría de Comida",
+                "name": "categoria",
+                "required": true,
+                "data-source": [
+                  { "id": "tacos", "title": "🌮 Tacos / Antojitos" },
+                  { "id": "pizza", "title": "🍕 Pizzas / Hamburguesas" },
+                  { "id": "alitas", "title": "🍗 Alitas / Snacks" },
+                  { "id": "sushi", "title": "🍣 Sushi / Mariscos" },
+                  { "id": "postres", "title": "🍰 Postres / Cafetería" },
+                  { "id": "otro", "title": "🍲 Otra" }
+                ]
+              },
+              {
+                "type": "TextHeading",
+                "text": "2. Datos del Encargado"
+              },
+              {
+                "type": "TextInput",
+                "label": "Tu Nombre Completo",
+                "name": "nombre_encargado",
+                "input-type": "text",
+                "required": true
+              },
+              {
+                "type": "TextInput",
+                "label": "Dirección del Local",
+                "name": "direccion",
+                "input-type": "text",
+                "required": true,
+                "helper-text": "Calle, número y colonia."
+              },
+              {
+                "type": "Footer",
+                "label": "Enviar Solicitud",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "accion": "REGISTRO_RESTAURANTE",
+                    "nombre_negocio": "${form.nombre_restaurante}",
+                    "categoria": "${form.categoria}",
+                    "encargado": "${form.nombre_encargado}",
+                    "direccion": "${form.direccion}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "version": "5.0",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "SOLICITAR_MOTO": []
+  },
+  "screens": [
+    {
+      "id": "SOLICITAR_MOTO",
+      "title": "Solicitar Moto B2B",
+      "data": {},
+      "terminal": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "flow_path",
+            "children": [
+              {
+                "type": "TextInput",
+                "label": "Teléfono del Cliente (10 dígitos)",
+                "name": "telefono_cliente",
+                "input-type": "phone",
+                "required": true
+              },
+              {
+                "type": "TextInput",
+                "label": "Dirección o Colonia de Entrega",
+                "name": "direccion_entrega",
+                "input-type": "text",
+                "required": true
+              },
+              {
+                "type": "TextInput",
+                "label": "¿Cuánto debe cobrar el repartidor? ($)",
+                "name": "monto_cobrar",
+                "input-type": "number",
+                "required": true,
+                "helper-text": "Escribe el total de comida + envío. Si ya está pagado, escribe 0."
+              },
+              {
+                "type": "Footer",
+                "label": "Solicitar y Despachar Moto",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "telefono": "${form.telefono_cliente}",
+                    "direccion": "${form.direccion_entrega}",
+                    "cobro": "${form.monto_cobrar}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

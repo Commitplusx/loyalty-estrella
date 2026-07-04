@@ -1,0 +1,386 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../services/cliente_service.dart';
+import '../models/cliente_model.dart';
+import '../core/ui_helpers.dart';
+import 'client_detail_screen.dart';
+final clientesProvider = FutureProvider.autoDispose.family<List<ClienteModel>, String>(
+  (ref, busqueda) async {
+    return ref.read(clienteServiceProvider).getClientes(busqueda: busqueda);
+  },
+);
+
+class ClientsScreen extends ConsumerStatefulWidget {
+  const ClientsScreen({super.key});
+
+  @override
+  ConsumerState<ClientsScreen> createState() => _ClientsScreenState();
+}
+
+class _ClientsScreenState extends ConsumerState<ClientsScreen> {
+  final _searchCtrl = TextEditingController();
+  String _busqueda = '';
+  String _filtro = 'Todos';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _showRegistroExpress() async {
+    final telCtrl = TextEditingController();
+    final nomCtrl = TextEditingController();
+    bool loading = false;
+
+    await PremiumBottomSheet.showCustom<void>(
+      context,
+      title: 'Registro Express',
+      child: StatefulBuilder(
+        builder: (ctx, setState) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: telCtrl,
+              keyboardType: TextInputType.phone,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+              decoration: InputDecoration(
+                labelText: 'Teléfono',
+                labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                prefixIcon: Icon(Icons.phone_rounded, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nomCtrl,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+              decoration: InputDecoration(
+                labelText: 'Nombre (opcional)',
+                labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                prefixIcon: Icon(Icons.person_rounded, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+            const SizedBox(height: 32),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: loading ? null : () => Navigator.pop(ctx),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: Text('Cancelar', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: loading
+                        ? null
+                        : () async {
+                            if (telCtrl.text.isEmpty) return;
+                            setState(() => loading = true);
+                            final cleanTel = telCtrl.text.replaceAll(RegExp(r'\D'), '');
+                            final res = await ref
+                                .read(clienteServiceProvider)
+                                .registroExpress(cleanTel, nomCtrl.text.trim());
+                            
+                            if (res['success'] == true) {
+                              if (!ctx.mounted) return;
+                              Navigator.pop(ctx);
+                              ref.invalidate(clientesProvider(_busqueda));
+                              if (!mounted) return;
+                              PremiumToast.show(
+                                context,
+                                title: 'Cliente Registrado',
+                                description: 'Código QR: ${res['qr_code']}',
+                                icon: Icons.how_to_reg_rounded,
+                              );
+                            } else {
+                              setState(() => loading = false);
+                              if (!mounted) return;
+                              PremiumToast.show(
+                                context,
+                                title: 'Error al registrar',
+                                description: res['message'],
+                                isError: true,
+                              );
+                            }
+                          },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF6B35),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: loading
+                        ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onPrimary))
+                        : const Text('Registrar', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final clientesAsync = ref.watch(clientesProvider(_busqueda));
+
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => context.go('/dashboard')),
+        title: Text('Clientes'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh_rounded),
+            onPressed: () => ref.refresh(clientesProvider(_busqueda)),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Search
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: TextField(
+              controller: _searchCtrl,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+              decoration: InputDecoration(
+                hintText: 'Buscar por teléfono o nombre...',
+                hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38)),
+                prefixIcon: Icon(Icons.search_rounded),
+                suffixIcon: _busqueda.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear_rounded),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() => _busqueda = '');
+                        },
+                      )
+                    : null,
+              ),
+              onChanged: (v) => setState(() => _busqueda = v),
+            ),
+          ),
+          SizedBox(height: 12),
+          // Filtros
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: ['Todos', 'Registrados', 'Express'].map((f) {
+                final selected = _filtro == f;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: Text(f, style: TextStyle(
+                      color: selected ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface,
+                      fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                    )),
+                    selected: selected,
+                    onSelected: (val) {
+                      if (val) setState(() => _filtro = f);
+                    },
+                    backgroundColor: Theme.of(context).cardColor,
+                    selectedColor: const Color(0xFFFF6B35),
+                    checkmarkColor: Theme.of(context).colorScheme.onPrimary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          SizedBox(height: 8),
+          // List
+          Expanded(
+            child: clientesAsync.when(
+              loading: () => Center(
+                child: CircularProgressIndicator(color: Color(0xFFFF6B35)),
+              ),
+              error: (e, _) => Center(
+                child: Text('Error: $e',
+                    style: TextStyle(color: Colors.red)),
+              ),
+              data: (clientes) {
+                final filtered = clientes.where((c) {
+                  if (_filtro == 'Registrados') return c.aceptaTerminos;
+                  if (_filtro == 'Express') return !c.aceptaTerminos;
+                  return true;
+                }).toList();
+
+                if (filtered.isEmpty) {
+                  return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.person_off_rounded,
+                              size: 64, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.24)),
+                          SizedBox(height: 12),
+                          Text(
+                            _busqueda.isEmpty && _filtro == 'Todos'
+                                ? 'No hay clientes registrados'
+                                : 'Sin resultados',
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38)),
+                          ),
+                        ],
+                      ),
+                    );
+                }
+
+                return ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, __) => SizedBox(height: 10),
+                      itemBuilder: (ctx, i) =>
+                          _ClienteTile(cliente: filtered[i]),
+                    );
+              },
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 90.0, right: 8.0),
+        child: FloatingActionButton.extended(
+            onPressed: _showRegistroExpress,
+            backgroundColor: const Color(0xFFFF6B35),
+            icon: Icon(Icons.person_add_rounded, color: Theme.of(context).colorScheme.onSurface),
+            label: Text('Registro Express', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
+            elevation: 8,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          ),
+      ),
+    );
+  }
+}
+
+class _ClienteTile extends StatelessWidget {
+  final ClienteModel cliente;
+  const _ClienteTile({required this.cliente});
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = (cliente.totalEnvios % 5) / 5;
+
+    return InkWell(
+      onTap: () => ClientDetailScreen.show(context, cliente.id),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.10)),
+        ),
+        child: Row(
+          children: [
+            // Avatar
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: (cliente.esVip ? const Color(0xFFF59E0B) : const Color(0xFFFF6B35)).withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Icon(
+                  cliente.esVip ? Icons.workspace_premium_rounded : Icons.person_rounded,
+                  color: cliente.esVip ? const Color(0xFFF59E0B) : const Color(0xFFFF6B35),
+                  size: 24,
+                ),
+              ),
+            ),
+            SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          cliente.nombre ?? cliente.telefono,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                      if (!cliente.aceptaTerminos) ...[
+                        SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '🤫 Express',
+                            style: TextStyle(
+                              color: Colors.grey,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (cliente.tieneGratisDisponible) ...[
+                        SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF38EF7D).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '${cliente.enviosGratis} gratis',
+                            style: TextStyle(
+                              color: Color(0xFF38EF7D),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '${cliente.totalEnvios} envíos totales',
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38), fontSize: 12),
+                  ),
+                  SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: Colors.white12,
+                      valueColor: const AlwaysStoppedAnimation(
+                          Color(0xFFFF6B35)),
+                      minHeight: 4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 8),
+            Icon(Icons.chevron_right_rounded, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.24)),
+          ],
+        ),
+      ),
+    );
+  }
+}

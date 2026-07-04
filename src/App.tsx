@@ -1,0 +1,71 @@
+import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
+import { ToastProvider } from '@/components/ui/toast-native';
+import { Home } from '@/pages/Home';
+import { ClienteView } from '@/pages/client/ClienteView';
+import { PedidoView } from '@/pages/PedidoView';
+import { Terminos } from '@/pages/Terminos';
+import { FlashBanner } from '@/components/FlashBanner';
+import { SplashScreen } from '@/components/SplashScreen';
+import { useDarkMode } from '@/hooks/useDarkMode';
+import { RestaurantesPage } from '@/pages/client/RestaurantesPage';
+import { RestauranteMenuPage } from '@/pages/client/RestauranteMenuPage';
+import MapEditor from '@/pages/MapEditor';
+import H3MapEditor from '@/pages/admin/H3MapEditor';
+import { AdminDashboard } from '@/pages/admin/AdminDashboard';
+import './App.css';
+
+function AnimatedRoutes() {
+  const location = useLocation();
+  // FlashBanner solo en rutas de cliente (no en /pedido/:id del repartidor)
+  const showBanner = !location.pathname.startsWith('/pedido') && !location.pathname.startsWith('/map-editor') && !location.pathname.startsWith('/h3-editor');
+  return (
+    <>
+      {showBanner && <FlashBanner />}
+      <AnimatePresence mode="wait">
+        <Routes location={location} key={location.pathname}>
+          <Route path="/" element={<Home />} />
+          <Route path="/map-editor" element={<MapEditor />} />
+          <Route path="/h3-editor" element={<H3MapEditor />} />
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/cliente" element={<ClienteView />} />
+          <Route path="/clientes" element={<ClienteView />} />
+          <Route path="/loyalty/:tel" element={<ClienteView />} />
+          <Route path="/restaurantes" element={<RestaurantesPage />} />
+          <Route path="/restaurantes/:id" element={<RestauranteMenuPage />} />
+          <Route path="/pedido/:id" element={<PedidoView />} />
+          <Route path="/terminos" element={<Terminos />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AnimatePresence>
+    </>
+  );
+}
+
+function App() {
+  const [showSplash, setShowSplash] = useState(() => !sessionStorage.getItem('splashShown'));
+  const { isDark } = useDarkMode();
+
+  // Dynamic theme-color: iOS status bar color follows dark/light mode
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', '#ffffff');
+  }, [isDark]);
+
+  const handleSplashComplete = () => {
+    sessionStorage.setItem('splashShown', 'true');
+    setShowSplash(false);
+  };
+
+  return (
+    <ToastProvider>
+      <BrowserRouter>
+        {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
+        <AnimatedRoutes />
+      </BrowserRouter>
+    </ToastProvider>
+  );
+}
+
+export default App;

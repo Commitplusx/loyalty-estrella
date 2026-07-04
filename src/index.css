@@ -1,0 +1,201 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Design tokens ───────────────────────────────────────── */
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;      /* Soft off-white/peach tint background */
+    --foreground: 220 20% 15%;
+    --card: 0 0% 100%;           /* White cards */
+    --card-foreground: 220 20% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 15%;
+    --primary: 9 86% 71%;        /* Coral/Peach primary: #FA8072 roughly */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 10 90% 96%;     /* Very light peach for secondary */
+    --secondary-foreground: 9 86% 71%;
+    --muted: 0 0% 95%;
+    --muted-foreground: 220 10% 45%;
+    --accent: 10 90% 96%;
+    --accent-foreground: 9 86% 71%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 92%;
+    --input: 0 0% 92%;
+    --ring: 9 86% 71%;
+    --radius: 1.25rem;           /* Rounder corners */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 220 10% 30%;
+    --sidebar-primary: 9 86% 71%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 95%;
+    --sidebar-accent-foreground: 220 20% 15%;
+    --sidebar-border: 0 0% 92%;
+    --sidebar-ring: 9 86% 71%;
+  }
+
+  /* Tokens para modo oscuro — Soft Dark Peach */
+  .dark {
+    --background: 240 10% 10%;
+    --foreground: 210 20% 95%;   
+    --card: 240 8% 12%;
+    --card-foreground: 210 20% 95%;
+    --popover: 240 8% 12%;
+    --popover-foreground: 210 20% 95%;
+    --primary: 9 86% 71%;       
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 16%;
+    --secondary-foreground: 210 20% 95%;
+    --muted: 240 5% 16%;
+    --muted-foreground: 240 10% 70%;
+    --accent: 240 5% 16%;
+    --accent-foreground: 9 86% 71%;
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5% 16%;
+    --input: 240 5% 16%;
+    --ring: 9 86% 71%;
+    --sidebar-background: 240 8% 12%;
+    --sidebar-foreground: 210 20% 95%;
+    --sidebar-primary: 9 86% 71%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 5% 16%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 240 5% 16%;
+    --sidebar-ring: 9 86% 71%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    /* Evita scroll horizontal — clip no rompe position:fixed ni mx-auto */
+    overflow-x: clip;
+  }
+  html {
+    overflow-x: clip;
+  }
+}
+
+/* ─── Tailwind utility extensions ─────────────────────────── */
+
+@layer utilities {
+  /* Texto con gradiente: definido aquí para evitar duplicidad con App.css */
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #FA8072 0%, #FF8A65 100%);
+  }
+
+  .bg-gradient-hero {
+    background: linear-gradient(135deg, #FFF0F0 0%, #FFFFFF 50%, #FFF5F5 100%);
+  }
+
+  .bg-gradient-primary {
+    background: linear-gradient(135deg, #FA8072 0%, #FF8A65 100%);
+  }
+
+  .shadow-glow {
+    box-shadow: 0 0 40px -10px rgba(249, 115, 22, 0.4);
+  }
+
+  .shadow-card {
+    box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.08);
+  }
+
+  .animate-in {
+    animation: fadeIn 0.5s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.5s ease-out;
+  }
+}
+
+/* ─── Animations (only ones not in App.css) ───────────────── */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  15%       { transform: translateX(-6px); }
+  30%       { transform: translateX(6px); }
+  45%       { transform: translateX(-4px); }
+  60%       { transform: translateX(4px); }
+  75%       { transform: translateX(-2px); }
+  90%       { transform: translateX(2px); }
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+/* ─── Selection ───────────────────────────────────────────── */
+
+::selection {
+  background: rgba(249, 115, 22, 0.2);
+  color: inherit;
+}
+
+/* ─── Responsive typography ───────────────────────────────── */
+/* Sin reducción de font-size en móvil — el estándar de 16px se ve mejor */
+
+/* ─── Print ───────────────────────────────────────────────── */
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* 🌟 Skeleton Loading (Shimmer) 🌟 */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: #f1f5f9; /* slate-100 */
+}
+
+.shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, 0.4) 20%,
+    rgba(255, 255, 255, 0.6) 50%,
+    rgba(255, 255, 255, 0.4) 80%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: shimmer 1.5s infinite;
+  z-index: 10;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}

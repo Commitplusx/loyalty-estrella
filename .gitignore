@@ -1,0 +1,44 @@
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+*.local
+.env
+.env.*
+!.env.example
+
+# Vercel
+.vercel
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+restaurantes-estrella/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+estrella-app-admin-firebase-adminsdk*.json
+
+# Secretos — nunca al repo
+*.pem
+estrella-app-admin-*.json
+flows_private.pem
+private_key.pem
+public_key.pem
+flows_public.pem
