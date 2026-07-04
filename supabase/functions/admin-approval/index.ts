@@ -164,7 +164,7 @@ Deno.serve(async (req: Request) => {
     const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(menuUrl)}&size=500&margin=2`;
     
     // Mensaje para el restaurante
-    let msgCredenciales = `🎉 *¡Felicidades, ${sol.encargado || 'aliado'}!*\n\nTu restaurante ha sido aprobado por la administración. Ya eres parte oficial de Estrella Delivery.\n\nAquí tienes tu Código QR y tu link público para que tus clientes comiencen a pedir:\n👉 ${menuUrl}`;
+    let msgCredenciales = `🎉 *¡Felicidades, ${sol.encargado || 'aliado'}!*\n\n¡Tu restaurante ha sido aprobado por nuestro equipo! 🥳 Ya eres parte oficial de la familia Estrella Eats.\n\nAquí tienes tu Código QR y tu link público para que tus clientes comiencen a pedir:\n👉 ${menuUrl}`;
 
     if (isAuthCreated) {
       msgCredenciales += `\n\nPara administrar tu menú e información, ingresa a:\n👉 *https://estrella-eats.mx*\n\n_(Usuario: tu número de teléfono *${tel}* / Clave: ${genPassword})_`;

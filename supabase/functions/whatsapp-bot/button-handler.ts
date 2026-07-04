@@ -1147,7 +1147,7 @@ export async function handleButtonEvent(
       await sendWAImage(
         `52${restTel}`, 
         qrUrl, 
-        `🎉 *¡Felicidades, ${restInfo.responsable || 'aliado'}!*\n\nTu restaurante ha sido aprobado por la administración. Ya eres parte oficial de Estrella Delivery.\n\nAquí tienes tu Código QR y tu link público para que tus clientes comiencen a pedir:\n🔗 ${menuUrl}\n\nPara configurar tu menú, entra a estrella-eats.mx con tu número de teléfono.`
+        `🎉 *¡Felicidades, ${restInfo.responsable || 'aliado'}!*\n\n¡Tu restaurante ha sido aprobado por nuestro equipo! 🥳 Ya eres parte oficial de la familia Estrella Eats.\n\nAquí tienes tu Código QR y tu link público para que tus clientes comiencen a pedir:\n🔗 ${menuUrl}\n\nPara configurar tu menú, entra a estrella-eats.mx con tu número de teléfono.`
       )
       
       // Enviar documento leyendo URL de variable de entorno (con fallback al actual si no existe)
