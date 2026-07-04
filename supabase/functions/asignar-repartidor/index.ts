@@ -194,7 +194,7 @@ serve(async (req) => {
       await roundRobinTask
     }
 
-    return new Response(JSON.stringify({ ok: true, drivers_planned: driver2 ? 2 : 1 }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({ ok: true, drivers_planned: repartidor2 ? 2 : 1 }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
 
   } catch (err: any) {
     console.error('[ASIGNAR-REPARTIDOR] Error:', err)
