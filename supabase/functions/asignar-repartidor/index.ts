@@ -71,7 +71,7 @@ serve(async (req) => {
     // 1. Obtener todos los repartidores activos con sus coordenadas
     const { data: repartidores, error: repErr } = await supabase
       .from('repartidores')
-      .select('id, nombre, telefono, lat, lng, bateria')
+      .select('id, user_id, nombre, telefono, lat, lng, bateria')
       .eq('activo', true)
 
     if (repErr) throw new Error(`Error consultando repartidores: ${repErr.message}`)
@@ -94,7 +94,7 @@ serve(async (req) => {
       .not('repartidor_id', 'is', null);
 
     const cargaTrabajo: Record<string, number> = {};
-    repartidoresValidos.forEach(r => cargaTrabajo[r.id] = 0);
+    repartidoresValidos.forEach(r => cargaTrabajo[r.user_id || r.id] = 0);
     if (pedidosActivos) {
       pedidosActivos.forEach(p => {
         if (cargaTrabajo[p.repartidor_id] !== undefined) {
@@ -116,7 +116,7 @@ serve(async (req) => {
         // Prioriza a los que están cerca, permitiendo que recojan múltiples pedidos si están en la zona.
         const repartidoresConScore = repartidoresValidos.map(r => {
           const d = haversineDist(lat, lng, r.lat ?? 0, r.lng ?? 0);
-          const pedidos = cargaTrabajo[r.id];
+          const pedidos = cargaTrabajo[r.user_id || r.id];
           const score = (d * 100) + (pedidos * 10);
           return { ...r, score, dist: d, pedidos };
         });
@@ -146,7 +146,7 @@ serve(async (req) => {
         // Esperar 30s (chequeando cada 3s)
         for (let i = 0; i < 10; i++) {
           await new Promise(r => setTimeout(r, 3000));
-          const { data: p } = await supabase.from('pedidos').select('repartidor_id, estado').eq('wb_message_id', ticket_id).maybeSingle();
+          const { data: p } = await supabase.from('pedidos').select('repartidor_id, estado').eq('id', ticket_id).maybeSingle();
           if (p && p.repartidor_id) return true; // ¡Alguien lo aceptó!
           if (p && p.estado === 'cancelado') return true;
           
@@ -154,7 +154,7 @@ serve(async (req) => {
           if (p && p.estado === 'rechazado') {
             console.log(`[FAST REJECT] Repartidor ${repartidorId} rechazó el pedido. Saltando al siguiente...`);
             // Regresamos el estado a pagado/pendiente para que el Turno 2 no lo vea como rechazado
-            await supabase.from('pedidos').update({ estado: 'pagado' }).eq('wb_message_id', ticket_id);
+            await supabase.from('pedidos').update({ estado: 'pagado' }).eq('id', ticket_id);
             return false;
           }
         }
@@ -170,13 +170,13 @@ serve(async (req) => {
 
       // Turno 1
       console.log(`[ROUND-ROBIN] Turno 1: ${repartidor1.nombre}`);
-      const accepted1 = await waitAndCheck(repartidor1.id);
+      const accepted1 = await waitAndCheck(repartidor1.user_id || repartidor1.id);
       if (accepted1) return;
 
       // Turno 2
       if (repartidor2) {
         console.log(`[ROUND-ROBIN] Turno 2: ${repartidor2.nombre}`);
-        const accepted2 = await waitAndCheck(repartidor2.id);
+        const accepted2 = await waitAndCheck(repartidor2.user_id || repartidor2.id);
         if (accepted2) return;
       }
 
