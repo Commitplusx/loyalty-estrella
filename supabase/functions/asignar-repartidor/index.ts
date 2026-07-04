@@ -112,12 +112,12 @@ serve(async (req) => {
     } else {
       if (lat && lng) {
         // Calcular Score (menor es mejor)
-        // Fórmula: (Distancia en KM * 10) + (Pedidos Activos * 50)
-        // Penaliza fuertemente a quienes ya tienen pedidos.
+        // Nueva Fórmula (Prioridad Distancia): (Distancia en KM * 100) + (Pedidos Activos * 10)
+        // Prioriza a los que están cerca, permitiendo que recojan múltiples pedidos si están en la zona.
         const repartidoresConScore = repartidoresValidos.map(r => {
           const d = haversineDist(lat, lng, r.lat ?? 0, r.lng ?? 0);
           const pedidos = cargaTrabajo[r.id];
-          const score = (d * 10) + (pedidos * 50);
+          const score = (d * 100) + (pedidos * 10);
           return { ...r, score, dist: d, pedidos };
         });
 
