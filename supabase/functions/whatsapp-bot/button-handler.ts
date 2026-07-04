@@ -1140,14 +1140,14 @@ export async function handleButtonEvent(
       
       await sendWA(fromPhone, `✅ Restaurante *${restInfo.nombreRest}* aprobado y registrado en el sistema.`)
       
-      const menuUrl = `https://restaurantes-app-estrella.shop/menu/${finalSlug}`;
+      const menuUrl = `https://estrella-eats.mx/menu/${finalSlug}`;
       const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(menuUrl)}&size=500&margin=2`;
       
       const { sendWAImage } = await import('./whatsapp.ts');
       await sendWAImage(
         `52${restTel}`, 
         qrUrl, 
-        `🎉 *¡Felicidades, ${restInfo.responsable || 'aliado'}!*\n\nTu restaurante ha sido aprobado por la administración. Ya eres parte oficial de Estrella Delivery.\n\nAquí tienes tu Código QR y tu link público para que tus clientes comiencen a pedir:\n🔗 ${menuUrl}\n\nPara configurar tu menú, entra a restaurantes-app-estrella.shop con tu número de teléfono.`
+        `🎉 *¡Felicidades, ${restInfo.responsable || 'aliado'}!*\n\nTu restaurante ha sido aprobado por la administración. Ya eres parte oficial de Estrella Delivery.\n\nAquí tienes tu Código QR y tu link público para que tus clientes comiencen a pedir:\n🔗 ${menuUrl}\n\nPara configurar tu menú, entra a estrella-eats.mx con tu número de teléfono.`
       )
       
       // Enviar documento leyendo URL de variable de entorno (con fallback al actual si no existe)

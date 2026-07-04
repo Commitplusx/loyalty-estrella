@@ -195,7 +195,7 @@ export async function handleRepButtons(
 
         // Disparar función para avisar al cliente
         supabase.functions.invoke('notificar-whatsapp', {
-          body: { pedido_id: pedido.id, tipo: 'recibido' }
+          body: { pedido_id: pedido.id, tipo: 'aceptado' }
         }).catch(err => console.error("Error al notificar al cliente que fue recibido:", err))
 
       } else {
