@@ -621,6 +621,21 @@ class _LocalFormSheetState extends ConsumerState<_LocalFormSheet> {
   Future<void> _obtenerUbicacion() async {
     setState(() { _isLoadingGps = true; _errorMsg = null; });
     try {
+      // 1. Intentar extraer de la URL si pegaron un link de Google Maps
+      if (mapsUrlCtrl.text.contains('@')) {
+        final reg = RegExp(r'@(-?\d+\.\d+),(-?\d+\.\d+)');
+        final match = reg.firstMatch(mapsUrlCtrl.text);
+        if (match != null) {
+          setState(() {
+            lat = double.parse(match.group(1)!);
+            lng = double.parse(match.group(2)!);
+            dirCtrl.text = 'GPS: ${lat!.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}';
+            _isLoadingGps = false;
+          });
+          return;
+        }
+      }
+
       bool svcOn = await Geolocator.isLocationServiceEnabled();
       if (!svcOn) throw 'Activa el GPS del dispositivo';
       LocationPermission perm = await Geolocator.checkPermission();

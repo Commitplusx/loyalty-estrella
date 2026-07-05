@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -12,6 +13,7 @@ import '../core/theme_provider.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:go_router/go_router.dart';
 
 class DriverDashboardView extends ConsumerStatefulWidget {
   final Map<String, dynamic>? stats;
@@ -21,7 +23,7 @@ class DriverDashboardView extends ConsumerStatefulWidget {
   ConsumerState<DriverDashboardView> createState() => _DriverDashboardViewState();
 }
 
-class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> {
+class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with WidgetsBindingObserver, TickerProviderStateMixin {
   static bool? _cachedIsOnline;
   static LatLng? _cachedLocation;
   static String? _cachedRepartidorId;
@@ -35,13 +37,14 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> {
   late LatLng _currentLocation;
   
   // Novedades para el tracker e Inteligencia
-  Map<String, dynamic>? _pedidoActivo;
+  List<Map<String, dynamic>> _pedidosActivos = [];
   StreamSubscription<Position>? _positionStream;
   final MapController _mapController = MapController();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _isOnline = _cachedIsOnline ?? false;
     _currentLocation = _cachedLocation ?? const LatLng(16.2519, -92.1345);
     _repartidorId = _cachedRepartidorId;
@@ -51,8 +54,37 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> {
     _loadStatusSilently();
   }
 
+  // Animación Suave del Mapa
+  void _animatedMapMove(LatLng destLocation, double destZoom) {
+    final latTween = Tween<double>(begin: _mapController.camera.center.latitude, end: destLocation.latitude);
+    final lngTween = Tween<double>(begin: _mapController.camera.center.longitude, end: destLocation.longitude);
+    final zoomTween = Tween<double>(begin: _mapController.camera.zoom, end: destZoom);
+
+    final controller = AnimationController(duration: const Duration(milliseconds: 1000), vsync: this);
+    final Animation<double> animation = CurvedAnimation(parent: controller, curve: Curves.fastOutSlowIn);
+
+    controller.addListener(() {
+      _mapController.move(
+        LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)),
+        zoomTween.evaluate(animation),
+      );
+    });
+
+    animation.addStatusListener((status) {
+      if (status == AnimationStatus.completed || status == AnimationStatus.dismissed) {
+        controller.dispose();
+      }
+    });
+
+    controller.forward();
+  }
+
   Future<void> _loadStatusSilently() async {
     final statusData = await ref.read(repartidorServiceProvider).getCurrentStatus();
+    
+    // Extracciones de seguridad
+    final isOnlineBD = statusData['activo'] ?? false;
+    final repIdBD = statusData['id'];
     
     // Attempt to get location and start stream
     try {
@@ -64,6 +96,17 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> {
         final pos = await Geolocator.getCurrentPosition();
         _currentLocation = LatLng(pos.latitude, pos.longitude);
         _cachedLocation = _currentLocation;
+        
+        // Sincronización inicial obligatoria si está en línea (para que funcione el algoritmo aunque no se mueva)
+        if (isOnlineBD && repIdBD != null) {
+          debugPrint('📍 Sincronizando ubicación inicial a Supabase: \${pos.latitude}, \${pos.longitude}');
+          ref.read(repartidorServiceProvider).updateStatus(
+            repIdBD,
+            true,
+            lat: pos.latitude,
+            lng: pos.longitude,
+          );
+        }
 
         // Suscribirse a cambios de ubicación en vivo
         _positionStream = Geolocator.getPositionStream(
@@ -76,10 +119,17 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> {
             setState(() {
               _currentLocation = LatLng(position.latitude, position.longitude);
               _cachedLocation = _currentLocation;
-              _mapController.move(_currentLocation, 15);
             });
-            // Si está online, podríamos actualizar en Supabase silenciosamente, pero para no saturar 
-            // la BD lo dejaremos local y la updateStatus principal se encarga cuando hay eventos mayores
+            _animatedMapMove(_currentLocation, 15);
+            // Si está online, actualizamos silenciosamente en Supabase para que el RPC de asignación lo encuentre
+            if (_isOnline && _repartidorId != null) {
+              ref.read(repartidorServiceProvider).updateStatus(
+                _repartidorId!,
+                true,
+                lat: position.latitude,
+                lng: position.longitude,
+              );
+            }
           }
         });
       }
@@ -105,47 +155,158 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> {
         if (_repartidorId != null) {
           await _checkPedidoActivo();
           
-          // FORZAR CHECKLIST: Si estaba "En línea" pero NO tiene pedidos, lo apagamos.
-          // Así se obliga a presionar el botón y pasar por la revisión de Batería/GPS/Volumen.
-          if (_isOnline && _pedidoActivo == null && mounted) {
-            setState(() {
-              _isOnline = false;
-              _cachedIsOnline = false;
-            });
-            ref.read(repartidorServiceProvider).updateStatus(_repartidorId!, false);
-          }
+          // Ya no forzamos apagar el turno. Si el servidor dice que está en línea, se queda en línea.
         }
       }
     }
 
   Future<void> _checkPedidoActivo() async {
     try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) {
+        debugPrint('🚨 Inteligencia: No hay usuario autenticado (auth.currentUser?.id es null).');
+        return;
+      }
+      
+      debugPrint('🚨 Inteligencia: Buscando pedidos activos para auth_id: $userId');
+
       final data = await supabase
           .from('pedidos')
-          .select('*, restaurante: restaurantes(nombre_comercial)')
-          .eq('repartidor_id', _repartidorId!)
-          .inFilter('estado', ['asignado', 'aceptado', 'en_camino', 'recibido'])
+          .select()
+          .eq('repartidor_id', userId)
+          .inFilter('estado', ['pendiente', 'asignado', 'aceptado', 'en_cocina', 'listo_para_recoger', 'recibido', 'en_camino'])
           .order('created_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
+          .limit(5); // Soporte para Stacked Orders (Cola de Trabajo)
 
       if (mounted && data != null) {
+        final pedidosList = List<Map<String, dynamic>>.from(data as List<dynamic>);
+        debugPrint('🚨 Inteligencia: ¡${pedidosList.length} pedidos activos en la cola!');
         setState(() {
-          _pedidoActivo = data;
+          _pedidosActivos = pedidosList;
         });
+        // AUTO-NAVEGACIÓN REMOVIDA
+        // El repartidor ahora ve su cola de trabajo (Stacked Orders) en el Dashboard
+        // y decide a cuál pedido entrar manualmente, dándole control total sobre su ruta.
+      } else {
+        if (mounted) {
+          setState(() {
+            _pedidosActivos = [];
+          });
+        }
+        debugPrint('🚨 Inteligencia: Ningún pedido activo en curso.');
       }
     } catch (e) {
-      debugPrint('Error buscando pedido activo: $e');
+      debugPrint('🚨 Inteligencia: Error buscando pedido activo: $e');
     }
   }
+  // === ESTADO DE MÁQUINA (NEXT STOP LOGIC) ===
+  Map<String, dynamic>? _calcularProximaParada() {
+    if (_pedidosActivos.isEmpty) return null;
+
+    Map<String, dynamic>? bestStop;
+    double minDistance = double.infinity;
+
+    for (var pedido in _pedidosActivos) {
+      final estado = pedido['estado'];
+      final bool isPickup = ['asignado', 'aceptado', 'en_cocina', 'listo_para_recoger'].contains(estado);
+      final bool isDropoff = estado == 'en_camino';
+
+      if (!isPickup && !isDropoff) continue;
+
+      double targetLat = 0.0;
+      double targetLng = 0.0;
+      String actionText = '';
+      String title = '';
+      String subtitle = '';
+
+      if (isPickup) {
+        // Datos del Restaurante
+        final rest = pedido['restaurante'];
+        if (rest is Map) {
+          targetLat = (rest['lat'] ?? 0.0).toDouble();
+          targetLng = (rest['lng'] ?? 0.0).toDouble();
+          title = rest['nombre_comercial'] ?? 'Restaurante';
+        } else {
+          title = rest?.toString() ?? 'Restaurante';
+        }
+        subtitle = 'Recoger Pedido #${pedido['id'].toString().substring(0, 4)}';
+        actionText = 'IR A RECOGER';
+      } else if (isDropoff) {
+        // Datos del Cliente (Privacidad: Se oculta el nombre)
+        targetLat = (pedido['lat_cliente'] ?? pedido['lat'] ?? 0.0).toDouble();
+        targetLng = (pedido['lng_cliente'] ?? pedido['lng'] ?? 0.0).toDouble();
+        title = 'Cliente'; 
+        subtitle = 'Entregar en: ${pedido['direccion'] ?? 'Ubicación'}';
+        actionText = 'IR A ENTREGAR';
+      }
+
+      if (targetLat == 0.0 || targetLng == 0.0) {
+         if (bestStop == null) {
+            bestStop = {'pedido': pedido, 'action': actionText, 'title': title, 'subtitle': subtitle, 'targetLat': targetLat, 'targetLng': targetLng, 'isPickup': isPickup};
+         }
+         continue;
+      }
+
+      final distance = Geolocator.distanceBetween(_currentLocation.latitude, _currentLocation.longitude, targetLat, targetLng);
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        bestStop = {'pedido': pedido, 'action': actionText, 'title': title, 'subtitle': subtitle, 'targetLat': targetLat, 'targetLng': targetLng, 'distance': distance, 'isPickup': isPickup};
+      }
+    }
+    return bestStop;
+  }
+  // ===========================================
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _positionStream?.cancel();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isOnline) {
+      _syncLocationBackground();
+    }
+  }
+
+  Future<void> _syncLocationBackground() async {
+    try {
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      final battery = await Battery().batteryLevel;
+      if (_repartidorId != null) {
+        await ref.read(repartidorServiceProvider).updateStatus(
+          _repartidorId!,
+          true,
+          lat: pos.latitude,
+          lng: pos.longitude,
+          bateria: battery,
+        );
+      }
+    } catch (e) {
+      debugPrint("Fallo al sincronizar GPS/Batería en background: $e");
+    }
+  }
+
   Future<int?> _mostrarTipsInicio() async {
+    return await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        title: const Text('💡 ¿Cuánto dinero traes?', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('Para poder dar cambio, necesitamos saber con cuánto efectivo empiezas tu turno.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, 0), child: const Text('Nada', style: TextStyle(color: Colors.grey))),
+          TextButton(onPressed: () => Navigator.pop(ctx, 200), child: Text('\$200', style: TextStyle(color: Theme.of(context).colorScheme.secondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx, 500), child: Text('\$500', style: TextStyle(color: Theme.of(context).colorScheme.secondary))),
+        ],
+      ),
+    );
+  }
+
+  Future<int?> _checkInitialLocation() async {
     // 1. Obtener Batería
     final battery = Battery();
     int batteryLevel = 0;
@@ -294,6 +455,32 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> {
     int? batteryLevel;
     // Si va a ponerse EN LÍNEA, mostrar tips de inicio de turno primero
     if (value) {
+      // PERMISOS ANDROID 14
+      try {
+        const platform = MethodChannel('app.estrella.shop/permissions');
+        final bool canUseFullScreen = await platform.invokeMethod('canUseFullScreenIntent');
+        if (!canUseFullScreen) {
+          final shouldRequest = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Permiso Requerido'),
+              content: const Text('Para poder despertar la pantalla y avisarte de nuevos pedidos mientras la app está minimizada, necesitamos permiso de Pantalla Completa.\n\n¿Quieres activarlo ahora?'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Ahora no')),
+                ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Activar')),
+              ],
+            ),
+          );
+          
+          if (shouldRequest == true) {
+            await platform.invokeMethod('requestFullScreenIntent');
+            return; // Detener flujo para que regresen y lo intenten de nuevo
+          }
+        }
+      } catch (e) {
+        debugPrint('Error chequeando fullScreenIntent: $e');
+      }
+
       batteryLevel = await _mostrarTipsInicio();
       if (batteryLevel == null || !mounted) return;
       
@@ -357,64 +544,296 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final ganancias = widget.stats?['ganancias'] ?? 0.0;
-    final viajes = widget.stats?['servicios'] ?? 0;
+    
+    // Si está en línea, mostrar el MODO RADAR (Mapa completo + BottomSheet)
+    if (_isOnline) {
+      return _buildRadarMode(context, isDark, cs, ganancias);
+    } else {
+      return _buildOfflineDashboard(context, isDark, cs, ganancias);
+    }
+  }
+
+  Widget _buildRadarMode(BuildContext context, bool isDark, ColorScheme cs, dynamic ganancias) {
+    final nextStop = _calcularProximaParada();
+    
+    return Stack(
+      children: [
+        // Mapa 100% de fondo (sin mapController para evitar conflicto con el mapa del dashboard offline)
+        Positioned.fill(
+          child: FlutterMap(
+            options: MapOptions(
+              initialCenter: _currentLocation,
+              initialZoom: 15,
+              interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: isDark
+                    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+                    : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                subdomains: const ['a', 'b', 'c', 'd'],
+              ),
+              MarkerLayer(
+                markers: [
+                  // Hotspot animado (Zonas de alta demanda)
+                  if (_pedidosActivos.isEmpty)
+                    Marker(
+                      point: _currentLocation,
+                      width: 250, height: 250,
+                      child: SafePulse(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.15),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.red.withOpacity(0.5), width: 2),
+                          ),
+                        ),
+                      ),
+                    ),
+                  
+                  // Marcador del repartidor animado
+                  Marker(
+                    point: _currentLocation,
+                    width: 60, height: 60,
+                    child: SafePulse(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.blueAccent,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 3),
+                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3))]
+                        ),
+                        child: const Icon(Icons.two_wheeler_rounded, color: Colors.white, size: 28),
+                      ),
+                    ),
+                  ),
+
+                  // Marcador de destino animado
+                  if (nextStop != null)
+                    Marker(
+                      point: LatLng(nextStop['targetLat'], nextStop['targetLng']),
+                      width: 50, height: 50,
+                      child: SafePulse(
+                        child: Icon(
+                          nextStop['isPickup'] ? Icons.storefront_rounded : Icons.person_pin_circle_rounded,
+                          color: nextStop['isPickup'] ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
+                          size: 44,
+                          shadows: const [Shadow(color: Colors.black38, blurRadius: 8)],
+                        ),
+                      ),
+                    )
+                ]
+              )
+            ]
+          )
+        ),
+        
+        // Cabecera: Ganancias
+        Positioned(
+          top: 16, left: 16, right: 16,
+          child: SafeArea(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.black87 : Colors.white,
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.monetization_on_rounded, color: Color(0xFFF59E0B), size: 20),
+                      const SizedBox(width: 8),
+                      Text('\$${(ganancias as num).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                    ]
+                  )
+                ),
+                GestureDetector(
+                  onTap: _sosSending ? null : () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        title: const Text('🆘 Enviar Emergencia', style: TextStyle(fontWeight: FontWeight.bold)),
+                        content: const Text('Se enviará una alerta de emergencia al Administrador con tu ubicación actual.\n\n¿Confirmas que estás en una situación de emergencia?'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(ctx, true), 
+                            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                            child: const Text('ENVIAR SOS', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    );
+                      if (confirm == true) {
+                        setState(() => _sosSending = true);
+                        final success = await ref.read(repartidorServiceProvider).enviarSOS(
+                          _repartidorNombre,
+                          lat: _currentLocation.latitude,
+                          lng: _currentLocation.longitude,
+                        );
+                      setState(() => _sosSending = false);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(success ? 'ALERTA SOS ENVIADA' : 'Error al enviar alerta'),
+                          backgroundColor: success ? Colors.redAccent : Colors.orange,
+                        ));
+                      }
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent,
+                      shape: BoxShape.circle,
+                      boxShadow: [BoxShadow(color: Colors.redAccent.withOpacity(0.5), blurRadius: 10)],
+                    ),
+                    child: _sosSending 
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Icon(Icons.shield_rounded, color: Colors.white, size: 20)
+                  )
+                )
+              ]
+            )
+          )
+        ),
+        
+        // Panel Inferior
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: nextStop != null 
+             ? _buildActiveOrderCard(nextStop) 
+             : _buildSearchingOrdersSheet(isDark),
+        )
+      ]
+    );
+  }
+
+  Widget _buildSearchingOrdersSheet(bool isDark) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, 10))]
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Autoaceptación', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              Switch(value: false, onChanged: (v) {}, activeColor: Colors.redAccent),
+            ],
+          ),
+          const Divider(),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Icon(Icons.trending_up_rounded, color: Colors.grey),
+              const SizedBox(width: 12),
+              const Expanded(child: Text('Gana más en las zonas rojas', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+            ]
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _toggleStatus(false),
+              icon: const Icon(Icons.power_settings_new_rounded, color: Colors.redAccent),
+              label: const Text('APAGAR TURNO', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w900, letterSpacing: 1)),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                side: const BorderSide(color: Colors.redAccent, width: 2),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              )
+            )
+          )
+        ]
+      )
+    );
+  }
+
+  Widget _buildActiveOrderCard(Map<String, dynamic> nextStop) {
+    final pedido = nextStop['pedido'];
+    final isPickup = nextStop['isPickup'];
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16, left: 16, right: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isPickup ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: (isPickup ? const Color(0xFFF59E0B) : const Color(0xFF10B981)).withOpacity(0.4),
+            blurRadius: 15,
+            offset: const Offset(0, 8)
+          )
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(isPickup ? Icons.storefront_rounded : Icons.person_pin_circle_rounded, color: Colors.white, size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  nextStop['action'], 
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1)
+                )
+              ),
+              if (_pedidosActivos.length > 1)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(12)),
+                  child: Text('+${_pedidosActivos.length - 1} en cola', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                )
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(nextStop['title'], style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text(nextStop['subtitle'], maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                 context.push('/pedidos/${pedido['id']}');
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: isPickup ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: const Text('VER DETALLES', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOfflineDashboard(BuildContext context, bool isDark, ColorScheme cs, dynamic ganancias) {
     final deuda = widget.stats?['deuda'] ?? 0.0;
+    
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 120),
+        padding: const EdgeInsets.only(bottom: 120, top: 16, left: 16, right: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 🚨 Tarjeta de Recuperación de Pedido Activo
-            if (_pedidoActivo != null)
-              Pulse(
-                infinite: true,
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 24),
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF59E0B),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 8))],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.warning_rounded, color: Colors.white, size: 28),
-                          const SizedBox(width: 12),
-                          const Expanded(child: Text('¡TIENES UN PEDIDO EN CURSO!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1))),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text('Restaurante: ${_pedidoActivo!['restaurante']?['nombre_comercial'] ?? 'Desconocido'}', style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
-                      Text('Destino: ${_pedidoActivo!['direccion'] ?? 'Sin dirección'}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {
-                             // Aquí se navega a la pantalla normal del pedido
-                             // Por ahora, mostrará un SnackBar y luego puedes atarlo a tu router
-                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Navegando a los detalles del pedido...')));
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: const Color(0xFFF59E0B),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          child: const Text('CONTINUAR PEDIDO', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-            // ── Botón de Conexión (Elegante con Shimmer) ──
             AnimatedContainer(
               duration: const Duration(milliseconds: 500),
               curve: Curves.fastOutSlowIn,
@@ -422,100 +841,40 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(32),
                 gradient: LinearGradient(
-                  colors: _isOnline 
-                      ? [const Color(0xFF11998E), const Color(0xFF38EF7D)]
-                      : [Colors.grey.shade300, Colors.grey.shade400],
+                  colors: [Colors.grey.shade300, Colors.grey.shade400],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                boxShadow: _isOnline
-                    ? [BoxShadow(color: const Color(0xFF38EF7D).withOpacity(0.6), blurRadius: 25, spreadRadius: 4, offset: const Offset(0, 8))]
-                    : [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))],
               ),
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: () async {
-                    if (_isOnline) {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          title: const Row(
-                            children: [
-                              Icon(Icons.power_settings_new_rounded, color: Colors.redAccent),
-                              SizedBox(width: 10),
-                              Text('¿Terminar Turno?', style: TextStyle(fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          content: const Text('Dejarás de recibir pedidos y te desconectarás de la red. ¿Estás seguro?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, false), 
-                              child: const Text('Cancelar', style: TextStyle(fontWeight: FontWeight.bold))
-                            ),
-                            FilledButton(
-                              onPressed: () => Navigator.pop(ctx, true), 
-                              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-                              child: const Text('Sí, terminar', style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirm == true) {
-                        _toggleStatus(false);
-                      }
-                    } else {
-                      _toggleStatus(true);
-                    }
-                  },
+                  onTap: () => _toggleStatus(true),
                   borderRadius: BorderRadius.circular(32),
-                  splashColor: Colors.white.withOpacity(0.3),
-                  highlightColor: Colors.white.withOpacity(0.1),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        if (_isOnline)
-                          const Icon(Icons.radar_rounded, color: Colors.white, size: 36)
-                        else
-                          Icon(Icons.power_settings_new_rounded, color: cs.onSurfaceVariant, size: 36),
+                        Icon(Icons.power_settings_new_rounded, color: cs.onSurfaceVariant, size: 36),
                         const SizedBox(width: 14),
-                        if (_isOnline)
-                          Shimmer.fromColors(
-                            baseColor: Colors.white,
-                            highlightColor: Colors.black12,
-                            period: const Duration(seconds: 2),
-                            child: const Text(
-                              'BUSCANDO PEDIDOS...',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                          )
-                        else
-                          Text(
-                            'INICIAR TURNO',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              color: cs.onSurfaceVariant,
-                              letterSpacing: 1.5,
-                            ),
+                        Text(
+                          'INICIAR TURNO',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: cs.onSurfaceVariant,
+                            letterSpacing: 1.5,
                           ),
+                        ),
                       ],
                     ),
                   ),
                 ),
               ),
             ),
-            
             const SizedBox(height: 28),
-
-            // ── Billetera Dual (Premium Gradient) ──
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
@@ -548,7 +907,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> {
                           children: [
                             const Text('Ganancias', style: TextStyle(fontSize: 13, color: Colors.white70, fontWeight: FontWeight.w600)),
                             const SizedBox(height: 4),
-                            Text('\$${ganancias.toStringAsFixed(2)}', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF38EF7D), letterSpacing: -1)),
+                            Text('\$${(ganancias as num).toStringAsFixed(2)}', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF38EF7D), letterSpacing: -1)),
                           ],
                         ),
                       ),
@@ -561,7 +920,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> {
                             children: [
                               const Text('Efectivo a entregar', style: TextStyle(fontSize: 13, color: Colors.white70, fontWeight: FontWeight.w600)),
                               const SizedBox(height: 4),
-                              Text('\$${deuda.toStringAsFixed(2)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFFF43F5E), letterSpacing: -1)),
+                              Text('\$${(deuda as num).toStringAsFixed(2)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFFF43F5E), letterSpacing: -1)),
                             ],
                           ),
                         ),
@@ -569,273 +928,6 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> {
                     ],
                   ),
                 ],
-              ),
-            ),
-            
-            const SizedBox(height: 24),
-
-            // ── Gamificación y Stats ──
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: isDark 
-                          ? LinearGradient(colors: [const Color(0xFFF59E0B).withOpacity(0.15), const Color(0xFFD97706).withOpacity(0.05)])
-                          : const LinearGradient(colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(color: const Color(0xFFF59E0B).withOpacity(isDark ? 0.2 : 0.4)),
-                      boxShadow: isDark ? null : [BoxShadow(color: const Color(0xFFF59E0B).withOpacity(0.15), blurRadius: 15, offset: const Offset(0, 8))],
-                    ),
-                    child: Column(
-                      children: [
-                        const Icon(Icons.workspace_premium_rounded, color: Color(0xFFF59E0B), size: 36),
-                        const SizedBox(height: 12),
-                        Text('Nivel Diamante', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: isDark ? Colors.white : const Color(0xFF92400E))),
-                        const SizedBox(height: 4),
-                        Text('$viajes Viajes', style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFFB45309), fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: isDark 
-                          ? LinearGradient(colors: [const Color(0xFF8B5CF6).withOpacity(0.15), const Color(0xFF6D28D9).withOpacity(0.05)])
-                          : const LinearGradient(colors: [Color(0xFFFAF5FF), Color(0xFFF3E8FF)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(color: const Color(0xFF8B5CF6).withOpacity(isDark ? 0.2 : 0.4)),
-                      boxShadow: isDark ? null : [BoxShadow(color: const Color(0xFF8B5CF6).withOpacity(0.15), blurRadius: 15, offset: const Offset(0, 8))],
-                    ),
-                    child: Column(
-                      children: [
-                        const Icon(Icons.star_rounded, color: Color(0xFF8B5CF6), size: 36),
-                        const SizedBox(height: 12),
-                        Text('Calificación', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: isDark ? Colors.white : const Color(0xFF5B21B6))),
-                        const SizedBox(height: 4),
-                        Text('4.98 ★', style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF7C3AED), fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 32),
-
-            // ── SOS Botón ──
-            GestureDetector(
-              onTap: _sosSending ? null : () async {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                    title: const Text('🆘 Enviar Emergencia', style: TextStyle(fontWeight: FontWeight.bold)),
-                    content: const Text(
-                      'Se enviará una alerta de emergencia al Administrador con tu ubicación actual.\n\n'
-                      '¿Confirmas que estás en una situación de emergencia?',
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('Cancelar', style: TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFF43F5E),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('Sí, Enviar SOS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                );
-                if (confirm != true || !mounted) return;
-                setState(() => _sosSending = true);
-                final ok = await ref.read(repartidorServiceProvider).enviarSOS(
-                  _repartidorNombre,
-                  lat: _currentLocation.latitude,
-                  lng: _currentLocation.longitude,
-                );
-                if (mounted) {
-                  setState(() => _sosSending = false);
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(ok ? '🆘 Alerta enviada al Admin' : 'Error al enviar la alerta'),
-                    backgroundColor: ok ? const Color(0xFFF43F5E) : Colors.grey,
-                  ));
-                }
-              },
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 300),
-                opacity: _sosSending ? 0.5 : 1.0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF43F5E).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: const Color(0xFFF43F5E).withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (_sosSending)
-                        const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Color(0xFFF43F5E), strokeWidth: 2))
-                      else
-                        const Icon(Icons.sos_rounded, color: Color(0xFFF43F5E), size: 28),
-                      const SizedBox(width: 12),
-                      Text(
-                        _sosSending ? 'ENVIANDO...' : 'EMERGENCIA (SOS)',
-                        style: const TextStyle(color: Color(0xFFF43F5E), fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 32),
-
-            // ── Zonas Calientes ──
-            Text('Zonas Calientes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: cs.onSurface)),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: SizedBox(
-                height: 200,
-                child: FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: _currentLocation, // Centrado dinámico o Comitán
-                    initialZoom: 14,
-                    interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate: isDark
-                          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-                          : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-                      subdomains: const ['a', 'b', 'c', 'd'],
-                    ),
-                    // Círculo decorativo rojo simulando "hotspot" (Zonas Calientes) con latido
-                    if (_pedidoActivo == null)
-                      CircleLayer(
-                        circles: [
-                          CircleMarker(
-                            point: _currentLocation, // Idealmente el centro de una zona de alta demanda real
-                            color: Colors.red.withOpacity(0.15),
-                            borderColor: Colors.red.withOpacity(0.5),
-                            borderStrokeWidth: 2,
-                            useRadiusInMeter: true,
-                            radius: 400, // Más pequeño
-                          ),
-                        ],
-                      ),
-                    // Animación de latido sobre el hotspot
-                    if (_pedidoActivo == null)
-                      Pulse(
-                        infinite: true,
-                        duration: const Duration(seconds: 3),
-                        child: CircleLayer(
-                          circles: [
-                            CircleMarker(
-                              point: _currentLocation,
-                              color: Colors.red.withOpacity(0.2),
-                              borderColor: Colors.transparent,
-                              useRadiusInMeter: true,
-                              radius: 200, // Latido más concentrado
-                            ),
-                          ],
-                        ),
-                      ),
-                    // ── RUTA DE NAVEGACIÓN (LÍNEA AZUL) ──
-                    // Aquí es donde se dibujará la línea de la ruta cuando el backend devuelva la polyline
-                    PolylineLayer(
-                      polylines: [
-                        Polyline(
-                          points: const <LatLng>[], // TODO: Llenar con _routePoints decodificado desde get-route
-                          color: const Color(0xFF3B82F6), // Azul brillante estilo Uber
-                          strokeWidth: 5,
-                        ),
-                      ],
-                    ),
-                    // Puntos de demanda (simulados) más cerca para que se vean bien
-                    if (_pedidoActivo == null)
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: LatLng(_currentLocation.latitude + 0.002, _currentLocation.longitude + 0.0015),
-                            width: 30, height: 30,
-                            child: Pulse(
-                              infinite: true, duration: const Duration(seconds: 2),
-                              child: Container(
-                                decoration: BoxDecoration(color: const Color(0xFFF59E0B).withOpacity(0.4), shape: BoxShape.circle),
-                                child: Center(child: Container(width: 10, height: 10, decoration: const BoxDecoration(color: Color(0xFFF59E0B), shape: BoxShape.circle))),
-                              ),
-                            ),
-                          ),
-                          Marker(
-                            point: LatLng(_currentLocation.latitude - 0.0015, _currentLocation.longitude - 0.0025),
-                            width: 30, height: 30,
-                            child: Pulse(
-                              infinite: true, duration: const Duration(milliseconds: 2500),
-                              child: Container(
-                                decoration: BoxDecoration(color: const Color(0xFFF59E0B).withOpacity(0.4), shape: BoxShape.circle),
-                                child: Center(child: Container(width: 10, height: 10, decoration: const BoxDecoration(color: Color(0xFFF59E0B), shape: BoxShape.circle))),
-                              ),
-                            ),
-                          ),
-                          Marker(
-                            point: LatLng(_currentLocation.latitude + 0.0025, _currentLocation.longitude - 0.001),
-                            width: 30, height: 30,
-                            child: Pulse(
-                              infinite: true, duration: const Duration(milliseconds: 2200),
-                              child: Container(
-                                decoration: BoxDecoration(color: const Color(0xFFF59E0B).withOpacity(0.4), shape: BoxShape.circle),
-                                child: Center(child: Container(width: 10, height: 10, decoration: const BoxDecoration(color: Color(0xFFF59E0B), shape: BoxShape.circle))),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    // Marcador del repartidor animado en tiempo real
-                    MarkerLayer(
-                      markers: [
-                        Marker(
-                          point: _currentLocation,
-                          width: 40,
-                          height: 40,
-                          child: Pulse(
-                            infinite: true,
-                            duration: const Duration(milliseconds: 1500),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF3B82F6).withOpacity(0.3),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Container(
-                                  width: 16,
-                                  height: 16,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF3B82F6),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 2),
-                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
               ),
             ),
           ],
@@ -869,6 +961,50 @@ class _StatBadge extends StatelessWidget {
           Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: isDark ? color.withOpacity(0.8) : color, fontSize: 12)),
         ],
       ),
+    );
+  }
+}
+
+class SafePulse extends StatefulWidget {
+  final Widget child;
+  const SafePulse({super.key, required this.child});
+
+  @override
+  State<SafePulse> createState() => _SafePulseState();
+}
+
+class _SafePulseState extends State<SafePulse> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnim;
+  late Animation<double> _opacityAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat(reverse: true);
+    _scaleAnim = Tween<double>(begin: 0.85, end: 1.15).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    _opacityAnim = Tween<double>(begin: 0.6, end: 1.0).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: _scaleAnim.value,
+          child: Opacity(
+            opacity: _opacityAnim.value,
+            child: widget.child,
+          ),
+        );
+      },
     );
   }
 }

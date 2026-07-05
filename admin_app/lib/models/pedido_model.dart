@@ -8,8 +8,11 @@ class PedidoModel {
   final String? repartidorId;
   final String descripcion;
   final String? direccion;
-  final double? lat;                 // GPS — latitud
-  final double? lng;                 // GPS — longitud
+  final double? lat;                 // GPS — latitud cliente
+  final double? lng;                 // GPS — longitud cliente
+  final double? restauranteLat;      // GPS — latitud restaurante
+  final double? restauranteLng;      // GPS — longitud restaurante
+  final String? restauranteLogoUrl;  // Imagen del restaurante
   final String estado;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -35,6 +38,9 @@ class PedidoModel {
     this.direccion,
     this.lat,
     this.lng,
+    this.restauranteLat,
+    this.restauranteLng,
+    this.restauranteLogoUrl,
     required this.estado,
     required this.createdAt,
     required this.updatedAt,
@@ -60,6 +66,9 @@ class PedidoModel {
       direccion: map['direccion'] as String?,
       lat: (map['lat'] as num?)?.toDouble(),
       lng: (map['lng'] as num?)?.toDouble(),
+      restauranteLat: map['restaurante_lat'] != null ? (map['restaurante_lat'] as num).toDouble() : (map['restaurantes'] != null ? (map['restaurantes']['lat'] as num?)?.toDouble() : null),
+      restauranteLng: map['restaurante_lng'] != null ? (map['restaurante_lng'] as num).toDouble() : (map['restaurantes'] != null ? (map['restaurantes']['lng'] as num?)?.toDouble() : null),
+      restauranteLogoUrl: map['restaurantes'] != null ? map['restaurantes']['foto_fachada_url'] as String? : null,
       estado: map['estado'] as String? ?? 'asignado',
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),

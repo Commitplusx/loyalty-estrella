@@ -1,0 +1,446 @@
+class _DriverRouteMode extends ConsumerStatefulWidget {
+  final PedidoModel pedido;
+  final VoidCallback onEstadoActualizado;
+
+  const _DriverRouteMode({required this.pedido, required this.onEstadoActualizado});
+
+  @override
+  ConsumerState<_DriverRouteMode> createState() => _DriverRouteModeState();
+}
+
+class _DriverRouteModeState extends ConsumerState<_DriverRouteMode> {
+  bool _loading = false;
+  
+  // Map State
+  GoogleMapController? _mapController;
+  StreamSubscription<Position>? _positionStream;
+  LatLng? _currentLocation;
+  List<LatLng> _routePoints = [];
+  bool _isMapReady = false;
+  
+  // Custom Dark Style
+  final String _darkMapStyle = '''
+  [
+    {
+      "elementType": "geometry",
+      "stylers": [{"color": "#212121"}]
+    },
+    {
+      "elementType": "labels.icon",
+      "stylers": [{"visibility": "off"}]
+    },
+    {
+      "elementType": "labels.text.fill",
+      "stylers": [{"color": "#757575"}]
+    },
+    {
+      "elementType": "labels.text.stroke",
+      "stylers": [{"color": "#212121"}]
+    },
+    {
+      "featureType": "administrative",
+      "elementType": "geometry",
+      "stylers": [{"color": "#757575"}]
+    },
+    {
+      "featureType": "administrative.country",
+      "elementType": "labels.text.fill",
+      "stylers": [{"color": "#9e9e9e"}]
+    },
+    {
+      "featureType": "administrative.land_parcel",
+      "stylers": [{"visibility": "off"}]
+    },
+    {
+      "featureType": "administrative.locality",
+      "elementType": "labels.text.fill",
+      "stylers": [{"color": "#bdbdbd"}]
+    },
+    {
+      "featureType": "poi",
+      "elementType": "labels.text.fill",
+      "stylers": [{"color": "#757575"}]
+    },
+    {
+      "featureType": "poi.park",
+      "elementType": "geometry",
+      "stylers": [{"color": "#181818"}]
+    },
+    {
+      "featureType": "poi.park",
+      "elementType": "labels.text.fill",
+      "stylers": [{"color": "#616161"}]
+    },
+    {
+      "featureType": "poi.park",
+      "elementType": "labels.text.stroke",
+      "stylers": [{"color": "#1b1b1b"}]
+    },
+    {
+      "featureType": "road",
+      "elementType": "geometry.fill",
+      "stylers": [{"color": "#2c2c2c"}]
+    },
+    {
+      "featureType": "road",
+      "elementType": "labels.text.fill",
+      "stylers": [{"color": "#8a8a8a"}]
+    },
+    {
+      "featureType": "road.arterial",
+      "elementType": "geometry",
+      "stylers": [{"color": "#373737"}]
+    },
+    {
+      "featureType": "road.highway",
+      "elementType": "geometry",
+      "stylers": [{"color": "#3c3c3c"}]
+    },
+    {
+      "featureType": "road.highway.controlled_access",
+      "elementType": "geometry",
+      "stylers": [{"color": "#4e4e4e"}]
+    },
+    {
+      "featureType": "road.local",
+      "elementType": "labels.text.fill",
+      "stylers": [{"color": "#616161"}]
+    },
+    {
+      "featureType": "transit",
+      "elementType": "labels.text.fill",
+      "stylers": [{"color": "#757575"}]
+    },
+    {
+      "featureType": "water",
+      "elementType": "geometry",
+      "stylers": [{"color": "#000000"}]
+    },
+    {
+      "featureType": "water",
+      "elementType": "labels.text.fill",
+      "stylers": [{"color": "#3d3d3d"}]
+    }
+  ]
+  ''';
+
+  @override
+  void initState() {
+    super.initState();
+    _startLocationTracking();
+  }
+
+  @override
+  void dispose() {
+    _positionStream?.cancel();
+    _mapController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _startLocationTracking() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return;
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) return;
+    }
+    if (permission == LocationPermission.deniedForever) return;
+
+    final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+    if (mounted) {
+      setState(() => _currentLocation = LatLng(pos.latitude, pos.longitude));
+      _fetchRoute();
+    }
+
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10),
+    ).listen((Position position) {
+      if (mounted) {
+        setState(() {
+          _currentLocation = LatLng(position.latitude, position.longitude);
+        });
+      }
+    });
+  }
+
+  Future<void> _fetchRoute() async {
+    if (_currentLocation == null || widget.pedido.lat == null || widget.pedido.lng == null) return;
+    
+    PolylinePoints polylinePoints = PolylinePoints();
+    PolylineResult result = await polylinePoints.getRouteBetweenCoordinates(
+      googleApiKey: 'AIzaSyBOZkp595ze0Agwb7yPG5u7MD29EL9gHMw',
+      request: PolylineRequest(
+        origin: PointLatLng(_currentLocation!.latitude, _currentLocation!.longitude),
+        destination: PointLatLng(widget.pedido.lat!, widget.pedido.lng!),
+        mode: TravelMode.driving,
+      )
+    );
+
+    if (result.points.isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          _routePoints = result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
+        });
+        _fitBounds();
+      }
+    }
+  }
+
+  void _fitBounds() {
+    if (!_isMapReady || _mapController == null || _currentLocation == null || widget.pedido.lat == null) return;
+    
+    double minLat = _currentLocation!.latitude;
+    double maxLat = _currentLocation!.latitude;
+    double minLng = _currentLocation!.longitude;
+    double maxLng = _currentLocation!.longitude;
+    
+    final end = LatLng(widget.pedido.lat!, widget.pedido.lng!);
+    final points = [_currentLocation!, end, ..._routePoints];
+    
+    for (final p in points) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(
+      LatLngBounds(
+        southwest: LatLng(minLat, minLng),
+        northeast: LatLng(maxLat, maxLng),
+      ),
+      60.0,
+    ));
+  }
+
+  Future<void> _cambiarEstado(String nuevoEstado) async {
+    setState(() => _loading = true);
+    
+    if (nuevoEstado == 'aceptado') {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        try {
+           await Supabase.instance.client.from('pedidos').update({
+             'estado': 'aceptado',
+             'repartidor_id': userId
+           }).eq('id', widget.pedido.id);
+        } catch (_) {}
+      }
+    }
+    
+    final errorMsg = await ref.read(pedidoServiceProvider).actualizarEstado(widget.pedido.id, nuevoEstado);
+    setState(() => _loading = false);
+
+    if (errorMsg == null) {
+      widget.onEstadoActualizado();
+      if (nuevoEstado == 'recibido' || nuevoEstado == 'en_camino') {
+        _fetchRoute();
+      }
+    } else {
+      if (mounted) PremiumToast.show(context, title: 'Error', description: errorMsg, isError: true);
+    }
+  }
+
+  void _abrirMaps(double lat, double lng) async {
+    final url = Uri.parse('google.navigation:q=' + lat.toString() + ',' + lng.toString() + '&mode=d');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url);
+    } else {
+      final webUrl = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=' + lat.toString() + ',' + lng.toString());
+      if (await canLaunchUrl(webUrl)) await launchUrl(webUrl, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
+    final estado = widget.pedido.estado;
+
+    String swipeText = 'Desliza';
+    String? nextState;
+    Color swipeColor = Colors.orange;
+
+    bool showMap = (estado == 'recibido' || estado == 'en_camino');
+
+    if (estado == 'pendiente' || estado == 'asignado') {
+      swipeText = 'Aceptar Pedido';
+      nextState = 'aceptado';
+      swipeColor = Colors.green;
+    } else if (estado == 'aceptado' || estado == 'en_cocina' || estado == 'listo_para_recoger') {
+      swipeText = 'Llegué al Restaurante';
+      nextState = 'recibido';
+      swipeColor = Colors.orange;
+    } else if (estado == 'recibido') {
+      swipeText = 'En Camino al Cliente';
+      nextState = 'en_camino';
+      swipeColor = Colors.blue;
+    } else if (estado == 'en_camino') {
+      swipeText = 'Entregar Pedido';
+      nextState = 'entregado';
+      swipeColor = Colors.green;
+    }
+
+    if (!showMap) {
+      return Stack(
+        children: [
+          ListView(
+            controller: ScrollController(),
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 120),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(color: isDark ? const Color(0xFF161622) : Colors.white, borderRadius: BorderRadius.circular(24)),
+                child: Column(
+                  children: [
+                    const Icon(Icons.storefront_rounded, size: 48, color: Colors.orange),
+                    const SizedBox(height: 12),
+                    Text(widget.pedido.restaurante ?? 'Restaurante', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: cs.onSurface), textAlign: TextAlign.center),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(color: isDark ? const Color(0xFF161622) : Colors.white, borderRadius: BorderRadius.circular(24)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Detalles a Recoger', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: cs.onSurfaceVariant)),
+                    const SizedBox(height: 12),
+                    Text(widget.pedido.descripcion, style: TextStyle(fontSize: 16, color: cs.onSurface)),
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider()),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('A COBRAR', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: cs.onSurfaceVariant)),
+                        Text('\$${widget.pedido.total?.toStringAsFixed(2) ?? "0.00"}', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: widget.pedido.metodoPago == 'efectivo' ? Colors.green : cs.onSurface)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (nextState != null && !widget.pedido.isTerminado)
+            Positioned(
+              left: 24, right: 24, bottom: 24,
+              child: _loading ? Center(child: CircularProgressIndicator(color: swipeColor)) : SwipeButton(text: swipeText, activeColor: swipeColor, onSwipe: () => _cambiarEstado(nextState!)),
+            ),
+        ],
+      );
+    }
+
+    Set<Marker> markers = {};
+    if (_currentLocation != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('driver'),
+          position: _currentLocation!,
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        )
+      );
+    }
+    if (widget.pedido.lat != null && widget.pedido.lng != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('destination'),
+          position: LatLng(widget.pedido.lat!, widget.pedido.lng!),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        )
+      );
+    }
+
+    Set<Polyline> polylines = {};
+    if (_routePoints.isNotEmpty) {
+      polylines.add(
+        Polyline(
+          polylineId: const PolylineId('route'),
+          points: _routePoints,
+          color: const Color(0xFF11998E),
+          width: 6,
+        )
+      );
+    }
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: _currentLocation == null
+            ? const Center(child: CircularProgressIndicator())
+            : GoogleMap(
+                initialCameraPosition: CameraPosition(
+                  target: _currentLocation!,
+                  zoom: 15,
+                ),
+                myLocationEnabled: false,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+                compassEnabled: false,
+                mapToolbarEnabled: false,
+                markers: markers,
+                polylines: polylines,
+                onMapCreated: (controller) {
+                  _mapController = controller;
+                  _isMapReady = true;
+                  if (isDark) {
+                    _mapController!.setMapStyle(_darkMapStyle);
+                  }
+                  _fitBounds();
+                },
+              ),
+        ),
+
+        if (widget.pedido.lat != null && widget.pedido.lng != null)
+          Positioned(
+            top: 20, right: 20,
+            child: FloatingActionButton.small(
+              heroTag: 'fallback_maps',
+              backgroundColor: Colors.white,
+              child: const Icon(Icons.navigation_rounded, color: Colors.blue),
+              onPressed: () => _abrirMaps(widget.pedido.lat!, widget.pedido.lng!),
+            ),
+          ),
+
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: Container(
+            margin: const EdgeInsets.only(left: 16, right: 16, bottom: 100, top: 16),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF161622).withOpacity(0.95) : Colors.white.withOpacity(0.95),
+              borderRadius: BorderRadius.circular(32),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.person_rounded, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(widget.pedido.clienteNombre ?? 'Cliente', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+                    Text('\$${widget.pedido.total?.toStringAsFixed(2) ?? "0.00"}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.greenAccent)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.location_on_rounded, color: Colors.white54, size: 16),
+                    const SizedBox(width: 4),
+                    Expanded(child: Text(widget.pedido.direccion ?? 'Dirección', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70))),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                if (nextState != null && !widget.pedido.isTerminado)
+                  _loading ? const CircularProgressIndicator() : SwipeButton(text: swipeText, activeColor: swipeColor, onSwipe: () => _cambiarEstado(nextState!)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}

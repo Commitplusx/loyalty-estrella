@@ -52,6 +52,8 @@ class _MainShellState extends ConsumerState<MainShell> {
   @override
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
+    final isPedidoDetail = location.startsWith('/pedidos/');
+    
     final isAdmin = ref.watch(isAdminProvider);
     final pendingAsync = isAdmin ? ref.watch(pendingSolicitudesProvider) : null;
     final pendingCount = pendingAsync?.valueOrNull ?? 0;
@@ -214,8 +216,8 @@ class _MainShellState extends ConsumerState<MainShell> {
               ],
             ),
           ),
-          floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-          floatingActionButton: AnimatedSlide(
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButton: isPedidoDetail ? null : AnimatedSlide(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOutCubic,
             offset: _isNavVisible || _isExpanded ? Offset.zero : const Offset(0, 2.0),

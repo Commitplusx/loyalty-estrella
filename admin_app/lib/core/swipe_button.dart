@@ -26,6 +26,8 @@ class _SwipeButtonState extends State<SwipeButton> with SingleTickerProviderStat
   final double _buttonWidth = 64.0;
   double _containerWidth = 0.0;
 
+  bool _isDragging = false;
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -56,7 +58,9 @@ class _SwipeButtonState extends State<SwipeButton> with SingleTickerProviderStat
               ),
               // Track de progreso verde
               if (_dragPosition > 0)
-                Positioned(
+                AnimatedPositioned(
+                  duration: _isDragging ? Duration.zero : const Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
                   left: 0,
                   top: 0,
                   bottom: 0,
@@ -69,11 +73,17 @@ class _SwipeButtonState extends State<SwipeButton> with SingleTickerProviderStat
                   ),
                 ),
               // Botón deslizable
-              Positioned(
+              AnimatedPositioned(
+                duration: _isDragging ? Duration.zero : const Duration(milliseconds: 300),
+                curve: Curves.easeOutBack,
                 left: _dragPosition,
                 top: 2,
                 bottom: 2,
                 child: GestureDetector(
+                  onHorizontalDragStart: (details) {
+                    if (_confirmed) return;
+                    setState(() => _isDragging = true);
+                  },
                   onHorizontalDragUpdate: (details) {
                     if (_confirmed) return;
                     setState(() {
@@ -82,8 +92,16 @@ class _SwipeButtonState extends State<SwipeButton> with SingleTickerProviderStat
                       if (_dragPosition > maxDrag) _dragPosition = maxDrag;
                     });
                   },
+                  onHorizontalDragCancel: () {
+                    if (_confirmed) return;
+                    setState(() {
+                      _isDragging = false;
+                      _dragPosition = 0;
+                    });
+                  },
                   onHorizontalDragEnd: (details) {
                     if (_confirmed) return;
+                    setState(() => _isDragging = false);
                     if (_dragPosition > maxDrag * 0.85) {
                       setState(() {
                         _dragPosition = maxDrag;
@@ -96,8 +114,7 @@ class _SwipeButtonState extends State<SwipeButton> with SingleTickerProviderStat
                       });
                     }
                   },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 100),
+                  child: Container(
                     width: _buttonWidth,
                     decoration: BoxDecoration(
                       color: widget.activeColor,

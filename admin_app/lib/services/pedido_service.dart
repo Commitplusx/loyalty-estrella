@@ -44,10 +44,67 @@ class PedidoService {
           .select()
           .eq('id', id)
           .single();
+          
+      if (data['restaurante_id'] != null || data['restaurante'] != null) {
+        try {
+          Map<String, dynamic>? restData;
+          
+          // Intento 1: Por ID exacto (más seguro)
+          if (data['restaurante_id'] != null) {
+            restData = await supabase
+                .from('restaurantes')
+                .select('lat, lng, foto_fachada_url')
+                .eq('id', data['restaurante_id'])
+                .maybeSingle();
+          }
+          
+          // Intento 2: Búsqueda flexible por nombre si falló por ID
+          if (restData == null && data['restaurante'] != null) {
+            String nombreLimpio = data['restaurante'].toString().trim();
+            
+            // Búsqueda en DB con ilike
+            restData = await supabase
+                .from('restaurantes')
+                .select('lat, lng, foto_fachada_url')
+                .ilike('nombre_comercial', '%$nombreLimpio%')
+                .maybeSingle();
+
+            // Intento 3: Búsqueda ultra-flexible en memoria (ignora acentos y mayúsculas)
+            if (restData == null) {
+              final todos = await supabase.from('restaurantes').select('nombre_comercial, lat, lng, foto_fachada_url');
+              
+              String normalizar(String s) {
+                return s.toLowerCase()
+                    .replaceAll(RegExp(r'[áäâà]'), 'a')
+                    .replaceAll(RegExp(r'[éëêè]'), 'e')
+                    .replaceAll(RegExp(r'[íïîì]'), 'i')
+                    .replaceAll(RegExp(r'[óöôò]'), 'o')
+                    .replaceAll(RegExp(r'[úüûù]'), 'u')
+                    .replaceAll(' ', '');
+              }
+
+              String nReq = normalizar(nombreLimpio);
+              
+              for (var r in (todos as List)) {
+                String nDB = normalizar((r['nombre_comercial'] ?? '').toString());
+                if (nDB.isNotEmpty && (nDB.contains(nReq) || nReq.contains(nDB))) {
+                  restData = r as Map<String, dynamic>;
+                  break;
+                }
+              }
+            }
+          }
+          
+          if (restData != null) {
+            data['restaurantes'] = restData;
+          }
+        } catch (_) {}
+      }
+      
       return PedidoModel.fromMap(data);
     } catch (e) {
       debugPrint('Error getPedido: $e');
-      return null;
+      throw Exception('Error al obtener pedido: $e');
     }
   }
 
@@ -114,9 +171,11 @@ class PedidoService {
   }
 
   /// Actualiza el estado y envía WhatsApp al cliente, con protección Anti-Fraude si es "entregado"
-  Future<bool> actualizarEstado(String pedidoId, String nuevoEstado, {bool? pagoPendienteRestaurante}) async {
+  /// Actualiza el estado y envía WhatsApp al cliente, con protección Anti-Fraude si es "entregado"
+  Future<String?> actualizarEstado(String pedidoId, String nuevoEstado, {bool? pagoPendienteRestaurante}) async {
     int attempts = 0;
     bool success = false;
+    String? lastError;
     Position? currentPos;
 
     // 1. Si es entregado, intentamos obtener GPS para la Geocerca
@@ -136,17 +195,16 @@ class PedidoService {
       try {
         attempts++;
         final user = supabase.auth.currentUser;
-        // Obtener estado actual para evitar regresar (Race condition con restaurante)
+        
+        final priority = {
+          'pagado': -1, 'pendiente_pago': 0, 'pendiente': 1, 'asignado': 2, 'aceptado': 3, 'en_cocina': 4, 
+          'listo_para_recoger': 5, 'recibido': 6, 'en_camino': 7, 'entregado': 8, 'cancelado': 9, 'rechazado': 10
+        };
+        
         final currentData = await supabase.from('pedidos').select('estado').eq('id', pedidoId).single();
         final currentState = currentData['estado'] as String;
-
-        final priority = {
-          'pendiente_pago': 0, 'pendiente': 1, 'asignado': 2, 'en_cocina': 3, 
-          'listo_para_recoger': 4, 'recibido': 5, 'en_camino': 6, 'entregado': 7, 'cancelado': 8
-        };
-
-        final currentPriority = priority[currentState] ?? -1;
-        final newPriority = priority[nuevoEstado] ?? -1;
+        final currentPriority = priority[currentState] ?? -2;
+        final newPriority = priority[nuevoEstado] ?? -2;
 
         if (newPriority < currentPriority) {
           debugPrint('AVISO: Intento de regresar estado de $currentState a $nuevoEstado bloqueado.');
@@ -164,7 +222,7 @@ class PedidoService {
               'estado': nuevoEstado,
               if (nuevoEstado == 'entregado' && currentPos != null) 'lat_entrega': currentPos.latitude,
               if (nuevoEstado == 'entregado' && currentPos != null) 'lng_entrega': currentPos.longitude,
-              if (nuevoEstado == 'asignado' && user != null) 'repartidor_id': user.id,
+              if ((nuevoEstado == 'asignado' || nuevoEstado == 'aceptado') && user != null) 'repartidor_id': user.id,
               if (pagoPendienteRestaurante != null) 'pago_pendiente_restaurante': pagoPendienteRestaurante,
             })
             .eq('id', pedidoId);
@@ -177,6 +235,7 @@ class PedidoService {
           rethrow; // Rompe el ciclo y le lanza el error a la UI
         }
 
+        lastError = e.toString();
         debugPrint('Fallo actualizando estado (Intento $attempts): $e');
         if (attempts >= 3) break;
         
@@ -198,15 +257,15 @@ class PedidoService {
 
       // 3. Notificación Fire & Forget
       _notificar(pedidoId: pedidoId, tipo: nuevoEstado);
-      return true;
+      return null;
     } else {
-      debugPrint('Fracaso tras 3 intentos. Guardando en Offline Queue.');
-      return false;
+      debugPrint('Fracaso tras 3 intentos. Error final: $lastError');
+      return lastError ?? 'Error desconocido al conectar con la base de datos.';
     }
   }
 
   /// Reasigna un pedido a otro repartidor
-  Future<bool> reasignarPedido(String pedidoId, String nuevoRepartidorId) async {
+  Future<String?> reasignarPedido(String pedidoId, String nuevoRepartidorId) async {
     try {
       await supabase
           .from('pedidos')
@@ -225,11 +284,21 @@ class PedidoService {
         });
       } catch (_) {}
 
+      // Ping instantáneo al repartidor
+      try {
+        await supabase.channel('repartidores_ping').sendBroadcastMessage(
+          event: 'order_offered',
+          payload: {'target_driver_id': nuevoRepartidorId, 'pedido_id': pedidoId},
+        );
+      } catch (e) {
+        debugPrint('Error enviando ping de reasignación: $e');
+      }
+
       _notificar(pedidoId: pedidoId, tipo: 'asignacion');
-      return true;
+      return null; // Null significa éxito sin errores
     } catch (e) {
       debugPrint('Fallo reasignando pedido: $e');
-      return false;
+      return e.toString();
     }
   }
 

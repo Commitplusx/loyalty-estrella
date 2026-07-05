@@ -1,6 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:go_router/go_router.dart';
+import 'dart:typed_data';
 import '../router.dart';
 
 class NotificationService {
@@ -10,9 +11,11 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
-  Future<void> init() async {
-    // Solicitar permiso POST_NOTIFICATIONS en Android 13+
-    await Permission.notification.request();
+  Future<void> init({bool isBackground = false}) async {
+    // Solicitar permiso POST_NOTIFICATIONS en Android 13+ (Solo si estamos en Foreground)
+    if (!isBackground) {
+      await Permission.notification.request();
+    }
 
     // El ícono debe coincidir con el nombre de tu launcher_icon o agregar un ícono pequeño específico en drawable
     const AndroidInitializationSettings initializationSettingsAndroid =
@@ -25,7 +28,9 @@ class NotificationService {
     await flutterLocalNotificationsPlugin.initialize(
       settings: initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse notificationResponse) async {
-        // Al tocar la notificación
+        // Al tocar la notificación, apagar la alarma
+        await flutterLocalNotificationsPlugin.cancelAll();
+        
         if (notificationResponse.payload != null) {
           print('Notificación tocada con payload: ${notificationResponse.payload}');
           final context = rootNavigatorKey.currentContext;
@@ -36,14 +41,16 @@ class NotificationService {
       },
     );
 
-    // Crear un canal de alta importancia (requerido para cabeceras y sonidos en Android 8.0+)
+    // Crear un canal de alta importancia para despertar la pantalla
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'high_importance_channel', // id
-      'Notificaciones Importantes', // title
-      description: 'Canal usado para alertas de pedidos nuevos.', // description
+      'driver_alarm_channel', // id
+      'Alarmas de Pedidos (Repartidores)', // title
+      description: 'Canal usado para despertar el teléfono cuando te asignan un pedido.', // description
       importance: Importance.max,
       playSound: true,
+      sound: RawResourceAndroidNotificationSound('alarm'),
       enableVibration: true,
+      enableLights: true,
     );
 
     await flutterLocalNotificationsPlugin
@@ -57,19 +64,23 @@ class NotificationService {
     required String body,
     String? payload,
   }) async {
-    const AndroidNotificationDetails androidNotificationDetails = AndroidNotificationDetails(
-      'high_importance_channel',
-      'Notificaciones Importantes',
-      channelDescription: 'Canal usado para alertas de pedidos nuevos.',
+    final AndroidNotificationDetails androidNotificationDetails = AndroidNotificationDetails(
+      'driver_alarm_channel',
+      'Alarmas de Pedidos (Repartidores)',
+      channelDescription: 'Canal usado para despertar el teléfono cuando te asignan un pedido.',
       importance: Importance.max,
       priority: Priority.high,
+      fullScreenIntent: true, // Esto despierta la pantalla
+      sound: const RawResourceAndroidNotificationSound('alarm'),
+      playSound: true,
+      enableVibration: true,
       ticker: 'ticker',
       icon: '@mipmap/launcher_icon',
-      enableVibration: true,
-      playSound: true,
+      // FLAG_INSISTENT (4): Reproducir el sonido en bucle hasta que se cierre o toque
+      additionalFlags: Int32List.fromList(<int>[4]),
     );
 
-    const NotificationDetails notificationDetails = NotificationDetails(
+    final NotificationDetails notificationDetails = NotificationDetails(
       android: androidNotificationDetails,
     );
 

@@ -144,19 +144,25 @@ class DashboardScreen extends ConsumerWidget {
                   IconButton(
                     icon: Icon(Icons.settings_rounded, color: cs.onSurfaceVariant),
                     onPressed: () => context.push('/config'),
+                  )
+                else
+                  IconButton(
+                    icon: Icon(Icons.logout_rounded, color: cs.error),
+                    onPressed: () {
+                      context.go('/login');
+                      Supabase.instance.client.auth.signOut();
+                    },
                   ),
                 const SizedBox(width: 8),
               ],
             ),
 
             // ── Content ──
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  
-                  // ── ADMIN VIEW ──
-                  if (isAdmin) ...[
+            if (isAdmin)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
                     // ── Hero Vital Stats ──
                     _VitalStatsCard(statsAsync: statsAsync, isAdmin: isAdmin),
                     const SizedBox(height: 24),
@@ -207,35 +213,35 @@ class DashboardScreen extends ConsumerWidget {
                     const SizedBox(height: 32),
                     _BentoGrid(),
                     const SizedBox(height: 32),
-                  ] 
-                  // ── DRIVER VIEW ──
-                  else ...[
-                    statsAsync.when(
-                      data: (stats) => DriverDashboardView(stats: stats),
-                      loading: () => const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator())),
-                      error: (e, st) => Center(child: Text('Error: $e')),
-                    ),
-                  ],
 
-                  // ── Logout ──
-                  const SizedBox(height: 20),
-                  Center(
-                    child: TextButton.icon(
-                      onPressed: () {
-                        context.go('/login');
-                        Supabase.instance.client.auth.signOut();
-                      },
-                      icon: Icon(Icons.logout_rounded, size: 18, color: cs.error),
-                      label: Text('Cerrar sesión', style: TextStyle(color: cs.error, fontSize: 14, fontWeight: FontWeight.w700)),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    // ── Logout ──
+                    const SizedBox(height: 20),
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: () {
+                          context.go('/login');
+                          Supabase.instance.client.auth.signOut();
+                        },
+                        icon: Icon(Icons.logout_rounded, size: 18, color: cs.error),
+                        label: Text('Cerrar sesión', style: TextStyle(color: cs.error, fontSize: 14, fontWeight: FontWeight.w700)),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
                       ),
                     ),
-                  ),
-                ]),
+                  ]),
+                ),
+              )
+            else
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: statsAsync.when(
+                  data: (stats) => DriverDashboardView(stats: stats),
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (e, st) => Center(child: Text('Error: $e')),
+                ),
               ),
-            ),
           ],
         ),
       ),
