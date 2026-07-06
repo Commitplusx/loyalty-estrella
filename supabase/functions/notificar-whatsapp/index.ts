@@ -230,6 +230,85 @@ serve(async (req: Request) => {
     if (!bodyText) return new Response(JSON.stringify({ error: 'Body vacio' }), { status: 400 })
 
     const payload = JSON.parse(bodyText)
+
+    // ── HANDLER DE DB WEBHOOK (Supabase Database Webhooks) ──────────────────
+    // El payload de un DB Webhook tiene { type, table, record, old_record }
+    // mientras que las llamadas manuales tienen { tipo, ... }
+    if (payload.type && payload.table === 'pedidos' && payload.record) {
+      const record = payload.record
+      const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+
+      // Solo actuar en INSERT de pedidos con estado 'pendiente' (efectivo) o 'pendiente_pago' (en línea)
+      // Los pagos en línea los maneja el webhook de MercadoPago cuando confirma el pago,
+      // así que aquí solo procesamos efectivo para evitar doble notificación.
+      if (payload.type === 'INSERT' && record.estado === 'pendiente' && record.restaurante) {
+        console.log(`[DB_WEBHOOK] Nuevo pedido en efectivo detectado: ${record.id} — Restaurante: ${record.restaurante}`)
+        try {
+          const ticketId = (record.wb_message_id || record.id.substring(record.id.length - 5)).toUpperCase()
+          const icono = record.tipo_pedido === 'tienda' ? '🏪' : '🛵'
+          const etiqueta = record.tipo_pedido === 'tienda' ? 'Recoger en Tienda' : 'A Domicilio'
+          const linkWeb = 'https://restaurantes-app-estrella.shop/portal'
+          const mensajeRest = `🔔 *¡NUEVO PEDIDO RECIBIDO! (#${ticketId})*\n\n📦 Tipo de Entrega: ${etiqueta} ${icono}\n\n📝 *Detalles del pedido:*\n${record.descripcion}\n\nPor favor, comienza a prepararlo.\n\n${linkWeb}`
+
+          // Buscar teléfono del restaurante en BD
+          const { data: restData } = await supabase
+            .from('restaurantes')
+            .select('telefono')
+            .ilike('nombre', `%${record.restaurante}%`)
+            .eq('activo', true)
+            .limit(1)
+            .maybeSingle()
+
+          if (restData?.telefono) {
+            console.log(`[DB_WEBHOOK] Teléfono encontrado para ${record.restaurante}: ${restData.telefono}, intentando enviar mensaje...`)
+            const resRest = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: formatTel(restData.telefono),
+                type: 'interactive',
+                interactive: {
+                  type: 'button',
+                  body: { text: mensajeRest.substring(0, 1024) },
+                  action: { buttons: [{ type: 'reply', reply: { id: `REST_ORDER_PREPARE_${ticketId}`, title: 'Empezar a Preparar' } }] }
+                }
+              })
+            })
+            const resText = await resRest.text()
+            if (!resRest.ok) {
+              console.error(`[DB_WEBHOOK] ❌ Falló envío a restaurante ${record.restaurante}. HTTP ${resRest.status}: ${resText}`)
+            } else {
+              console.log(`[DB_WEBHOOK] ✅ EXITOSO: Notificación de WhatsApp enviada al restaurante ${record.restaurante}.`)
+            }
+          } else {
+            console.error(`[DB_WEBHOOK] ⚠️ ATENCIÓN: El restaurante "${record.restaurante}" no tiene teléfono activo en la base de datos. No se le envió WhatsApp.`)
+          }
+
+          // También notificar al admin
+          const adminPhone = Deno.env.get('ADMIN_PHONE') || (Deno.env.get('ADMIN_PHONES') ?? '').split(',')[0]?.trim()
+          if (adminPhone) {
+            await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                messaging_product: 'whatsapp', recipient_type: 'individual', to: formatTel(adminPhone), type: 'text',
+                text: { body: `🚨 *NUEVO PEDIDO WEB (#${ticketId})*\n\n🏪 Restaurante: ${record.restaurante}\n${record.tipo_pedido === 'tienda' ? '🏪 Recoger en Tienda' : '🛵 A Domicilio'}\n\n${record.descripcion}` }
+              })
+            }).catch(e => console.warn('[DB_WEBHOOK] Error WA admin:', e))
+          }
+        } catch (err: any) {
+          console.error(`[DB_WEBHOOK] Error procesando nuevo pedido: ${err.message}`)
+        }
+      } else {
+        console.log(`[DB_WEBHOOK] Evento ignorado: type=${payload.type} estado=${record.estado} — No requiere acción.`)
+      }
+
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+    }
+
+    // ── HANDLER DE LLAMADAS MANUALES (desde la app Flutter o funciones internas) ──
     const { tipo } = payload
 
     if (!tipo) {
