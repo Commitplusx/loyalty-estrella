@@ -248,7 +248,16 @@ serve(async (req: Request) => {
           const icono = record.tipo_pedido === 'tienda' ? '🏪' : '🛵'
           const etiqueta = record.tipo_pedido === 'tienda' ? 'Recoger en Tienda' : 'A Domicilio'
           const linkWeb = 'https://restaurantes-app-estrella.shop/portal'
-          const mensajeRest = `🔔 *¡NUEVO PEDIDO RECIBIDO! (#${ticketId})*\n\n📦 Tipo de Entrega: ${etiqueta} ${icono}\n\n📝 *Detalles del pedido:*\n${record.descripcion}\n\nPor favor, comienza a prepararlo.\n\n${linkWeb}`
+          const mensajeRest = `🚨 *¡ATENCIÓN! NUEVO PEDIDO* 🚨\n\n` +
+            `*Orden:* #${ticketId}\n` +
+            `*Entrega:* ${icono} ${etiqueta}\n\n` +
+            `🛒 *RESUMEN DEL PEDIDO:*\n` +
+            `------------------------\n` +
+            `${record.descripcion}\n` +
+            `------------------------\n\n` +
+            `👨‍🍳 *¡Manos a la obra!*\n` +
+            `Por favor, acepta y gestiona el pedido desde tu panel:\n` +
+            `👉 ${linkWeb}`
 
           // Buscar teléfono del restaurante en BD
           const { data: restData } = await supabase
@@ -468,7 +477,15 @@ serve(async (req: Request) => {
         if (restData?.telefono) {
           const restTelFormateado = formatTel(restData.telefono);
           const linkWeb = `https://restaurantes-app-estrella.shop/portal`;
-          const mensajeRest = `🔔 *¡NUEVO PEDIDO RECIBIDO!*\n\n📦 Tipo de Entrega: ${etiqueta} ${icono}\n\n📝 *Detalles del pedido:*\n${descripcion}\n\nPor favor, comienza a prepararlo.\n\nTambién puedes gestionar este pedido desde tu portal web:\n${linkWeb}`;
+          const mensajeRest = `🚨 *¡ATENCIÓN! NUEVO PEDIDO* 🚨\n\n` +
+            `*Entrega:* ${icono} ${etiqueta}\n\n` +
+            `🛒 *RESUMEN DEL PEDIDO:*\n` +
+            `------------------------\n` +
+            `${descripcion}\n` +
+            `------------------------\n\n` +
+            `👨‍🍳 *¡Manos a la obra!*\n` +
+            `Por favor, acepta y gestiona el pedido desde tu panel:\n` +
+            `👉 ${linkWeb}`
 
           const payloadInteractive = {
             messaging_product: 'whatsapp',
