@@ -1,0 +1,236 @@
+class _DriverRouteMode extends ConsumerStatefulWidget {
+  final PedidoModel pedido;
+  final VoidCallback onEstadoActualizado;
+
+  const _DriverRouteMode({required this.pedido, required this.onEstadoActualizado});
+
+  @override
+  ConsumerState<_DriverRouteMode> createState() => _DriverRouteModeState();
+}
+
+class _DriverRouteModeState extends ConsumerState<_DriverRouteMode> {
+  bool _loading = false;
+
+  Future<void> _cambiarEstado(String nuevoEstado) async {
+    setState(() => _loading = true);
+    final ok = await ref.read(pedidoServiceProvider).actualizarEstado(widget.pedido.id, nuevoEstado);
+    setState(() => _loading = false);
+
+    if (ok) {
+      widget.onEstadoActualizado();
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error al actualizar estado')),
+        );
+      }
+    }
+  }
+
+  void _abrirMaps(double lat, double lng) async {
+    final url = Uri.parse('google.navigation:q=$lat,$lng&mode=d');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url);
+    } else {
+      // Fallback
+      final webUrl = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
+      if (await canLaunchUrl(webUrl)) {
+        await launchUrl(webUrl, mode: LaunchMode.externalApplication);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
+    final estado = widget.pedido.estado;
+
+    String swipeText = 'Desliza';
+    String? nextState;
+    Color swipeColor = Colors.orange;
+
+    if (estado == 'asignado' || estado == 'en_cocina' || estado == 'listo_para_recoger') {
+      swipeText = 'Llegu+® al Restaurante';
+      nextState = 'recibido';
+      swipeColor = Colors.orange;
+    } else if (estado == 'recibido') {
+      swipeText = 'En Camino al Cliente';
+      nextState = 'en_camino';
+      swipeColor = Colors.blue;
+    } else if (estado == 'en_camino') {
+      swipeText = 'Entregar Pedido';
+      nextState = 'entregado';
+      swipeColor = Colors.green;
+    }
+
+    return Stack(
+      children: [
+        ListView(
+          controller: ScrollController(),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 120),
+          children: [
+            // ÔöÇÔöÇ Restaurante Info ÔöÇÔöÇ
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF161622) : Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+                ],
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.storefront_rounded, size: 48, color: Colors.orange),
+                  const SizedBox(height: 12),
+                  Text(
+                    widget.pedido.restaurante ?? 'Restaurante',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: cs.onSurface),
+                    textAlign: TextAlign.center,
+                  ),
+                  if (widget.pedido.tipoPedido != 'domicilio')
+                    Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                      child: Text(widget.pedido.tipoPedido!.toUpperCase(), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            
+            // ÔöÇÔöÇ Cliente Info ÔöÇÔöÇ
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF161622) : Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(backgroundColor: Colors.blue.withOpacity(0.1), child: const Icon(Icons.person, color: Colors.blue)),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(widget.pedido.clienteNombre ?? 'Cliente', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: cs.onSurface)),
+                            Text(widget.pedido.clienteTel, style: TextStyle(color: cs.onSurfaceVariant)),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => launchUrl(Uri.parse('tel:${widget.pedido.clienteTel}')),
+                        icon: const Icon(Icons.phone_in_talk_rounded, color: Colors.green),
+                        style: IconButton.styleFrom(backgroundColor: Colors.green.withOpacity(0.1)),
+                      ),
+                    ],
+                  ),
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider()),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.location_on_rounded, color: cs.onSurfaceVariant, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          widget.pedido.direccion ?? 'Sin direcci+¦n',
+                          style: TextStyle(fontSize: 15, height: 1.4, color: cs.onSurface),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  // Bot+¦n de navegaci+¦n
+                  if (widget.pedido.lat != null && widget.pedido.lng != null)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _abrirMaps(widget.pedido.lat!, widget.pedido.lng!),
+                        icon: const Icon(Icons.navigation_rounded),
+                        label: const Text('Navegar (Maps/Waze)'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade600,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 24),
+            // ÔöÇÔöÇ Pedido Detalle (Cobro) ÔöÇÔöÇ
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF161622) : Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Detalles del Pedido', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: cs.onSurfaceVariant)),
+                  const SizedBox(height: 12),
+                  Text(widget.pedido.descripcion, style: TextStyle(fontSize: 16, color: cs.onSurface)),
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider()),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('A COBRAR', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: cs.onSurfaceVariant)),
+                      Text(
+                        '\$${widget.pedido.total?.toStringAsFixed(2) ?? '0.00'}',
+                        style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: widget.pedido.metodoPago == 'efectivo' ? Colors.green : cs.onSurface),
+                      ),
+                    ],
+                  ),
+                  if (widget.pedido.metodoPago == 'tarjeta')
+                    Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.credit_card_rounded, color: Colors.blue, size: 20),
+                          SizedBox(width: 8),
+                          Text('Pagado con Tarjeta. No cobrar.', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    )
+                ],
+              ),
+            ),
+          ],
+        ),
+        
+        // ÔöÇÔöÇ Swipe to Action Bar (Sticky Bottom) ÔöÇÔöÇ
+        if (nextState != null && !widget.pedido.isTerminado)
+          Positioned(
+            left: 24,
+            right: 24,
+            bottom: 24,
+            child: _loading
+                ? Center(child: CircularProgressIndicator(color: swipeColor))
+                : SwipeButton(
+                    text: swipeText,
+                    activeColor: swipeColor,
+                    onSwipe: () => _cambiarEstado(nextState!),
+                  ),
+          ),
+      ],
+    );
+  }
+}

@@ -23,6 +23,9 @@ final AudioPlayer alarmPlayer = AudioPlayer();
 // Método global para detener la alarma desde cualquier pantalla
 void stopAlarm() {
   alarmPlayer.stop();
+  try {
+    NotificationService().flutterLocalNotificationsPlugin.cancelAll();
+  } catch (_) {}
 }
 
 // Handler para notificaciones en segundo plano (App cerrada o minimizada)
@@ -31,14 +34,21 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   debugPrint("Handling a background message: ${message.messageId}");
   
-  // Opcional: Reproducir sonido si es posible en este entorno aislado
-  try {
-    final player = AudioPlayer();
-    player.setVolume(1.0);
-    player.setReleaseMode(ReleaseMode.loop);
-    await player.play(AssetSource('sounds/rappi_alarm.mp3'));
-  } catch (e) {
-    debugPrint('Error reproduciendo sonido en background: $e');
+  if (message.data['tipo'] == 'pedido_asignado') {
+    final restaurante = message.data['restaurante'] ?? 'Estrella';
+    final pedidoId = message.data['pedido_id'] ?? '';
+    
+    // Inicializamos el plugin en este Isolate (sin pedir permisos UI)
+    await NotificationService().init(isBackground: true);
+    
+    // Al ser un data-only push, disparamos la notificación local
+    // que tiene configurado el fullScreenIntent para encender la pantalla.
+    await NotificationService().showNotification(
+      id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+      title: '🛵 ¡NUEVO VIAJE ASIGNADO!',
+      body: 'Recoger en: $restaurante\nTienes 15 segundos para aceptar.',
+      payload: pedidoId,
+    );
   }
 }
 
@@ -75,8 +85,7 @@ void main() async {
     sound: true,
   );
 
-  // Suscribirse al canal de administradores para recibir los pushes globales
-  await FirebaseMessaging.instance.subscribeToTopic('admins');
+  // La suscripción a tópicos (admins vs driver) ahora se maneja dinámicamente en onAuthStateChange
 
   // Evitar que Google Fonts intente descargar fuentes en runtime (crash en release)
   GoogleFonts.config.allowRuntimeFetching = true;
@@ -94,131 +103,136 @@ void main() async {
     stopAlarm(); // Detener alarma al abrir notificación
     final String? pedidoId = message.data['pedido_id'] ?? message.data['id'];
     if (pedidoId != null) {
-      final context = rootNavigatorKey.currentContext;
-      if (context != null) {
-        context.go('/pedidos/$pedidoId');
+      Future.delayed(const Duration(milliseconds: 500), () {
+        final context = rootNavigatorKey.currentContext;
+        if (context != null) {
+          rootNavigatorKey.currentContext?.go('/pedidos/$pedidoId');
+        }
+      });
+    }
+  });
+
+  FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
+    if (message != null) {
+      final String? pedidoId = message.data['pedido_id'] ?? message.data['id'];
+      if (pedidoId != null) {
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          final context = rootNavigatorKey.currentContext;
+          if (context != null) {
+            rootNavigatorKey.currentContext?.go('/pedidos/$pedidoId');
+          }
+        });
       }
     }
   });
 
-  // Escuchar inserts (efectivo) y updates para ADMINS (opcional)
-  Supabase.instance.client.channel('public:pedidos').onPostgresChanges(
-    event: PostgresChangeEvent.all,
-    schema: 'public',
-    table: 'pedidos',
-    callback: (payload) {
-      // Los administradores o la tabla general pueden seguir reaccionando a esto si lo desean
-      // Pero quitaremos la alarma global de aquí para los repartidores.
-    },
-  ).subscribe();
+  NotificationService().flutterLocalNotificationsPlugin.getNotificationAppLaunchDetails().then((details) {
+    if (details != null && details.didNotificationLaunchApp) {
+      final String? payload = details.notificationResponse?.payload;
+      if (payload != null) {
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          final context = rootNavigatorKey.currentContext;
+          if (context != null) {
+            rootNavigatorKey.currentContext?.go('/pedidos/$payload');
+          }
+        });
+      }
+    }
+  });
 
-  // ── SISTEMA ROUND-ROBIN (ESCUCHA DE BROADCAST) ──
-  bool _isOrderDialogShowing = false;
+  RealtimeChannel? _alarmaChannel;
 
-  Supabase.instance.client.channel('repartidores_ping').onBroadcast(
-    event: 'order_offered',
-    callback: (payload) async {
-      final targetDriverId = payload['target_driver_id'];
-      final pedidoId = payload['pedido_id'];
-      final currentUser = Supabase.instance.client.auth.currentUser;
-      
-      // Si el ping es para MÍ
-      if (currentUser != null && targetDriverId == currentUser.id) {
-        NotificationService().showNotification(
-          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-          title: '🛵 ¡Nuevo Viaje Asignado a ti!',
-          body: 'Tienes 30 segundos para aceptar el pedido.',
-        );
-
-        try {
-          alarmPlayer.setVolume(1.0);
-          alarmPlayer.setReleaseMode(ReleaseMode.loop);
-          alarmPlayer.play(AssetSource('sounds/rappi_alarm.mp3'));
-        } catch (e) {
-          debugPrint('Error reproduciendo sonido: $e');
-        }
-
-        // Mostrar Auto-Popup Gigante en la pantalla
-        final context = rootNavigatorKey.currentContext;
-        if (context != null && !_isOrderDialogShowing) {
-          _isOrderDialogShowing = true;
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              backgroundColor: const Color(0xFF11998E),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              title: const Column(
-                children: [
-                  Icon(Icons.electric_moped_rounded, size: 64, color: Colors.white),
-                  SizedBox(height: 16),
-                  Text('¡NUEVO PEDIDO!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 28)),
-                ],
+  // Escuchar cuando llega un push mientras la app ESTÁ ABIERTA (Foreground)
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    debugPrint("==== FOREGROUND FIREBASE PUSH RECEIVED ====");
+    debugPrint("Data: ${message.data}");
+    
+    final String? pedidoId = message.data['pedido_id'] ?? message.data['id'];
+    if (pedidoId != null) {
+      final context = rootNavigatorKey.currentState?.overlay?.context ?? rootNavigatorKey.currentContext;
+      if (context != null) {
+        final email = Supabase.instance.client.auth.currentUser?.email ?? '';
+        final isAdmin = email.toLowerCase().endsWith('@admin.com');
+        
+        if (isAdmin) {
+          try {
+            alarmPlayer.setVolume(1.0);
+            alarmPlayer.setReleaseMode(ReleaseMode.loop);
+            alarmPlayer.play(AssetSource('sounds/rappi_alarm.mp3'));
+          } catch (_) {}
+          // El Admin solo necesita saber que hay un nuevo pedido
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('🔔 ¡Nuevo Pedido Entrante: ${message.notification?.title ?? "Desconocido"}!'),
+              backgroundColor: Colors.blueAccent,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Ver',
+                textColor: Colors.white,
+                onPressed: () {
+                  stopAlarm();
+                  rootNavigatorKey.currentContext?.go('/pedidos/$pedidoId');
+                },
               ),
-              content: const Text(
-                'Tienes 30 segundos para aceptar este viaje antes de que pase al siguiente repartidor.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white, fontSize: 16),
-              ),
-              actionsAlignment: MainAxisAlignment.center,
-              actions: [
-                TextButton(
-                  onPressed: () async {
-                    _isOrderDialogShowing = false;
-                    stopAlarm();
-                    Navigator.pop(ctx);
-                    
-                    // Fast Reject: Avisar al backend instantáneamente
-                    try {
-                      await Supabase.instance.client
-                          .from('pedidos')
-                          .update({'estado': 'rechazado'})
-                          .eq('wb_message_id', pedidoId);
-                    } catch (e) {
-                      debugPrint('Error en Fast Reject: $e');
-                    }
-                  },
-                  style: TextButton.styleFrom(foregroundColor: Colors.white70),
-                  child: const Text('RECHAZAR', style: TextStyle(fontWeight: FontWeight.w700)),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    _isOrderDialogShowing = false;
-                    stopAlarm();
-                    Navigator.pop(ctx);
-                    // Redirigir a la pestaña de pedidos para aceptarlo
-                    context.go('/pedidos');
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF11998E),
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20),
-                  ),
-                  child: const Text('VER PEDIDO'),
-                ),
-              ],
             ),
           );
+        } else {
+          // Si es repartidor, mostramos la pantalla de detalle directamente
+          final targetDriverId = message.data['target_driver_id'];
+          final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+          if (currentUserId != null && targetDriverId == currentUserId) {
+            rootNavigatorKey.currentContext?.go('/pedidos/$pedidoId');
+          }
         }
       }
     }
-  ).onBroadcast(
-    event: 'order_canceled',
-    callback: (payload) async {
-      final targetDriverId = payload['target_driver_id'];
-      final currentUser = Supabase.instance.client.auth.currentUser;
-      // Si el tiempo se acabó o rechazó, apagamos la alarma remotamente
-      if (currentUser != null && targetDriverId == currentUser.id) {
-        stopAlarm();
-        final context = rootNavigatorKey.currentContext;
-        if (context != null && _isOrderDialogShowing) {
-          _isOrderDialogShowing = false;
-          Navigator.pop(context);
-        }
+  });
+
+  // Solo suscribirnos a Realtime cuando el usuario ya tiene sesión válida
+  Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+    final event = data.event;
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    
+    // Gestionar tópicos de FCM según el rol
+    if (currentUser != null) {
+      final email = currentUser.email ?? '';
+      final isAdmin = email.toLowerCase().endsWith('@admin.com');
+      
+      if (isAdmin) {
+        debugPrint('🔔 [FCM] Usuario es ADMIN. Suscribiendo al tópico global "admins"...');
+        FirebaseMessaging.instance.subscribeToTopic('admins');
+        FirebaseMessaging.instance.unsubscribeFromTopic('driver_${currentUser.id}');
+      } else {
+        debugPrint('🔔 [FCM] Usuario es REPARTIDOR. Suscribiendo al tópico privado "driver_${currentUser.id}"...');
+        FirebaseMessaging.instance.subscribeToTopic('driver_${currentUser.id}');
+        FirebaseMessaging.instance.unsubscribeFromTopic('admins');
       }
+    } else {
+      // Si cierra sesión, se desuscribe
+      debugPrint('🔔 [FCM] Sesión cerrada. Limpiando suscripciones a tópicos FCM...');
+      FirebaseMessaging.instance.unsubscribeFromTopic('admins');
     }
-  ).subscribe();
+
+    if (currentUser != null && _alarmaChannel == null) {
+      _alarmaChannel = Supabase.instance.client.channel('repartidores_ping');
+      
+      _alarmaChannel!.onBroadcast(
+        event: 'order_canceled',
+        callback: (payload) {
+          final data = payload['payload'] ?? {};
+          if (data['target_driver_id'] == currentUser.id) {
+            stopAlarm();
+          }
+        }
+      ).subscribe();
+
+
+    } else if (currentUser == null && _alarmaChannel != null) {
+      Supabase.instance.client.removeChannel(_alarmaChannel!);
+      _alarmaChannel = null;
+    }
+  });
+
 
   SyncService().init();
 

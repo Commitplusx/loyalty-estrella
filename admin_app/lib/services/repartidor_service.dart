@@ -560,33 +560,25 @@ class RepartidorService {
     }
   }
 
+
+
   // ── Deuda de Efectivo ─────────────────────────────────────────────────
-  /// Calcula la deuda actual de efectivo de un repartidor (pedidos en_camino o entregados con pago_pendiente_restaurante = true).
+  /// Calcula la deuda total de efectivo de un repartidor.
   Future<double> getDeudaEfectivo(String repartidorId) async {
+    final detalle = await getDeudaDetalle(repartidorId);
+    return detalle.fold<double>(0.0, (sum, item) => sum + ((item['monto'] as num?)?.toDouble() ?? 0.0));
+  }
+
+  /// Retorna el desglose de deuda por restaurante (vía RPC del servidor).
+  Future<List<Map<String, dynamic>>> getDeudaDetalle(String repartidorId) async {
     try {
-      final now = DateTime.now();
-      final startOfDay = DateTime(now.year, now.month, now.day).toUtc().toIso8601String();
       final data = await supabase
-          .from('pedidos')
-          .select('total, costo_envio, precio_entrega')
-          .eq('repartidor_id', repartidorId)
-          .eq('pago_pendiente_restaurante', true)
-          .inFilter('estado', ['en_camino', 'entregado'])
-          .gte('updated_at', startOfDay);
-      double deuda = 0.0;
-      debugPrint('💰 Calculando deuda de efectivo... Encontrados ${data.length} pedidos pendientes de pago.');
-      for (var p in data as List) {
-        final total = (p['total'] as num?)?.toDouble() ?? 0.0;
-        final envio = (p['costo_envio'] as num?)?.toDouble() ?? (p['precio_entrega'] as num?)?.toDouble() ?? 0.0;
-        final costoComida = total - envio;
-        debugPrint('💰 Pedido -> Total: \$${total.toStringAsFixed(2)} | Envío: \$${envio.toStringAsFixed(2)} | Comida: \$${costoComida.toStringAsFixed(2)}');
-        if (costoComida > 0) deuda += costoComida;
-      }
-      debugPrint('💰 Deuda total acumulada: \$${deuda.toStringAsFixed(2)}');
-      return deuda;
+          .rpc('get_deuda_detalle_repartidor', params: {'p_repartidor_id': repartidorId});
+      debugPrint('💰 getDeudaDetalle RPC → ${(data as List).length} restaurantes con deuda');
+      return List<Map<String, dynamic>>.from(data);
     } catch (e) {
-      debugPrint('💰 Error getDeudaEfectivo: $e');
-      return 0.0;
+      debugPrint('💰 Error getDeudaDetalle: $e');
+      return [];
     }
   }
 

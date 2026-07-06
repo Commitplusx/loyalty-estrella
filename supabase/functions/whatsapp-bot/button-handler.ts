@@ -1178,7 +1178,7 @@ export async function handleButtonEvent(
         .from('pedidos')
         .select('id, wb_message_id, descripcion, restaurante')
         .eq('cliente_tel', from10)
-        .in('estado', ['pendiente', 'asignado', 'recibido'])
+        .in('estado', ['pendiente', 'asignado', 'aceptado', 'recibido', 'en_camino'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -1189,8 +1189,8 @@ export async function handleButtonEvent(
           const rest = pedidoActivo.restaurante || 'el restaurante';
           // BUG 3 fix: use wb_message_id (ticket corto) and correct URL params
           const ticketParam = pedidoActivo.wb_message_id || pedidoActivo.id;
-          const link = `https://www.app-estrella.shop/success?pedido=${ticketParam}&success=true`;
-          const text = `✅ *Pedido Confirmado*\n\nAquí tienes el detalle de tu orden en *${rest}*:\n_${detalle}_\n\nRevisa el estado de tu pedido aquí: ${link}`;
+          const link = `https://estrella-eats.mx/success?pedido=${ticketParam}&success=true`;
+          const text = `✅ *¡Tu pedido va en camino, ${pedidoActivo.cliente_nombre || ''}!* 🛵💨\n\n🍽️ *Restaurante:* ${rest}\n📦 *Pedido:* ${detalle}\n\n📍 *Rastrea tu pedido en tiempo real aquí:*\n${link}`;
           await sendWA(fromPhone, text);
         } else {
           // RECHAZAR

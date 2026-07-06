@@ -100,22 +100,15 @@ serve(async (req) => {
               }
             }).catch(err => console.warn('Error mandando WA desde webhook:', err))
 
-            // 4. Si es domicilio, broadcast a repartidores activos
+            // 4. Asignar repartidor (Garantía de que siempre suene la venta tras pagar en línea)
             if (pedidoData.tipo_pedido === 'domicilio') {
-              supabaseClient.functions.invoke('asignar-repartidor', {
-                body: {
-                  ticket_id: pedidoData.wb_message_id,
-                  restaurante: pedidoData.restaurante,
-                  descripcion: pedidoData.descripcion,
-                  direccion: pedidoData.direccion ?? '',
-                  referencias: pedidoData.referencias_entrega ?? null,
-                  metodo_pago: 'en_linea',
-                  total: pedidoData.total ?? 0,
-                  lat: pedidoData.lat ?? null,
-                  lng: pedidoData.lng ?? null
-                }
-              }).catch(err => console.warn('Error en broadcast repartidores (webhook MP):', err))
+              console.log(`Disparando asignacion de repartidor para pedido en linea: ${pedidoId}`)
+              await supabaseClient.functions.invoke('asignar-repartidor', {
+                body: { id: pedidoId } // Pasamos el wb_message_id o id, asignar-repartidor maneja ambos internamente si adaptamos
+              }).catch(err => console.warn('Error invocando asignar-repartidor desde webhook MP:', err))
             }
+
+            
             
             console.log(`Pedido ${pedidoId} marcado como pagado exitosamente y notificado.`)
           } else {

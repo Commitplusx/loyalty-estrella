@@ -1,11 +1,9 @@
 # 🌟 Estrella Delivery — Arquitectura del Sistema
 > Documento vivo para desarrolladores. Última actualización: julio 2026.
 
----
-
-## Tabla de Contenidos
+-## Tabla de Contenidos
 1. [Mapa del sistema](#1-mapa-del-sistema)
-2. [Repositorios y apps](#2-repositorios-y-apps)
+2. [Repositorios, Apps y Dónde Buscar](#2-repositorios-apps-y-dónde-buscar)
 3. [Base de datos (Supabase)](#3-base-de-datos-supabase)
 4. [Flujo de registro de restaurantes](#4-flujo-de-registro-de-restaurantes)
 5. [Sistema de identidad — email canónico](#5-sistema-de-identidad--email-canónico)
@@ -15,6 +13,11 @@
 9. [Edge Functions (Supabase)](#9-edge-functions-supabase)
 10. [Variables de entorno](#10-variables-de-entorno)
 11. [Convenciones y reglas del sistema](#11-convenciones-y-reglas-del-sistema)
+12. [Arquitectura de Flujos Asíncronos y Pagos](#12-arquitectura-de-flujos-asíncronos-y-pagos-conekta)
+13. [Registro de Correcciones Críticas](#13-registro-de-correcciones-críticas-julio-2026)
+14. [Arquitectura de Asignación de Repartidores](#14-arquitectura-de-asignación-de-repartidores-escalable-y-robusta)
+15. [Dashboard del Repartidor](#15-dashboard-del-repartidor-flutter-ui)
+16. [Seguimiento del Cliente](#16-seguimiento-del-cliente-tracking-whatsapp)
 
 ---
 
@@ -25,7 +28,8 @@
 │                    USUARIOS FINALES                                  │
 │                                                                      │
 │  📱 Clientes          🍽️ Dueños de Restaurante      👨‍💼 Admin        │
-│  (app pública)        (portal B2B web)               (WhatsApp)      │
+│  (app pública)        (portal B2B web)               (WhatsApp/App)  │
+│  🛵 Repartidores      (App Flutter móvil)                            │
 └────────┬──────────────────────┬──────────────────────────┬───────────┘
          │                      │                          │
          ▼                      ▼                          ▼
@@ -45,6 +49,54 @@
               │                                                      │
               │  PostgreSQL DB  │  Auth  │  Storage  │  Edge Funcs  │
               └──────────────────────────────────────────────────────┘
+```
+
+---
+
+## 2. Repositorios, Apps y Dónde Buscar
+
+El proyecto vive en **un solo repositorio monorepo** en `loyalty-estrella/`.
+Esta es una guía rápida de **dónde encontrar cada cosa** si necesitas modificar o debugear:
+
+### 🌐 Frontend Web (Clientes)
+- **Directorio:** `src/` (Raíz del proyecto Vite).
+- **URL en producción:** `app-estrella.mx`
+- **¿Qué hace?** Landing page, directorio de restaurantes, carrito de compras y checkout.
+- **¿Dónde buscar?**
+  - **Lógica del Carrito y Pago:** `src/pages/PublicMenuView.tsx`
+  - **Consulta de Puntos:** `src/pages/ClienteView.tsx`
+
+### 🏪 Portal B2B (Dueños de Restaurantes)
+- **Directorio:** `restaurantes-estrella/`
+- **URL en producción:** `restaurantes-app-estrella.shop` (o su equivalente mx si aplica).
+- **¿Qué hace?** Panel donde los dueños administran su menú (CRUD de platillos, combos) y perfil.
+- **¿Dónde buscar?**
+  - **Login:** `restaurantes-estrella/src/pages/LoginPage.tsx`
+  - **Gestión de Menú:** `restaurantes-estrella/src/pages/MenuProductosView.tsx`
+
+### 📱 App Móvil (Admin & Repartidores)
+- **Directorio:** `admin_app/` (Proyecto Flutter)
+- **¿Qué hace?** App interna (Android/iOS) usada por los repartidores para aceptar viajes, y por el admin para dar de alta/baja restaurantes, cobrar puntos, y ver mapas.
+- **¿Dónde buscar?**
+  - **Flujo del Repartidor:** `admin_app/lib/screens/driver_dashboard_screen.dart`
+  - **Editor de Mapas y Zonas:** `admin_app/lib/screens/mapa_zonas_screen.dart`
+
+### 🧠 Backend (Edge Functions & WhatsApp)
+- **Directorio:** `supabase/functions/`
+- **¿Qué hace?** Toda la lógica de negocio, webhooks, notificaciones, y asignación de viajes.
+- **¿Dónde buscar?**
+  - **Bot de WhatsApp:** `supabase/functions/whatsapp-bot/` (El archivo clave es `button-handler.ts` para respuestas y botones).
+  - **Webhook de MercadoPago:** `supabase/functions/mercadopago-webhook/index.ts`
+  - **Lógica de Asignación de Repartidores:** `supabase/functions/asignar-repartidor/index.ts`
+  - **Envío de Mensajes a WhatsApp:** `supabase/functions/notificar-whatsapp/index.ts`
+
+### Tecnologías principales
+- **Frontend Web:** React + TypeScript + Vite + TailwindCSS + Framer Motion.
+- **Frontend App:** Flutter + Riverpod.
+- **Backend:** Supabase (Postgres + PostGIS + Edge Functions en Deno).
+- **Mensajería & Alertas:** WhatsApp Business Cloud API (Meta), Firebase Cloud Messaging (FCM).
+- **AI:** OpenAI GPT-4o (en `whatsapp-ai` y `whatsapp-bot/ai.ts`).
+��─────────────────────────────────────────────────┘
 ```
 
 ---
@@ -751,115 +803,58 @@ El `ticket_id` generado por la aplicación web es un string alfanumérico corto 
 
 ---
 
-## 14. Sistema de Asignación de Repartidores (Próxima Feature)
+## 14. Arquitectura de Asignación de Repartidores (Escalable y Robusta)
 
-### Objetivo
-Cuando se crea un pedido de tipo `domicilio` (ya sea pago en efectivo o pago en línea confirmado por Mercado Pago), el sistema debe asignar automáticamente al repartidor activo disponible y notificarle por WhatsApp con los detalles del envío.
+El sistema de despacho (Delivery) ha sido rediseñado para ser completamente autónomo, robusto ante fallas de red y escalable, eliminando la dependencia del cliente web (Frontend) para detonar notificaciones.
 
-### Tablas involucradas
+### 14.1 Desacoplamiento (Database Webhooks)
+Anteriormente, el frontend invocaba la Edge Function `asignar-repartidor`. Esto causaba problemas (condiciones de carrera) si el navegador se cerraba antes de terminar.
+**Nuevo flujo:**
+1. El frontend web simplemente inserta el pedido en la tabla `pedidos` con estado `pendiente` (Efectivo) o `pendiente_pago` (MercadoPago).
+2. Un **Database Webhook (Triggers nativos de Postgres)** escucha inserciones y actualizaciones en la tabla `pedidos`.
+3. El webhook dispara silenciosamente la Edge Function `asignar-repartidor` en segundo plano, garantizando 100% de entrega del evento.
 
-#### `repartidores` (ya existe)
-```sql
-id          uuid PK
-nombre      text
-alias       text
-telefono    text          -- 10 dígitos
-user_id     uuid FK → auth.users
-activo      boolean       -- TRUE = disponible para recibir pedidos
-zona_actual text          -- zona donde está operando
-```
+### 14.2 Función `asignar-repartidor` (Blindada)
+La Edge Function recibe el evento del webhook y opera de manera "Stateless Event-Driven":
+- **Validación Estricta:** Ignora redundancias. Si el pedido ya tiene repartidor (`repartidor_id != null`), o no es de tipo `domicilio`, aborta silenciosamente.
+- **Geolocalización (PostGIS):** Utiliza la función RPC `buscar_repartidores_cercanos` que aprovecha índices espaciales de PostGIS (`st_distance`) para buscar repartidores en un radio de 5km, descartando a los que tienen batería baja (<15%).
+- **Score Híbrido:** El RPC ordena a los candidatos cruzando la distancia con su carga de trabajo (pedidos activos).
+- **Comunicación de Doble Vía (Misil FCM + Realtime):**
+  1. Envía un evento por WebSockets (`repartidores_ping`) para notificar al instante si el repartidor tiene la app abierta.
+  2. Dispara una alerta Push de alta prioridad vía **Firebase Cloud Messaging (FCM) Data-Only**. Esto despierta la app de Flutter en background (incluso si está cerrada) y lanza un `fullScreenIntent` (pantalla completa de llamada entrante) con sonido de sirena.
 
-#### `pedidos` (campos a usar)
-```sql
-repartidor_id   uuid FK → repartidores   -- se asigna al crear/pagar
-estado          text                      -- 'pendiente' → 'asignado' al asignar
-tipo_pedido     text                      -- solo aplica para 'domicilio'
-```
-
-### Flujo de asignación
-
-```
-Cliente confirma pedido de domicilio
-        │
-        ├─ Pago Efectivo → handlePedir() en PublicMenuView.tsx
-        │       └─ INSERT pedidos
-        │       └─ invoke('notificar-whatsapp') → notifica al restaurante
-        │       └─ invoke('asignar-repartidor') ← NUEVA Edge Function
-        │
-        └─ Pago en línea → mercadopago-webhook/index.ts (al aprobarse)
-                └─ UPDATE pedidos SET estado_pago='pagado'
-                └─ invoke('notificar-whatsapp') → notifica al restaurante
-                └─ invoke('asignar-repartidor') ← NUEVA Edge Function
-
-Edge Function: asignar-repartidor
-        │
-        ├─ SELECT repartidores WHERE activo = true ORDER BY RANDOM() LIMIT 1
-        │
-        ├─ Si hay repartidor disponible:
-        │       ├─ UPDATE pedidos SET repartidor_id = rep.id, estado = 'asignado'
-        │       └─ sendWA(rep.telefono, detalle del pedido + dirección de entrega)
-        │
-        └─ Si NO hay repartidores disponibles:
-                └─ sendWA(ADMIN_PHONE, '⚠️ Pedido #{ticket} sin repartidor disponible')
-```
-
-### Algoritmo de selección (v1 — Round Robin aleatorio)
-En la primera versión se selecciona al repartidor activo de forma aleatoria (`ORDER BY RANDOM()`). Esto asegura distribución equitativa sin lógica compleja.
-
-**Versiones futuras:**
-- v2: Seleccionar al repartidor más cercano al restaurante usando distancia entre `repartidores.zona_actual` y `restaurantes.lat/lng`.
-- v3: Sistema de carga: seleccionar al repartidor con menos pedidos asignados en las últimas 2 horas.
-
-### Notificación al repartidor (WhatsApp)
-```
-🆕 *Nuevo Pedido Asignado* #ABC123
-
-🍽️ Restaurante: [nombre]
-📍 Recoger en: [dirección del restaurante]
-
-🛵 Entregar en:
-[dirección del cliente]
-📝 Referencias: [referencias]
-
-💰 Total: $XXX.XX
-💵 Pago: Efectivo / Ya pagado en línea
-
-Responde *LISTO* cuando estés en camino.
-```
-
-### Archivos a crear/modificar
-| Archivo | Acción |
-|---|---|
-| `supabase/functions/asignar-repartidor/index.ts` | NUEVO — lógica de asignación |
-| `supabase/functions/notificar-whatsapp/index.ts` | MODIFICAR — añadir tipo `asignacion_repartidor` |
-| `supabase/functions/mercadopago-webhook/index.ts` | MODIFICAR — invocar `asignar-repartidor` al aprobar pago |
-| `restaurantes-estrella/src/pages/PublicMenuView.tsx` | MODIFICAR — invocar `asignar-repartidor` en pedidos efectivo |
-| `whatsapp-bot/rep-handler.ts` | MODIFICAR — capturar respuesta `LISTO` del repartidor |
+### 14.3 QStash y Round-Robin (Timeout)
+Al asignar, la Edge Function no se queda esperando.
+- Agenda una tarea cronométrica exacta usando **Upstash QStash** con un retraso de 15 segundos (`Upstash-Delay: 15s`), pasándole el `pedido_uuid`.
+- Cuando pasan los 15s, QStash detona la función `asignacion-timeout`.
+- El timeout revisa en la base de datos si el estado del pedido ya es `aceptado`. Si es así, no hace nada (éxito). Si sigue en `pendiente`, significa que el repartidor ignoró el pedido.
+- Automáticamente se repite el proceso enviando la notificación al "Siguiente Repartidor" (Turno 2).
+- Si nadie acepta, se manda una notificación de WhatsApp de emergencia al Administrador.
 
 ---
 
-## 15. Módulo Repartidores (Auto-Dispatch V1 & Dashboard)
+## 15. Dashboard del Repartidor (Flutter UI)
 
-Recientemente se ha desarrollado e integrado la arquitectura técnica para la logística de despachos (Delivery):
+El `DriverDashboardView` ha sido construido con foco en usabilidad, retención y control operativo:
+- **Checklist Inteligente (Pre-Shift):** Antes de poder ponerse "EN LÍNEA", el sistema obliga a superar tres validaciones locales: Batería >15%, GPS activo con permisos "Always", y Volumen multimedia >0 (para asegurar que escuchen la alarma del pedido).
+- **Zonas Calientes Simuladas:** Cuando no hay pedidos activos, el mapa renderiza marcadores ambar latiendo aleatoriamente (efecto pulso) simulando demanda (Gamificación).
+- **Marcador GPS Dinámico:** Un marcador azul en el mapa se mueve en tiempo real leyendo `Geolocator.getPositionStream`.
+- **UI Inmersiva:** Estilos premium con Glassmorphism y degradados adaptativos para Billetera.
 
-### 15.1 Algoritmo de Asignación Inteligente (Edge Function `asignar-repartidor`)
-1. **Filtros de Seguridad (Hardware):** Antes de asignar, el sistema excluye automáticamente a los repartidores que tengan `< 15% de batería`.
-2. **Sistema de Puntuación (Score):** Se asigna un "Score" (menor es mejor) a cada candidato basado en:
-   - `Distancia` (usando Haversine desde el restaurante hasta el repartidor).
-   - `Carga de Trabajo` (número de pedidos activos actualmente asignados).
-   - **Fórmula:** `(Distancia KM * 10) + (Pedidos Activos * 50)`
-3. **Round-Robin con Timeout:** El sistema toma los 2 mejores repartidores y les ofrece el pedido secuencialmente (Turnos) a través de WebSockets (`repartidores_ping`). Tienen 30s para aceptar antes de pasar al siguiente.
-
-### 15.2 Dashboard del Repartidor (Flutter UI)
-El `DriverDashboardView` ha sido reconstruido con foco en usabilidad y control:
-- **Checklist Inteligente (Pre-Shift):** Antes de poder ponerse "EN LÍNEA", el sistema obliga a superar tres validaciones: Batería >15%, GPS activo con permisos, y Volumen multimedia >0 (para escuchar notificaciones).
-- **Zonas Calientes Simuladas:** Cuando no hay pedidos activos, el mapa renderiza marcadores ambar latiendo aleatoriamente (efecto pulso) simulando demanda para dinamismo.
-- **Marcador GPS Dinámico:** Un marcador azul en el mapa se mueve en tiempo real usando `Geolocator.getPositionStream`.
-- **UI Inmersiva:** Estilos premium con Glassmorphism y degradados adaptativos para Billetera y Gamificación.
-
-### 15.3 Recuperación de Sesión (Auto-Resume)
+### 15.1 Recuperación de Sesión (Auto-Resume)
 - **Hook en Arranque:** Al iniciar el Dashboard, el sistema busca registros de pedidos "huérfanos" asociados al repartidor en estados activos (`asignado`, `en_camino`, `recibido`).
-- **Alerta Flotante:** Si existe un pedido en ejecución, se despliega una tarjeta naranja estática alertando al repartidor con un botón de `CONTINUAR PEDIDO` para retomar la operación sin bloqueos, incluso si se reinicia la app.
+- **Alerta Flotante:** Si existe un pedido en ejecución, se despliega una tarjeta estática alertando al repartidor con un botón de `CONTINUAR PEDIDO` para retomar la operación sin bloqueos, incluso si se cerró la app por accidente.
 
-### 15.4 Botón SOS
+### 15.2 Botón SOS
 Se integró un botón de Emergencia (SOS) que captura las coordenadas GPS exactas en tiempo real y las emite directamente al Administrador mediante Supabase para despacho de asistencia inmediata.
+
+---
+
+## 16. Seguimiento del Cliente (Tracking WhatsApp)
+El ciclo del cliente está totalmente automatizado mediante WhatsApp (Meta Cloud API).
+1. Al crear el pedido, recibe confirmación (plantilla o texto).
+2. Cuando el repartidor le da "Aceptar", la base de datos se actualiza.
+3. El bot (`notificar-whatsapp`) envía un mensaje interactivo al cliente avisando qué repartidor va en camino.
+4. El cliente toca el botón "Rastrear" / "Aceptar".
+5. El webhook de WhatsApp captura la respuesta, detecta que hay un pedido activo (`aceptado` o `en_camino`) y responde con un SMS que contiene la URL canónica de seguimiento en vivo (`app-estrella.mx/success?pedido=...`).
+

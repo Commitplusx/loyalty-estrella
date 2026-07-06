@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../widgets/friendly_error_widget.dart';
 import '../models/pedido_model.dart';
 import '../services/pedido_service.dart';
 import '../services/repartidor_service.dart';
@@ -152,15 +153,9 @@ class _PedidosScreenState extends ConsumerState<PedidosScreen> {
             ),
           ),
         ),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.error_outline_rounded, color: Colors.red[300], size: 48),
-              const SizedBox(height: 12),
-              Text('Error: $e', style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
-            ],
-          ),
+        error: (e, _) => FriendlyErrorWidget(
+          error: e,
+          onRetry: () => ref.invalidate(pedidosActivosProvider),
         ),
         data: (allPedidos) {
           // Aplicar filtro por estado
@@ -286,49 +281,49 @@ class _PedidosScreenState extends ConsumerState<PedidosScreen> {
               if (pendientes.isNotEmpty) ...[
                 _SectionHeader(title: 'Pendientes (Sin Repartidor)', count: pendientes.length, color: const Color(0xFFEA580C), isDark: isDark),
                 const SizedBox(height: 8),
-                ...pendientes.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => PedidoDetailScreen.show(context, p.id))),
+                ...pendientes.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
                 const SizedBox(height: 20),
               ],
 
               if (enCamino.isNotEmpty) ...[
                 _SectionHeader(title: 'En Camino', count: enCamino.length, color: const Color(0xFFFF6B35), isDark: isDark),
                 const SizedBox(height: 8),
-                ...enCamino.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => PedidoDetailScreen.show(context, p.id))),
+                ...enCamino.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
                 const SizedBox(height: 20),
               ],
 
               if (recibidos.isNotEmpty) ...[
                 _SectionHeader(title: 'En Restaurante', count: recibidos.length, color: Theme.of(context).colorScheme.secondary, isDark: isDark),
                 const SizedBox(height: 8),
-                ...recibidos.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => PedidoDetailScreen.show(context, p.id))),
+                ...recibidos.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
                 const SizedBox(height: 20),
               ],
 
               if (asignados.isNotEmpty) ...[
                 _SectionHeader(title: 'Asignados', count: asignados.length, color: const Color(0xFF60A5FA), isDark: isDark),
                 const SizedBox(height: 8),
-                ...asignados.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => PedidoDetailScreen.show(context, p.id))),
+                ...asignados.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
                 const SizedBox(height: 20),
               ],
 
               if (otros.isNotEmpty) ...[
                 _SectionHeader(title: 'Otros', count: otros.length, color: Colors.grey, isDark: isDark),
                 const SizedBox(height: 8),
-                ...otros.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => PedidoDetailScreen.show(context, p.id))),
+                ...otros.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
                 const SizedBox(height: 20),
               ],
 
               if (entregados.isNotEmpty) ...[
                 _SectionHeader(title: 'Entregados', count: entregados.length, color: const Color(0xFF10B981), isDark: isDark),
                 const SizedBox(height: 8),
-                ...entregados.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => PedidoDetailScreen.show(context, p.id))),
+                ...entregados.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
                 const SizedBox(height: 20),
               ],
 
               if (cancelados.isNotEmpty) ...[
                 _SectionHeader(title: 'Cancelados', count: cancelados.length, color: Colors.red, isDark: isDark),
                 const SizedBox(height: 8),
-                ...cancelados.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => PedidoDetailScreen.show(context, p.id))),
+                ...cancelados.map((p) => _PedidoTile(pedido: p, isDark: isDark, cardBg: cardBg, onSurface: onSurface, onTap: () => context.push('/pedidos/${p.id}'))),
               ],
               
               const SizedBox(height: 100), // Espacio para el Bottom Nav Bar flotante

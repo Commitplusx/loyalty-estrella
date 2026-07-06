@@ -7,6 +7,9 @@ import 'package:flutter/rendering.dart';
 import '../core/user_role.dart';
 import '../core/supabase_config.dart';
 import '../core/ui_helpers.dart';
+import '../models/pedido_model.dart';
+import '../widgets/incoming_order_overlay.dart';
+import '../widgets/driver_permissions_checker.dart';
 import '../core/connectivity_provider.dart';
 import 'dashboard_screen.dart' show statsProvider;
 import 'pedidos_screen.dart' show pedidosActivosProvider;
@@ -37,6 +40,21 @@ final pendingPedidosCountProvider = StreamProvider.autoDispose<int>((ref) {
       }).length);
 });
 
+// Provider para detectar viajes asignados al repartidor actual
+final incomingDriverOrderProvider = StreamProvider.autoDispose<PedidoModel?>((ref) {
+  final user = supabase.auth.currentUser;
+  if (user == null) return Stream.value(null);
+  
+  return supabase
+      .from('pedidos')
+      .stream(primaryKey: ['id'])
+      .map((list) {
+         final pending = list.where((p) => p['repartidor_id'] == user.id && p['estado'] == 'asignado');
+         if (pending.isEmpty) return null;
+         return PedidoModel.fromMap(pending.first);
+      });
+});
+
 class MainShell extends ConsumerStatefulWidget {
   final Widget child;
   const MainShell({super.key, required this.child});
@@ -58,6 +76,9 @@ class _MainShellState extends ConsumerState<MainShell> {
     final pendingAsync = isAdmin ? ref.watch(pendingSolicitudesProvider) : null;
     final pendingCount = pendingAsync?.valueOrNull ?? 0;
     
+    final incomingOrderAsync = !isAdmin ? ref.watch(incomingDriverOrderProvider) : null;
+    final incomingOrder = incomingOrderAsync?.valueOrNull;
+
     final isConnectedAsync = ref.watch(connectivityProvider);
     final isConnected = isConnectedAsync.valueOrNull ?? true;
     
@@ -128,7 +149,7 @@ class _MainShellState extends ConsumerState<MainShell> {
             },
             child: Stack(
               children: [
-                widget.child,
+                isAdmin ? widget.child : DriverPermissionsChecker(child: widget.child),
                 
                 // Overlay oscuro animado
                 Positioned.fill(

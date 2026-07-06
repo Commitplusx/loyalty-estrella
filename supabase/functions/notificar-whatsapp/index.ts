@@ -138,7 +138,8 @@ async function notificarCliente(
       if (!res0.ok) console.error(`Error enviando text 'creado':`, await res0.text())
       return `✅ Mensaje de confirmación 'creado' enviado al cliente`
     }
-    case 'aceptado': {
+    case 'aceptado':
+    case 'asignado': {
       const components = [
         { type: 'header', parameters: [{ type: 'image', image: { link: 'https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png' } }] },
         {

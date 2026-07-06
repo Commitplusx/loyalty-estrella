@@ -26,7 +26,7 @@ class PedidoModel {
   final double? precioEntrega;
   final double? total;               // Nuevo
   final String? notas;               // Nuevo
-  final bool pagoPendienteRestaurante; // Para control de deuda efectivo
+  final bool? pagoPendienteRestaurante; // Para control de deuda efectivo
 
   const PedidoModel({
     required this.id,
@@ -52,7 +52,7 @@ class PedidoModel {
     this.precioEntrega,
     this.total,
     this.notas,
-    this.pagoPendienteRestaurante = false,
+    this.pagoPendienteRestaurante,
   });
 
   factory PedidoModel.fromMap(Map<String, dynamic> map) {
@@ -82,7 +82,7 @@ class PedidoModel {
       precioEntrega: (map['precio_entrega'] as num?)?.toDouble(),
       total: (map['total'] as num?)?.toDouble(),
       notas: map['notas'] as String?,
-      pagoPendienteRestaurante: map['pago_pendiente_restaurante'] as bool? ?? false,
+      pagoPendienteRestaurante: map['pago_pendiente_restaurante'] as bool?,
     );
   }
 
@@ -110,6 +110,23 @@ class PedidoModel {
       'notas': notas,
       'pago_pendiente_restaurante': pagoPendienteRestaurante,
     };
+  }
+
+  double get costoEnvioCalculado {
+    double fee = precioEntrega ?? 0.0;
+    if (fee == 0.0 && descripcion.isNotEmpty) {
+      final RegExp costRegex = RegExp(r'Costo Envío.*\$([0-9.]+)', caseSensitive: false, dotAll: true);
+      final match = costRegex.firstMatch(descripcion);
+      if (match != null && match.groupCount >= 1) {
+        fee = double.tryParse(match.group(1)!) ?? 0.0;
+      }
+    }
+    return fee;
+  }
+
+  double get costoRestauranteCalculado {
+    final double totalAmount = total ?? 0.0;
+    return (totalAmount - costoEnvioCalculado) > 0 ? (totalAmount - costoEnvioCalculado) : 0.0;
   }
 
   String get estadoLabel {
@@ -146,8 +163,8 @@ class PedidoModel {
     switch (siguienteEstado) {
       case 'pendiente': return 'Marcar como Pagado';
       case 'asignado':  return 'Aceptar Pedido';
-      case 'recibido':  return 'Marcar como Recibido';
-      case 'en_camino': return 'Salir a Entregar';
+      case 'recibido':  return 'Llegué al Restaurante';
+      case 'en_camino': return 'Iniciar Ruta a Entrega';
       case 'entregado': return 'Marcar como Entregado';
       default:          return null;
     }

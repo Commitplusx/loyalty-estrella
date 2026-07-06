@@ -6,6 +6,10 @@
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { initializeApp, cert } from "npm:firebase-admin@11.11.1/app";
+import { getMessaging } from "npm:firebase-admin@11.11.1/messaging";
+
+let isFirebaseInitialized = false;
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -44,156 +48,242 @@ async function sendWA(to: string, body: string): Promise<void> {
   })
 }
 
-// Distancia de Haversine (en km)
-function haversineDist(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371; 
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-            Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-  return R * c;
-}
+// La distancia de Haversine ya no es necesaria, ahora delegamos el cálculo espacial a PostGIS (RPC)
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
 
-  try {
-    const { ticket_id, restaurante, direccion, total, lat, lng } = await req.json()
+    try {
+    const rawPayload = await req.json();
+    console.log("[DEBUG ASIGNAR-REPARTIDOR] Payload recibido:", JSON.stringify(rawPayload));
 
-    if (!ticket_id) {
-      return new Response(JSON.stringify({ error: 'ticket_id requerido' }), { status: 400, headers: CORS_HEADERS })
+    // Si es un webhook, el payload viene dentro de `record`
+    const payload = rawPayload.record || rawPayload;
+    const pedido_uuid = payload.id;
+
+    if (!pedido_uuid) {
+      console.error("[DEBUG] pedido_uuid no encontrado en el payload.");
+      return new Response(JSON.stringify({ error: 'id requerido' }), { status: 400, headers: CORS_HEADERS })
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
-    // 1. Obtener todos los repartidores activos con sus coordenadas
-    const { data: repartidores, error: repErr } = await supabase
-      .from('repartidores')
-      .select('id, user_id, nombre, telefono, lat, lng, bateria')
-      .eq('activo', true)
+    // Determinar si el payload trae un UUID o un ID corto
+    const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(pedido_uuid);
+    const searchColumn = isUuid ? 'id' : 'wb_message_id';
 
-    if (repErr) throw new Error(`Error consultando repartidores: ${repErr.message}`)
+    // EXTRAER DATOS DIRECTAMENTE DE LA BD (100% SEGURO)
+    const { data: dbPedido, error: dbError } = await supabase
+      .from('pedidos')
+      .select('id, wb_message_id, restaurante, direccion, total, lat, lng, metodo_pago, estado, tipo_pedido, repartidor_id')
+      .eq(searchColumn, pedido_uuid)
+      .single();
 
-    // 1.5 Filtrar repartidores por batería >= 15% (si la batería está registrada)
-    const repartidoresValidos = (repartidores || []).filter(r => r.bateria === null || r.bateria === undefined || r.bateria >= 15);
+    if (dbError || !dbPedido) {
+      console.error(`[DEBUG] No se pudo obtener el pedido (buscando por ${searchColumn}):`, dbError);
+      return new Response(JSON.stringify({ error: 'Pedido no existe en BD' }), { status: 404, headers: CORS_HEADERS })
+    }
+
+    if (dbPedido.tipo_pedido !== 'domicilio') {
+      console.log("[DEBUG] El pedido no es a domicilio. Se aborta asignación.");
+      return new Response(JSON.stringify({ ok: true, message: 'No es domicilio' }), { headers: CORS_HEADERS })
+    }
+
+    const ticket_id = dbPedido.wb_message_id || dbPedido.id;
+    const restaurante = dbPedido.restaurante || "Estrella";
+    const direccion = dbPedido.direccion || "";
+    const total = dbPedido.total || "0";
+    const lat = dbPedido.lat;
+    const lng = dbPedido.lng;
+
+    // EVITAR DOBLE ASIGNACIÓN Y EVENTOS BASURA (ROBUSTEZ)
+    if (dbPedido.estado !== 'pendiente' && dbPedido.estado !== 'pagado') {
+        console.log("[DEBUG] Estado inválido para asignación (" + dbPedido.estado + "). Ignorando webhook.");
+        return new Response(JSON.stringify({ ok: true, message: 'Estado ignorable' }), { headers: CORS_HEADERS })
+    }
+    
+    // Si ya tiene un repartidor asignado, ignorar (esto es por si el webhook se dispara por accidente en un UPDATE)
+    if (dbPedido.repartidor_id) {
+        console.log("[DEBUG] El pedido ya tiene repartidor asignado. Ignorando webhook.");
+        return new Response(JSON.stringify({ ok: true, message: 'Ya asignado' }), { headers: CORS_HEADERS })
+    }
+
+    // 1. Obtener Repartidores Cercanos (Vía PostGIS)
+    // El RPC 'buscar_repartidores_cercanos' funciona como un pre-filtro súper rápido (Línea Recta 5km)
+    let repartidoresValidos: any[] = [];
+    
+    if (lat && lng) {
+        // En tu DB ya tienes el H3 o lat/lng, usamos el RPC para el filtro grueso
+        const { data, error: rpcErr } = await supabase.rpc('buscar_repartidores_cercanos', {
+            p_lat: lat,
+            p_lng: lng,
+            p_radio_metros: 5000
+        });
+        
+        if (rpcErr) {
+            console.error('[RPC ERROR]', rpcErr);
+            throw new Error(`Error en RPC PostGIS: ${rpcErr.message}`);
+        }
+        repartidoresValidos = data || [];
+        
+        // 2. Refinamiento con Google Maps Distance Matrix API (ETA Real)
+        const googleMapsKey = Deno.env.get('GOOGLE_MAPS_KEY');
+        if (googleMapsKey && repartidoresValidos.length > 0) {
+            try {
+                // Recuperar lat/lng exactos de los candidatos para la API
+                const repIds = repartidoresValidos.map(r => r.repartidor_id);
+                const { data: repCoords } = await supabase.from('repartidores').select('id, lat, lng').in('id', repIds);
+                
+                if (repCoords && repCoords.length > 0) {
+                    const destinations = repCoords.filter(r => r.lat && r.lng).map(r => `${r.lat},${r.lng}`).join('|');
+                    const origin = `${lat},${lng}`;
+                    
+                    const gmapUrl = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin}&destinations=${destinations}&key=${googleMapsKey}`;
+                    const gmapRes = await fetch(gmapUrl);
+                    const gmapData = await gmapRes.json();
+                    
+                    if (gmapData.status === 'OK') {
+                        const elements = gmapData.rows[0].elements;
+                        
+                        // Map the ETAs back to the drivers
+                        repCoords.forEach((coord, idx) => {
+                            if (elements[idx] && elements[idx].status === 'OK') {
+                                const durationSeconds = elements[idx].duration.value;
+                                // Actualizar el score: Reemplazamos la distancia lineal con el ETA real
+                                // Score = (ETA_minutos * 10) - (batería * 10) + (carga * 50)
+                                const targetRep = repartidoresValidos.find(r => r.repartidor_id === coord.id);
+                                if (targetRep) {
+                                    const etaMinutos = durationSeconds / 60;
+                                    targetRep.eta_minutos = Math.round(etaMinutos);
+                                    targetRep.score = (etaMinutos * 10) - ((targetRep.bateria || 0) * 10) + ((targetRep.meta_envios || 0) * 50);
+                                }
+                            }
+                        });
+                        
+                        // Re-ordenar basado en el nuevo score con ETA real
+                        repartidoresValidos.sort((a, b) => (a.score || 0) - (b.score || 0));
+                        console.log('[DEBUG] Candidatos re-ordenados con Google Maps ETA:', repartidoresValidos.map(r => `${r.repartidor_id}: ${r.eta_minutos}min`));
+                    }
+                }
+            } catch (err) {
+                console.error('[ERROR Google Maps API]', err);
+                // Si falla, el arreglo sigue ordenado por la distancia del RPC original (Fallback robusto)
+            }
+        }
+    } else {
+        // Fallback si el pedido no tiene lat/lng
+        const { data } = await supabase.from('repartidores').select('id, user_id, lat, lng, bateria, meta_envios').eq('activo', true);
+        repartidoresValidos = (data || [])
+          .filter(r => r.bateria === null || r.bateria >= 15)
+          .map(r => ({ ...r, repartidor_id: r.id }));
+    }
 
     if (!repartidoresValidos || repartidoresValidos.length === 0) {
       if (ADMIN_PHONE_MAIN) {
-        await sendWA(ADMIN_PHONE_MAIN, `⚠️ *Pedido #${ticket_id} sin repartidor*\n\nNo hay ningún repartidor activo con batería suficiente. Asigna manualmente.\n📦 ${restaurante}`)
+        await sendWA(ADMIN_PHONE_MAIN, `⚠️ *Pedido #${ticket_id} sin repartidor*\n\nNo hay ningún repartidor activo cerca. Asigna manualmente.\n📦 ${restaurante}`)
       }
-      return new Response(JSON.stringify({ ok: false, reason: 'no_drivers_or_low_battery' }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ ok: false, reason: 'no_drivers' }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
     }
 
-    // 2. Obtener Carga de Trabajo (Pedidos Asignados Activos)
-    const { data: pedidosActivos } = await supabase
-      .from('pedidos')
-      .select('repartidor_id')
-      .in('estado', ['asignado', 'aceptado', 'en_camino', 'recibido'])
-      .not('repartidor_id', 'is', null);
+    // 2. Lógica de Selección (Tomamos los 2 mejores del RPC)
+    const repartidor1 = repartidoresValidos[0];
+    const repartidor2 = repartidoresValidos[1] ?? null;
 
-    const cargaTrabajo: Record<string, number> = {};
-    repartidoresValidos.forEach(r => cargaTrabajo[r.user_id || r.id] = 0);
-    if (pedidosActivos) {
-      pedidosActivos.forEach(p => {
-        if (cargaTrabajo[p.repartidor_id] !== undefined) {
-          cargaTrabajo[p.repartidor_id]++;
+    // Patrón "Stateless Event-Driven":
+    // 1. Mandamos el Ping al Repartidor 1 por Realtime (para Foreground)
+    const repartidor1Id = repartidor1.user_id || repartidor1.id;
+    await supabase.channel('repartidores_ping').send({
+      type: 'broadcast',
+      event: 'order_offered',
+      payload: { 
+        target_driver_id: repartidor1Id, 
+        pedido_id: String(dbPedido.id),
+        restaurante: restaurante,
+        direccion: direccion,
+        total: total
+      }
+    });
+
+    // 2. Mandamos FCM Push de alta prioridad para despertar la app (Background/Killed)
+    try {
+      if (!isFirebaseInitialized) {
+        const serviceAccountStr = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
+        if (serviceAccountStr) {
+          initializeApp({ credential: cert(JSON.parse(serviceAccountStr)) });
+          isFirebaseInitialized = true;
+        } else {
+          console.log(`[FCM SNIPER] ⚠️ No se encontró FIREBASE_SERVICE_ACCOUNT. Saltando FCM.`);
         }
-      });
-    }
-
-    // 3. Lógica de Selección (Round-Robin Inteligente)
-    let repartidor1 = null;
-    let repartidor2 = null;
-
-    if (repartidoresValidos.length === 1) {
-      repartidor1 = repartidoresValidos[0];
-    } else {
-      if (lat && lng) {
-        // Calcular Score (menor es mejor)
-        // Nueva Fórmula (Prioridad Distancia): (Distancia en KM * 100) + (Pedidos Activos * 10)
-        // Prioriza a los que están cerca, permitiendo que recojan múltiples pedidos si están en la zona.
-        const repartidoresConScore = repartidoresValidos.map(r => {
-          const d = haversineDist(lat, lng, r.lat ?? 0, r.lng ?? 0);
-          const pedidos = cargaTrabajo[r.user_id || r.id];
-          const score = (d * 100) + (pedidos * 10);
-          return { ...r, score, dist: d, pedidos };
-        });
-
-        // Ordenar por score de menor a mayor
-        repartidoresConScore.sort((a, b) => a.score - b.score);
-        repartidor1 = repartidoresConScore[0];
-        repartidor2 = repartidoresConScore[1];
-      } else {
-        // Fallback si no hay ubicación: elegir al de menor carga de trabajo
-        const repartidoresPorCarga = [...repartidoresValidos].sort((a, b) => cargaTrabajo[a.id] - cargaTrabajo[b.id]);
-        repartidor1 = repartidoresPorCarga[0];
-        repartidor2 = repartidoresPorCarga[1] ?? null;
       }
-    }
 
-    // Tarea asíncrona que maneja el Round-Robin con timeouts de 30s
-    const roundRobinTask = (async () => {
-      const waitAndCheck = async (repartidorId: string) => {
-        // Enviar Ping a la App
-        await supabase.channel('repartidores_ping').send({
-          type: 'broadcast',
-          event: 'order_offered',
-          payload: { target_driver_id: repartidorId, pedido_id: ticket_id }
-        });
-
-        // Esperar 30s (chequeando cada 3s)
-        for (let i = 0; i < 10; i++) {
-          await new Promise(r => setTimeout(r, 3000));
-          const { data: p } = await supabase.from('pedidos').select('repartidor_id, estado').eq('id', ticket_id).maybeSingle();
-          if (p && p.repartidor_id) return true; // ¡Alguien lo aceptó!
-          if (p && p.estado === 'cancelado') return true;
-          
-          // FAST REJECT: Si el repartidor rechazó, abortamos su espera
-          if (p && p.estado === 'rechazado') {
-            console.log(`[FAST REJECT] Repartidor ${repartidorId} rechazó el pedido. Saltando al siguiente...`);
-            // Regresamos el estado a pagado/pendiente para que el Turno 2 no lo vea como rechazado
-            await supabase.from('pedidos').update({ estado: 'pagado' }).eq('id', ticket_id);
-            return false;
+      if (isFirebaseInitialized) {
+        console.log(`[FCM SNIPER] 🚀 Disparando misil FCM a driver_${repartidor1Id}...`);
+        await getMessaging().send({
+          topic: `driver_${repartidor1Id}`,
+          // No usamos bloque 'notification' para que sea un DATA-ONLY push.
+          // Esto obliga a que el handler en background de Flutter se ejecute
+          // y podamos disparar el fullScreenIntent manualmente.
+          android: {
+            priority: "high",
+          },
+          data: {
+            tipo: "pedido_asignado",
+            pedido_id: String(dbPedido.id),
+            restaurante: String(restaurante || 'Estrella'),
+            click_action: "FLUTTER_NOTIFICATION_CLICK",
+            target_driver_id: String(repartidor1Id || '')
           }
-        }
-
-        // Se acabó el tiempo, apagar alarma
-        await supabase.channel('repartidores_ping').send({
-          type: 'broadcast',
-          event: 'order_canceled',
-          payload: { target_driver_id: repartidorId, pedido_id: ticket_id }
         });
-        return false;
+        console.log(`[FCM SNIPER] ✅ Misil FCM DATA-ONLY disparado a driver_${repartidor1Id} con éxito.`);
+      }
+    } catch (fcmErr) {
+      console.error("[FCM SNIPER] ❌ Error enviando FCM al repartidor:", fcmErr);
+    }
+    console.log(`[QSTASH INIT] Turno 1: ${repartidor1.nombre} (${repartidor1Id}). Ping enviado.`);
+
+    // 2. Programamos a QStash para que revise la DB en exactamente 15 segundos
+    const QSTASH_TOKEN = Deno.env.get('QSTASH_TOKEN');
+    if (QSTASH_TOKEN) {
+      const qstashUrl = `https://qstash-us-east-1.upstash.io/v2/publish/${SUPABASE_URL}/functions/v1/asignacion-timeout`;
+      
+      const payload = {
+        ticket_id,
+        pedido_uuid: dbPedido.id,
+        restaurante,
+        direccion,
+        total,
+        repartidor_actual_id: repartidor1Id,
+        repartidor_actual_nombre: repartidor1.nombre,
+        siguiente_repartidor_id: repartidor2 ? (repartidor2.user_id || repartidor2.id) : null,
+        siguiente_repartidor_nombre: repartidor2 ? repartidor2.nombre : null,
+        intento: 1
       };
 
-      // Turno 1
-      console.log(`[ROUND-ROBIN] Turno 1: ${repartidor1.nombre}`);
-      const accepted1 = await waitAndCheck(repartidor1.user_id || repartidor1.id);
-      if (accepted1) return;
-
-      // Turno 2
-      if (repartidor2) {
-        console.log(`[ROUND-ROBIN] Turno 2: ${repartidor2.nombre}`);
-        const accepted2 = await waitAndCheck(repartidor2.user_id || repartidor2.id);
-        if (accepted2) return;
+      try {
+        const qRes = await fetch(qstashUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${QSTASH_TOKEN}`,
+            'Content-Type': 'application/json',
+            'Upstash-Delay': '15s' // ¡La magia de QStash!
+          },
+          body: JSON.stringify(payload)
+        });
+        
+        if (!qRes.ok) {
+          const errText = await qRes.text();
+          console.error('[QSTASH ERROR]', errText);
+        } else {
+          console.log(`[QSTASH SUCCESS] Timeout de 15s programado para ${ticket_id}`);
+        }
+      } catch (e) {
+        console.error('[QSTASH FETCH ERROR]', e);
       }
-
-      // Fallback Admin
-      console.warn(`[TIMEOUT] Ningún repartidor aceptó el pedido ${ticket_id}`);
-      if (ADMIN_PHONE_MAIN) {
-        await sendWA(ADMIN_PHONE_MAIN, `⏰ *Pedido #${ticket_id} sin aceptar*\n\nHan pasado 60s (2 intentos) y ningún repartidor aceptó.\n\n🍽️ ${restaurante}\n📍 ${direccion || 'Sin dirección'}\n💰 $${total}\n\nAsigna manualmente desde la app.`);
-      }
-    })();
-
-    try {
-      // @ts-ignore
-      EdgeRuntime.waitUntil(roundRobinTask)
-    } catch {
-      await roundRobinTask
+    } else {
+      console.warn('[QSTASH] Faltan las llaves de Upstash. El pedido se quedará flotando si no lo aceptan.');
     }
 
+    // Retornamos instantáneamente al cliente (0 milisegundos de espera por timeouts).
     return new Response(JSON.stringify({ ok: true, drivers_planned: repartidor2 ? 2 : 1 }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
 
   } catch (err: any) {

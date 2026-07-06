@@ -23,6 +23,7 @@ import 'screens/mapa_zonas_screen.dart';
 import 'screens/excepciones_precio_screen.dart';
 import 'screens/solicitudes_screen.dart';
 import 'screens/h3_editor_webview_screen.dart';
+import 'screens/ganancias_screen.dart';
 
 
 
@@ -109,6 +110,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (ctx, state) => PedidoDetailScreen(
           pedidoId: state.pathParameters['id']!,
         ),
+      ),
+      // Pantalla de Ganancias (standalone, sin shell)
+      GoRoute(
+        path: '/ganancias',
+        builder: (ctx, state) => const GananciasScreen(),
       ),
       ShellRoute(
         builder: (ctx, state, child) => MainShell(child: child),

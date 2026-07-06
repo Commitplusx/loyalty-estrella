@@ -184,7 +184,7 @@ class PedidoService {
         currentPos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
           timeLimit: const Duration(seconds: 5),
-        );
+        ).timeout(const Duration(seconds: 6));
       } catch (e) {
         debugPrint('Aviso: No se pudo obtener GPS rapido para Geocerca.');
       }
@@ -225,7 +225,8 @@ class PedidoService {
               if ((nuevoEstado == 'asignado' || nuevoEstado == 'aceptado') && user != null) 'repartidor_id': user.id,
               if (pagoPendienteRestaurante != null) 'pago_pendiente_restaurante': pagoPendienteRestaurante,
             })
-            .eq('id', pedidoId);
+            .eq('id', pedidoId)
+            .timeout(const Duration(seconds: 15));
 
         success = true;
       } catch (e) {
@@ -271,7 +272,7 @@ class PedidoService {
           .from('pedidos')
           .update({
             'repartidor_id': nuevoRepartidorId,
-            'estado': 'asignado',
+            'estado': 'pendiente',
           })
           .eq('id', pedidoId);
 

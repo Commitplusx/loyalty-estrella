@@ -3,6 +3,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../core/ui_helpers.dart';
+import '../widgets/friendly_error_widget.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -27,11 +29,7 @@ final statsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return {'servicios': 0, 'ganancias': 0.0, 'gratis': 0};
     
-    // Conseguir el repartidor_id
-    final repId = await ref.read(repartidorServiceProvider).getRepartidorIdByUserId(userId);
-    if (repId == null) return {'servicios': 0, 'ganancias': 0.0, 'gratis': 0};
-
-    return ref.read(dashboardServiceProvider).getDriverDailyStats(repId);
+    return ref.read(dashboardServiceProvider).getDriverDailyStats(userId);
   }
 });
 
@@ -42,9 +40,7 @@ final weeklyStatsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) asy
   } else {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return [];
-    final repId = await ref.read(repartidorServiceProvider).getRepartidorIdByUserId(userId);
-    if (repId == null) return [];
-    return ref.read(dashboardServiceProvider).getWeeklyStats(repartidorId: repId);
+    return ref.read(dashboardServiceProvider).getWeeklyStats(repartidorId: userId);
   }
 });
 
@@ -68,7 +64,7 @@ class DashboardScreen extends ConsumerWidget {
 
     final hour = DateTime.now().hour;
     final greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
-    final userName = userNameAsync.value ?? (user?.email ?? 'Admin').split('@').first;
+    final userName = (userNameAsync.value ?? (user?.email ?? 'Admin').split('@').first).split(' ').first;
 
     final cs = Theme.of(context).colorScheme;
 
@@ -122,14 +118,39 @@ class DashboardScreen extends ConsumerWidget {
                               letterSpacing: 0.5,
                             ),
                           ),
-                          Text(
-                            userName,
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: cs.onSurface,
-                              letterSpacing: -0.5,
-                            ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Text(
+                                userName,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  color: cs.onSurface,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                              if (!isAdmin) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: cs.primary.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    'SOCIO REPARTIDOR',
+                                    style: TextStyle(
+                                      fontSize: 7,
+                                      fontWeight: FontWeight.w900,
+                                      color: cs.primary,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ],
                       ),
@@ -239,7 +260,10 @@ class DashboardScreen extends ConsumerWidget {
                 child: statsAsync.when(
                   data: (stats) => DriverDashboardView(stats: stats),
                   loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (e, st) => Center(child: Text('Error: $e')),
+                  error: (e, st) => FriendlyErrorWidget(
+                    error: e,
+                    onRetry: () => ref.invalidate(statsProvider),
+                  ),
                 ),
               ),
           ],

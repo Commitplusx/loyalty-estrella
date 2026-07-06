@@ -14,6 +14,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:go_router/go_router.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 class DriverDashboardView extends ConsumerStatefulWidget {
   final Map<String, dynamic>? stats;
@@ -31,6 +32,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
 
   late bool _isOnline;
   bool _isPressed = false;
+  bool _isSuccess = false;
   bool _sosSending = false;
   String? _repartidorId;
   String _repartidorNombre = '';
@@ -40,6 +42,11 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
   List<Map<String, dynamic>> _pedidosActivos = [];
   StreamSubscription<Position>? _positionStream;
   final MapController _mapController = MapController();
+
+  // Sonidos de Radar / Éxito
+  final AudioPlayer _successPlayer = AudioPlayer();
+  final AudioPlayer _radarPlayer = AudioPlayer();
+  Timer? _radarTimer;
 
   @override
   void initState() {
@@ -83,8 +90,42 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
     final statusData = await ref.read(repartidorServiceProvider).getCurrentStatus();
     
     // Extracciones de seguridad
-    final isOnlineBD = statusData['activo'] ?? false;
+    bool isOnlineBD = statusData['activo'] ?? false;
     final repIdBD = statusData['id'];
+    
+    if (mounted) {
+      _repartidorId = repIdBD;
+      final nombreBD = statusData['nombre'] as String? ?? '';
+      _repartidorNombre = nombreBD.isNotEmpty
+          ? nombreBD
+          : (supabase.auth.currentUser?.email?.split('@').first ?? 'Repartidor');
+      _cachedRepartidorId = _repartidorId;
+      _cachedNombre = _repartidorNombre;
+    }
+
+    // 🚨 Inteligencia: Buscar pedidos activos ANTES de decidir el estado
+    if (_repartidorId != null) {
+      await _checkPedidoActivo();
+    }
+
+    // === LÓGICA TIPO RAPPI: SIEMPRE DESCONECTADO AL ABRIR LA APP ===
+    if (mounted) {
+      setState(() {
+        if (_cachedIsOnline == null && _pedidosActivos.isEmpty) {
+          // Inicio limpio y sin pedidos -> Forzamos Apagado
+          _isOnline = false;
+          if (isOnlineBD && _repartidorId != null) {
+            // Si la BD decía que estábamos online (ej. cerramos la app a la fuerza), lo corregimos
+            ref.read(repartidorServiceProvider).updateStatus(_repartidorId!, false);
+            isOnlineBD = false;
+          }
+        } else {
+          // Hot-reload o hay pedidos activos -> Respetamos BD/Caché
+          _isOnline = _cachedIsOnline ?? isOnlineBD;
+        }
+        _cachedIsOnline = _isOnline;
+      });
+    }
     
     // Attempt to get location and start stream
     try {
@@ -94,14 +135,18 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
       }
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
         final pos = await Geolocator.getCurrentPosition();
-        _currentLocation = LatLng(pos.latitude, pos.longitude);
-        _cachedLocation = _currentLocation;
+        if (mounted) {
+          setState(() {
+            _currentLocation = LatLng(pos.latitude, pos.longitude);
+            _cachedLocation = _currentLocation;
+          });
+        }
         
-        // Sincronización inicial obligatoria si está en línea (para que funcione el algoritmo aunque no se mueva)
-        if (isOnlineBD && repIdBD != null) {
+        // Sincronización inicial obligatoria si decidimos estar en línea
+        if (_isOnline && _repartidorId != null) {
           debugPrint('📍 Sincronizando ubicación inicial a Supabase: \${pos.latitude}, \${pos.longitude}');
           ref.read(repartidorServiceProvider).updateStatus(
-            repIdBD,
+            _repartidorId!,
             true,
             lat: pos.latitude,
             lng: pos.longitude,
@@ -121,8 +166,8 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
               _cachedLocation = _currentLocation;
             });
             _animatedMapMove(_currentLocation, 15);
-            // Si está online, actualizamos silenciosamente en Supabase para que el RPC de asignación lo encuentre
-            if (_isOnline && _repartidorId != null) {
+            // Solo sincronizar si estamos en línea de verdad
+            if (_isOnline && !_isPressed && !_isSuccess && _repartidorId != null) {
               ref.read(repartidorServiceProvider).updateStatus(
                 _repartidorId!,
                 true,
@@ -136,29 +181,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
     } catch (e) {
       debugPrint("Could not get location: $e");
     }
-
-      if (mounted) {
-        setState(() {
-          _isOnline = statusData['activo'] ?? false;
-          _repartidorId = statusData['id'];
-          // Usar nombre de la BD; si viene vacío, caer en el email del auth
-          final nombreBD = statusData['nombre'] as String? ?? '';
-          _repartidorNombre = nombreBD.isNotEmpty
-              ? nombreBD
-              : (supabase.auth.currentUser?.email?.split('@').first ?? 'Repartidor');
-          _cachedIsOnline = _isOnline;
-          _cachedRepartidorId = _repartidorId;
-          _cachedNombre = _repartidorNombre; // guardar en caché estática
-        });
-
-        // 🚨 Inteligencia: Buscar si el repartidor tiene algún pedido activo pendiente
-        if (_repartidorId != null) {
-          await _checkPedidoActivo();
-          
-          // Ya no forzamos apagar el turno. Si el servidor dice que está en línea, se queda en línea.
-        }
-      }
-    }
+  }
 
   Future<void> _checkPedidoActivo() async {
     try {
@@ -184,6 +207,13 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
         setState(() {
           _pedidosActivos = pedidosList;
         });
+        
+        if (_pedidosActivos.isNotEmpty) {
+          _stopRadarSound();
+        } else if (_isOnline && _radarTimer == null) {
+          _startRadarSound();
+        }
+        
         // AUTO-NAVEGACIÓN REMOVIDA
         // El repartidor ahora ve su cola de trabajo (Stacked Orders) en el Dashboard
         // y decide a cuál pedido entrar manualmente, dándole control total sobre su ruta.
@@ -192,6 +222,9 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
           setState(() {
             _pedidosActivos = [];
           });
+          if (_isOnline && _radarTimer == null) {
+            _startRadarSound();
+          }
         }
         debugPrint('🚨 Inteligencia: Ningún pedido activo en curso.');
       }
@@ -262,7 +295,189 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _positionStream?.cancel();
+    _radarTimer?.cancel();
+    _successPlayer.dispose();
+    _radarPlayer.dispose();
     super.dispose();
+  }
+
+  void _playSuccessSound() async {
+    try {
+      await _successPlayer.play(AssetSource('sounds/success.mp3'));
+    } catch (e) {
+      debugPrint('No se pudo reproducir success sound: $e');
+    }
+  }
+
+  void _startRadarSound() {
+    _radarTimer?.cancel();
+    // Emitir el ping cada 5 segundos
+    _radarTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      // Solo pitear si está en línea y no hay pedidos activos
+      if (_isOnline && _pedidosActivos.isEmpty) {
+        try {
+          await _radarPlayer.play(AssetSource('sounds/radar.mp3'));
+        } catch (e) {
+          debugPrint('No se pudo reproducir radar sound: $e');
+        }
+      } else {
+        _stopRadarSound();
+      }
+    });
+  }
+
+  void _stopRadarSound() {
+    _radarTimer?.cancel();
+    _radarTimer = null;
+  }
+
+  Future<void> _mostrarDeudaDetalle(bool isDark) async {
+    if (_repartidorId == null) return;
+    final detalle = await ref.read(repartidorServiceProvider).getDeudaDetalle(_repartidorId!);
+
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic,
+        builder: (context, value, child) => Transform.translate(
+          offset: Offset(0, 60 * (1 - value)),
+          child: Opacity(opacity: value, child: child),
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40, height: 4,
+                  margin: const EdgeInsets.only(bottom: 24),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white24 : Colors.black12,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF43F5E).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.receipt_long_rounded, color: Color(0xFFF43F5E), size: 24),
+                  ),
+                  const SizedBox(width: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Efectivo a Entregar', style: TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.w900,
+                        color: isDark ? Colors.white : Colors.black,
+                      )),
+                      Text('Desglose por restaurante · Hoy', style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.white54 : Colors.black45,
+                      )),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 28),
+              if (detalle.isEmpty)
+                Center(
+                  child: Column(
+                    children: [
+                      const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 48),
+                      const SizedBox(height: 12),
+                      Text('¡Sin deuda pendiente hoy!', style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white70 : Colors.black54,
+                      )),
+                      const SizedBox(height: 12),
+                    ],
+                  ),
+                )
+              else
+                ...detalle.map((item) {
+                  final monto = (item['monto'] as num?)?.toDouble() ?? 0.0;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF43F5E).withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFF43F5E).withOpacity(0.15)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.storefront_rounded, color: Color(0xFFF43F5E), size: 22),
+                            const SizedBox(width: 12),
+                            Text(
+                              item['restaurante']?.toString() ?? 'Restaurante',
+                              style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w700,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Text(
+                          '\$${monto.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.w900,
+                            color: Color(0xFFF43F5E),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              if (detalle.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('TOTAL A ENTREGAR', style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 0.5,
+                        color: isDark ? Colors.white70 : Colors.black54,
+                      )),
+                      Text(
+                        '\$${detalle.fold(0.0, (s, e) => s + ((e['monto'] as num?)?.toDouble() ?? 0.0)).toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.w900,
+                          color: Color(0xFFF43F5E),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -293,15 +508,101 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
   Future<int?> _mostrarTipsInicio() async {
     return await showDialog<int>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(context).cardColor,
-        title: const Text('💡 ¿Cuánto dinero traes?', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('Para poder dar cambio, necesitamos saber con cuánto efectivo empiezas tu turno.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, 0), child: const Text('Nada', style: TextStyle(color: Colors.grey))),
-          TextButton(onPressed: () => Navigator.pop(ctx, 200), child: Text('\$200', style: TextStyle(color: Theme.of(context).colorScheme.secondary))),
-          TextButton(onPressed: () => Navigator.pop(ctx, 500), child: Text('\$500', style: TextStyle(color: Theme.of(context).colorScheme.secondary))),
-        ],
+      builder: (ctx) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOutBack,
+        builder: (context, value, child) {
+          return Transform.scale(
+            scale: value,
+            child: Opacity(
+              opacity: value.clamp(0.0, 1.0),
+              child: child,
+            ),
+          );
+        },
+        child: Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF59E0B).withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.monetization_on_rounded, color: Color(0xFFF59E0B), size: 40),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  '¿Cuánto dinero traes?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Para dar un mejor servicio y calcular tu cambio, selecciona con cuánto efectivo empiezas tu turno.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                const SizedBox(height: 28),
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(ctx, 200),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 20),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
+                          ),
+                          child: const Column(
+                            children: [
+                              Text('\$200', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFF10B981))),
+                              SizedBox(height: 4),
+                              Text('Pesos', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(ctx, 500),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 20),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF3B82F6).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.3)),
+                          ),
+                          child: const Column(
+                            children: [
+                              Text('\$500', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFF3B82F6))),
+                              SizedBox(height: 4),
+                              Text('Pesos', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, 0),
+                  child: const Text('No traigo efectivo', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 16)),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -366,7 +667,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      isLoading ? 'Conectando...' : '¡Listo para salir, ${_repartidorNombre.split(' ').first}! 🛵',
+                      isLoading ? 'Conectando...' : '¡Hola ${_repartidorNombre.split(' ').first}!\nSocio Repartidor 🚀',
                       textAlign: TextAlign.center,
                       style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
                     ),
@@ -481,8 +782,13 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
         debugPrint('Error chequeando fullScreenIntent: $e');
       }
 
-      batteryLevel = await _mostrarTipsInicio();
+      // 1. Mostrar pantalla de revisión de GPS, Batería, Volumen
+      batteryLevel = await _checkInitialLocation();
       if (batteryLevel == null || !mounted) return;
+      
+      // 2. Preguntar cantidad de efectivo
+      final money = await _mostrarTipsInicio();
+      if (money == null || !mounted) return;
       
       // Mostrar éxito PRIMERO
       ScaffoldMessenger.of(context).showSnackBar(
@@ -514,9 +820,9 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
     }
 
     setState(() {
-      _isOnline = value;
-      _cachedIsOnline = value;
+      _isPressed = true;
     });
+
     final success = await ref.read(repartidorServiceProvider).updateStatus(
       _repartidorId!, 
       value,
@@ -524,13 +830,37 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
       lng: _currentLocation.longitude,
       bateria: batteryLevel,
     );
-    if (!success) {
-      // Revert if failed
-      if (mounted) {
+
+    if (mounted) {
+      if (success && !value) {
+        _stopRadarSound();
         setState(() {
-          _isOnline = !value;
-          _cachedIsOnline = !value;
+          _isPressed = false;
+          _isSuccess = true;
         });
+        
+        await Future.delayed(const Duration(milliseconds: 2500));
+        
+        if (mounted) {
+          setState(() {
+            _isSuccess = false;
+            _isOnline = value;
+            _cachedIsOnline = value;
+          });
+        }
+      } else {
+        setState(() {
+          _isPressed = false;
+          if (success) {
+            _isOnline = value;
+            _cachedIsOnline = value;
+            _playSuccessSound();
+            _startRadarSound();
+          }
+        });
+      }
+
+      if (!success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Error al actualizar estado')),
         );
@@ -642,13 +972,18 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
                     borderRadius: BorderRadius.circular(30),
                     boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.monetization_on_rounded, color: Color(0xFFF59E0B), size: 20),
-                      const SizedBox(width: 8),
-                      Text('\$${(ganancias as num).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                    ]
-                  )
+                  child: GestureDetector(
+                    onTap: () => context.push('/ganancias'),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.monetization_on_rounded, color: Color(0xFFF59E0B), size: 20),
+                        const SizedBox(width: 8),
+                        Text('\$${(ganancias as num).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                        const SizedBox(width: 4),
+                        Icon(Icons.chevron_right_rounded, size: 16, color: isDark ? Colors.white38 : Colors.black38),
+                      ]
+                    ),
+                  ),
                 ),
                 GestureDetector(
                   onTap: _sosSending ? null : () async {
@@ -741,18 +1076,88 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
             ]
           ),
           const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => _toggleStatus(false),
-              icon: const Icon(Icons.power_settings_new_rounded, color: Colors.redAccent),
-              label: const Text('APAGAR TURNO', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w900, letterSpacing: 1)),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                side: const BorderSide(color: Colors.redAccent, width: 2),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              )
-            )
+          AnimatedScale(
+            scale: _isSuccess ? 1.05 : 1.0,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.elasticOut,
+            child: GestureDetector(
+              onTap: (_isPressed || _isSuccess) ? null : () => _toggleStatus(false),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                width: double.infinity,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: _isSuccess
+                      ? const Color(0xFF10B981)
+                      : _isPressed
+                          ? Colors.grey.withOpacity(0.1)
+                          : Colors.transparent,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: _isSuccess
+                        ? const Color(0xFF10B981)
+                        : _isPressed
+                            ? Colors.grey
+                            : Colors.redAccent,
+                    width: 2,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: _isSuccess
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          key: const ValueKey('success'),
+                          children: const [
+                            Icon(Icons.check_circle_rounded, color: Colors.white),
+                            SizedBox(width: 8),
+                            Text(
+                              '¡DESCONECTADO!',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ],
+                        )
+                      : _isPressed
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              key: const ValueKey('loading'),
+                              children: const [
+                                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.grey, strokeWidth: 2)),
+                                SizedBox(width: 8),
+                                Text(
+                                  'DESCONECTANDO...',
+                                  style: TextStyle(
+                                    color: Colors.grey,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              key: const ValueKey('idle'),
+                              children: const [
+                                Icon(Icons.power_settings_new_rounded, color: Colors.redAccent),
+                                SizedBox(width: 8),
+                                Text(
+                                  'APAGAR TURNO',
+                                  style: TextStyle(
+                                    color: Colors.redAccent,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                ),
+              ),
+            ),
           )
         ]
       )
@@ -830,42 +1235,91 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 120, top: 16, left: 16, right: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.fastOutSlowIn,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(32),
-                gradient: LinearGradient(
-                  colors: [Colors.grey.shade300, Colors.grey.shade400],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))],
+        padding: const EdgeInsets.only(bottom: 120, top: 40, left: 16, right: 16),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.0, end: 1.0),
+          duration: const Duration(milliseconds: 700),
+          curve: Curves.easeOutCubic,
+          builder: (context, value, child) {
+            return Transform.translate(
+              offset: Offset(0, 40 * (1 - value)),
+              child: Opacity(
+                opacity: value,
+                child: child,
               ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
+            );
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Texto de Estado
+              Center(
+                child: Text(
+                  'Estás desconectado',
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                    color: cs.onSurface,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  'Conéctate para empezar a recibir\npedidos y generar ganancias.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: cs.onSurfaceVariant.withOpacity(0.7),
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 64),
+
+              // Botón Circular "INICIAR"
+              Center(
+                child: GestureDetector(
                   onTap: () => _toggleStatus(true),
-                  borderRadius: BorderRadius.circular(32),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Row(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    width: 160,
+                    height: 160,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF3B82F6), Color(0xFF2563EB)], // Azul brillante
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF3B82F6).withOpacity(0.4),
+                          blurRadius: 30,
+                          spreadRadius: 10,
+                          offset: const Offset(0, 10),
+                        ),
+                        BoxShadow(
+                          color: Colors.white.withOpacity(isDark ? 0.05 : 0.2),
+                          blurRadius: 0,
+                          spreadRadius: 8,
+                        ),
+                      ],
+                    ),
+                    child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.power_settings_new_rounded, color: cs.onSurfaceVariant, size: 36),
-                        const SizedBox(width: 14),
+                      children: const [
+                        Icon(Icons.power_settings_new_rounded, color: Colors.white, size: 48),
+                        SizedBox(height: 8),
                         Text(
-                          'INICIAR TURNO',
+                          'INICIAR',
                           style: TextStyle(
+                            color: Colors.white,
                             fontSize: 22,
                             fontWeight: FontWeight.w900,
-                            color: cs.onSurfaceVariant,
-                            letterSpacing: 1.5,
+                            letterSpacing: 2,
                           ),
                         ),
                       ],
@@ -873,64 +1327,114 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 28),
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+
+              const SizedBox(height: 72),
+
+              // Tarjeta de Billetera (Rediseñada)
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                  borderRadius: BorderRadius.circular(32),
+                  border: Border.all(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    )
+                  ],
                 ),
-                borderRadius: BorderRadius.circular(32),
-                boxShadow: [
-                  BoxShadow(color: const Color(0xFF0F172A).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('MI BILLETERA', style: TextStyle(fontSize: 14, color: Colors.white70, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
-                      const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF38EF7D), size: 24),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
                           children: [
-                            const Text('Ganancias', style: TextStyle(fontSize: 13, color: Colors.white70, fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 4),
-                            Text('\$${(ganancias as num).toStringAsFixed(2)}', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF38EF7D), letterSpacing: -1)),
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981).withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF10B981), size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'MI BILLETERA',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isDark ? Colors.white70 : Colors.black54,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
                           ],
                         ),
-                      ),
-                      Container(width: 1, height: 50, color: Colors.white24),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Efectivo a entregar', style: TextStyle(fontSize: 13, color: Colors.white70, fontWeight: FontWeight.w600)),
-                              const SizedBox(height: 4),
-                              Text('\$${(deuda as num).toStringAsFixed(2)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFFF43F5E), letterSpacing: -1)),
-                            ],
+                        GestureDetector(
+                          onTap: () => context.push('/ganancias'),
+                          child: Icon(Icons.chevron_right_rounded, color: isDark ? Colors.white38 : Colors.black38, size: 24),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        // Ganancias (tap a /ganancias)
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => context.push('/ganancias'),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Ganancias', style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.black54, fontWeight: FontWeight.w600)),
+                                const SizedBox(height: 4),
+                                Text('\$${(ganancias as num).toStringAsFixed(2)}', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF10B981), letterSpacing: -1)),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                        Container(width: 1, height: 50, color: isDark ? Colors.white12 : Colors.black12),
+                        // Efectivo a entregar (tap abre desglose)
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: (deuda as num) > 0 ? () => _mostrarDeudaDetalle(isDark) : null,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text('Efectivo a entregar', style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.black54, fontWeight: FontWeight.w600)),
+                                      if ((deuda as num) > 0) ...[
+                                        const SizedBox(width: 4),
+                                        const Icon(Icons.info_outline_rounded, size: 14, color: Color(0xFFF43F5E)),
+                                      ],
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text('\$${(deuda as num).toStringAsFixed(2)}', style: TextStyle(
+                                    fontSize: 24, fontWeight: FontWeight.w900,
+                                    color: (deuda as num) > 0 ? const Color(0xFFF43F5E) : (isDark ? Colors.white54 : Colors.black38),
+                                    letterSpacing: -1,
+                                    decoration: (deuda as num) > 0 ? TextDecoration.underline : null,
+                                    decorationColor: const Color(0xFFF43F5E),
+                                  )),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

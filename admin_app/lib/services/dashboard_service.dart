@@ -12,10 +12,9 @@ class DashboardService {
     final now = DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day).toUtc().toIso8601String();
     
-    // Obtenemos todos los pedidos que se actualizaron hoy y que NO están cancelados.
     final response = await supabase
         .from('pedidos')
-        .select('id, precio_entrega, metodo_pago, estado, updated_at')
+        .select('id, precio_entrega, metodo_pago, estado, updated_at, descripcion')
         .gte('updated_at', startOfDay)
         .neq('estado', 'cancelado');
 
@@ -33,7 +32,16 @@ class DashboardService {
 
       serviciosHoy++;
 
-      final precio = (p['precio_entrega'] as num?)?.toDouble() ?? 0.0;
+      double precio = (p['precio_entrega'] as num?)?.toDouble() ?? 0.0;
+      
+      if (precio == 0.0) {
+        final desc = p['descripcion'] as String? ?? '';
+        final match = RegExp(r'Costo Envío.*\$([0-9.]+)').firstMatch(desc);
+        if (match != null && match.groupCount >= 1) {
+          precio = double.tryParse(match.group(1)!) ?? 0.0;
+        }
+      }
+
       final metodoPago = p['metodo_pago'] as String? ?? '';
       
       // Contar envíos gratis: precio 0, o pagados con billetera/cupon
@@ -58,7 +66,7 @@ class DashboardService {
     
     final response = await supabase
         .from('pedidos')
-        .select('id, precio_entrega, total, estado, updated_at, pago_pendiente_restaurante, metodo_pago')
+        .select('id, precio_entrega, total, estado, updated_at, pago_pendiente_restaurante, metodo_pago, descripcion')
         .eq('repartidor_id', repartidorId)
         .gte('updated_at', startOfDay)
         .neq('estado', 'cancelado');
@@ -72,12 +80,22 @@ class DashboardService {
       if (p['estado'] == 'entregado') {
         servicios++;
         
-        final precioEnvio = (p['precio_entrega'] as num?)?.toDouble() ?? 0.0;
+        double precioEnvio = (p['precio_entrega'] as num?)?.toDouble() ?? 0.0;
+        
+        // Si precioEnvio es 0, intentar extraer de la descripción "Costo Envío: $45"
+        if (precioEnvio == 0.0) {
+          final desc = p['descripcion'] as String? ?? '';
+          final match = RegExp(r'Costo Envío.*\$([0-9.]+)').firstMatch(desc);
+          if (match != null && match.groupCount >= 1) {
+            precioEnvio = double.tryParse(match.group(1)!) ?? 0.0;
+          }
+        }
+
         final total = (p['total'] as num?)?.toDouble() ?? 0.0;
         final pagoPendiente = p['pago_pendiente_restaurante'] as bool? ?? false;
         final metodoPago = p['metodo_pago'] as String? ?? 'efectivo';
 
-        // Ganancias siempre es el precio de entrega
+        // Ganancias siempre es el precio de entrega (solo lo del servicio)
         ganancias += precioEnvio;
 
         // Si el pago es pendiente y es en efectivo, el repartidor debe el costo de la comida
@@ -105,7 +123,7 @@ class DashboardService {
     
     var query = supabase
         .from('pedidos')
-        .select('precio_entrega, metodo_pago, estado, updated_at')
+        .select('precio_entrega, metodo_pago, estado, updated_at, descripcion')
         .gte('updated_at', startOf7DaysAgo)
         .eq('estado', 'entregado');
         
@@ -135,7 +153,16 @@ class DashboardService {
       
       final dateStr = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
       
-      final precio = (p['precio_entrega'] as num?)?.toDouble() ?? 0.0;
+      double precio = (p['precio_entrega'] as num?)?.toDouble() ?? 0.0;
+      
+      if (precio == 0.0) {
+        final desc = p['descripcion'] as String? ?? '';
+        final match = RegExp(r'Costo Envío.*\$([0-9.]+)').firstMatch(desc);
+        if (match != null && match.groupCount >= 1) {
+          precio = double.tryParse(match.group(1)!) ?? 0.0;
+        }
+      }
+
       final metodoPago = p['metodo_pago'] as String? ?? '';
       
       if (precio > 0 && metodoPago.toLowerCase() != 'billetera') {
