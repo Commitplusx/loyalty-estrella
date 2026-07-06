@@ -281,7 +281,7 @@ serve(async (req: Request) => {
                 interactive: {
                   type: 'button',
                   body: { text: mensajeRest.substring(0, 1024) },
-                  action: { buttons: [{ type: 'reply', reply: { id: `REST_ORDER_PREPARE_${ticketId}`, title: 'Empezar a Preparar' } }] }
+                  action: { buttons: [{ type: 'reply', reply: { id: `REST_ORDER_PREPARE_${record.id}`, title: 'Empezar a Preparar' } }] }
                 }
               })
             })
