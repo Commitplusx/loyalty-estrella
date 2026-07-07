@@ -259,31 +259,59 @@ serve(async (req: Request) => {
             `Por favor, acepta y gestiona el pedido desde tu panel:\n` +
             `👉 ${linkWeb}`
 
-          // Buscar teléfono del restaurante en BD
-          const { data: restData } = await supabase
-            .from('restaurantes')
-            .select('telefono')
-            .ilike('nombre', `%${record.restaurante}%`)
-            .eq('activo', true)
-            .limit(1)
-            .maybeSingle()
+          // Buscar teléfono del restaurante en BD (Seguridad: usar ID si está disponible)
+          let query = supabase.from('restaurantes').select('telefono').eq('activo', true)
+          if (record.restaurante_id) {
+            query = query.eq('id', record.restaurante_id)
+          } else {
+            query = query.ilike('nombre', `%${record.restaurante}%`)
+          }
+          const { data: restData } = await query.limit(1).maybeSingle()
 
           if (restData?.telefono) {
             console.log(`[DB_WEBHOOK] Teléfono encontrado para ${record.restaurante}: ${restData.telefono}, intentando enviar mensaje...`)
+            
+            const payloadTemplate = {
+              messaging_product: 'whatsapp',
+              recipient_type: 'individual',
+              to: formatTel(restData.telefono),
+              type: 'template',
+              template: {
+                name: 'pedido_nuevo_restaurante',
+                language: { code: 'es_MX' },
+                components: [
+                  {
+                    type: 'body',
+                    parameters: [
+                      { type: 'text', text: ticketId }, // {{1}} Orden
+                      { type: 'text', text: record.metodo_pago === 'en_linea' ? 'Tarjeta/Web' : 'Efectivo' }, // {{2}} Metodo de pago
+                      { type: 'text', text: (record.total || 0).toString() } // {{3}} Total
+                    ]
+                  },
+                  {
+                    type: 'button',
+                    sub_type: 'quick_reply',
+                    index: '0',
+                    parameters: [
+                      { type: 'payload', payload: `REST_ORDER_PREPARE_${record.id}` }
+                    ]
+                  },
+                  {
+                    type: 'button',
+                    sub_type: 'quick_reply',
+                    index: '1',
+                    parameters: [
+                      { type: 'payload', payload: `REST_ORDER_REJECT_${record.id}` }
+                    ]
+                  }
+                ]
+              }
+            };
+
             const resRest = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                messaging_product: 'whatsapp',
-                recipient_type: 'individual',
-                to: formatTel(restData.telefono),
-                type: 'interactive',
-                interactive: {
-                  type: 'button',
-                  body: { text: mensajeRest.substring(0, 1024) },
-                  action: { buttons: [{ type: 'reply', reply: { id: `REST_ORDER_PREPARE_${record.id}`, title: 'Empezar a Preparar' } }] }
-                }
-              })
+              body: JSON.stringify(payloadTemplate)
             })
             const resText = await resRest.text()
             if (!resRest.ok) {
@@ -444,7 +472,7 @@ serve(async (req: Request) => {
     }
 
     if (tipo === 'nueva_orden_admin') {
-      const { restaurante, descripcion, ticket_id, tipo_entrega } = payload
+      const { restaurante, restaurante_id, descripcion, ticket_id, tipo_entrega } = payload
       const adminPhoneRaw = Deno.env.get('ADMIN_PHONE_BILLETERA') || Deno.env.get('ADMIN_PHONE') || (Deno.env.get('ADMIN_PHONES') ?? '').split(',')[0]?.trim()
       
       const icono = tipo_entrega === 'tienda' ? '🏪' : '🛵'
@@ -465,47 +493,70 @@ serve(async (req: Request) => {
       }
 
       // 2. Notificar al Restaurante directamente (si tiene teléfono registrado y activo)
-      if (restaurante) {
-        const { data: restData } = await supabase
-          .from('restaurantes')
-          .select('telefono')
-          .ilike('nombre', `%${restaurante}%`)
-          .eq('activo', true)
-          .limit(1)
-          .maybeSingle();
+      if (restaurante || restaurante_id) {
+        let query = supabase.from('restaurantes').select('telefono').eq('activo', true)
+        if (restaurante_id) {
+          query = query.eq('id', restaurante_id)
+        } else if (restaurante) {
+          query = query.ilike('nombre', `%${restaurante}%`)
+        }
+        const { data: restData } = await query.limit(1).maybeSingle();
 
         if (restData?.telefono) {
           const restTelFormateado = formatTel(restData.telefono);
-          const linkWeb = `https://restaurantes-app-estrella.shop/portal`;
-          const mensajeRest = `🚨 *¡ATENCIÓN! NUEVO PEDIDO* 🚨\n\n` +
-            `*Entrega:* ${icono} ${etiqueta}\n\n` +
-            `🛒 *RESUMEN DEL PEDIDO:*\n` +
-            `------------------------\n` +
-            `${descripcion}\n` +
-            `------------------------\n\n` +
-            `👨‍🍳 *¡Manos a la obra!*\n` +
-            `Por favor, acepta y gestiona el pedido desde tu panel:\n` +
-            `👉 ${linkWeb}`
 
-          const payloadInteractive = {
+          // Buscar datos faltantes del pedido para llenar la plantilla
+          const { data: pData } = await supabase
+            .from('pedidos')
+            .select('id, metodo_pago, total')
+            .eq('wb_message_id', ticket_id)
+            .limit(1)
+            .maybeSingle();
+
+          const realId = pData?.id || ticket_id;
+          const metodoPagoText = pData?.metodo_pago === 'en_linea' ? 'Tarjeta/Web' : (pData?.metodo_pago || 'Efectivo');
+          const totalText = pData?.total ? pData.total.toString() : '0';
+
+          const payloadTemplate = {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
             to: restTelFormateado,
-            type: 'interactive',
-            interactive: {
-              type: 'button',
-              body: { text: mensajeRest.substring(0, 1024) },
-              action: {
-                buttons: [
-                  { type: 'reply', reply: { id: `REST_ORDER_PREPARE_${ticket_id}`, title: 'Empezar a Preparar' } }
-                ]
-              }
+            type: 'template',
+            template: {
+              name: 'pedido_nuevo_restaurante',
+              language: { code: 'es_MX' },
+              components: [
+                {
+                  type: 'body',
+                  parameters: [
+                    { type: 'text', text: ticket_id }, // {{1}} Orden
+                    { type: 'text', text: metodoPagoText }, // {{2}} Metodo de pago
+                    { type: 'text', text: totalText } // {{3}} Total
+                  ]
+                },
+                {
+                  type: 'button',
+                  sub_type: 'quick_reply',
+                  index: '0',
+                  parameters: [
+                    { type: 'payload', payload: `REST_ORDER_PREPARE_${realId}` }
+                  ]
+                },
+                {
+                  type: 'button',
+                  sub_type: 'quick_reply',
+                  index: '1',
+                  parameters: [
+                    { type: 'payload', payload: `REST_ORDER_REJECT_${realId}` }
+                  ]
+                }
+              ]
             }
           };
 
           const resRest = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
             method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(payloadInteractive)
+            body: JSON.stringify(payloadTemplate)
           }, 15000);
           
           if (!resRest.ok) console.error(`WA error nueva_orden_admin (restaurante):`, await resRest.text());

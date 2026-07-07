@@ -162,7 +162,30 @@ class PedidoService {
           .single();
 
       final pedidoId = inserted['id'] as String;
+
+      // 1. Notificar al repartidor asignado
       await _notificar(pedidoId: pedidoId, tipo: 'asignacion');
+
+      // 2. Notificar al restaurante y al admin (si hay restaurante seleccionado)
+      if (restaurante != null && restaurante.isNotEmpty) {
+        try {
+          // Generar un ticket_id legible desde el pedidoId
+          final ticketId = pedidoId.toUpperCase().substring(pedidoId.length - 5);
+          await supabase.functions.invoke(
+            'notificar-whatsapp',
+            body: {
+              'tipo': 'nueva_orden_admin',
+              'restaurante': restaurante,
+              'descripcion': descripcion,
+              'ticket_id': ticketId,
+              'tipo_entrega': (direccion != null && direccion.isNotEmpty) ? 'domicilio' : 'tienda',
+            },
+          );
+        } catch (e) {
+          debugPrint('Aviso: No se pudo notificar al restaurante: $e');
+        }
+      }
+
       return (ok: true, error: null, pedidoId: pedidoId);
     } catch (e) {
       debugPrint('Error crearPedido: $e');
