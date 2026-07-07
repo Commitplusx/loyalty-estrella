@@ -113,7 +113,7 @@ Deno.serve(async (req: Request) => {
   if (action === 'accept') {
     // Mayor entropía en contraseña: 8 caracteres random (letras y números)
     const rChars = Math.random().toString(36).substring(2, 10);
-    const genPassword = `Estrella-${rChars}*`;
+    const genPassword = `Estrella-${rChars}`;
 
     // EMAIL CANÓNICO: siempre derivado del teléfono, nunca del correo que dictó el cliente.
     // Esto garantiza que el login del portal (aliado_TEL@app-estrella.shop) siempre funcione.
@@ -167,7 +167,7 @@ Deno.serve(async (req: Request) => {
     let msgCredenciales = `🎉 *¡Felicidades, ${sol.encargado || 'aliado'}!*\n\n¡Tu restaurante ha sido aprobado por nuestro equipo! 🥳 Ya eres parte oficial de la familia Estrella Eats.\n\nAquí tienes tu Código QR y tu link público para que tus clientes comiencen a pedir:\n👉 ${menuUrl}`;
 
     if (isAuthCreated) {
-      msgCredenciales += `\n\nPara administrar tu menú e información, ingresa a:\n👉 *https://restaurantes-app-estrella.shop*\n\n_(Usuario: tu número de teléfono *${tel}* / Clave: ${genPassword})_`;
+      msgCredenciales += `\n\nPara administrar tu menú e información, ingresa a:\n👉 https://restaurantes-app-estrella.shop\n\n*Usuario:* ${tel}\n*Clave:* ${genPassword}`;
     }
     await sendWA(sendPhone, msgCredenciales)
 
