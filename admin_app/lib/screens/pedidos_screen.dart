@@ -19,7 +19,7 @@ import 'package:geolocator/geolocator.dart';
 import 'pedido_detail_screen.dart';
 
 // Provider de pedidos activos usando stream realtime directo
-final pedidosActivosProvider = StreamProvider.autoDispose<List<PedidoModel>>((ref) {
+final pedidosActivosProvider = StreamProvider<List<PedidoModel>>((ref) {
   final isAdmin = ref.watch(isAdminProvider);
   final userId = isAdmin ? null : supabase.auth.currentUser?.id;
 
@@ -52,7 +52,7 @@ final pedidosActivosProvider = StreamProvider.autoDispose<List<PedidoModel>>((re
 });
 
 // Provider de repartidores (para el dropdown) con caché
-final repartidoresListProvider = StreamProvider.autoDispose<List<Map<String, dynamic>>>((ref) async* {
+final repartidoresListProvider = StreamProvider<List<Map<String, dynamic>>>((ref) async* {
   const cacheKey = 'repartidores_activos_list';
 
   final cached = await CacheHelper.getList(cacheKey);

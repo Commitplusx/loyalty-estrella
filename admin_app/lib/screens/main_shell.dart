@@ -15,7 +15,7 @@ import 'dashboard_screen.dart' show statsProvider;
 import 'pedidos_screen.dart' show pedidosActivosProvider;
 
 // Provider para contar solicitudes pendientes
-final pendingSolicitudesProvider = FutureProvider.autoDispose<int>((ref) async {
+final pendingSolicitudesProvider = FutureProvider<int>((ref) async {
   final res = await supabase
       .from('restaurantes_solicitudes')
       .select('id')
@@ -26,7 +26,7 @@ final pendingSolicitudesProvider = FutureProvider.autoDispose<int>((ref) async {
 final lastSeenPedidosProvider = StateProvider<DateTime>((ref) => DateTime.now());
 
 // Provider para contar pedidos pendientes usando stream
-final pendingPedidosCountProvider = StreamProvider.autoDispose<int>((ref) {
+final pendingPedidosCountProvider = StreamProvider<int>((ref) {
   final lastSeen = ref.watch(lastSeenPedidosProvider);
   return supabase
       .from('pedidos')
@@ -41,7 +41,7 @@ final pendingPedidosCountProvider = StreamProvider.autoDispose<int>((ref) {
 });
 
 // Provider para detectar viajes asignados al repartidor actual
-final incomingDriverOrderProvider = StreamProvider.autoDispose<PedidoModel?>((ref) {
+final incomingDriverOrderProvider = StreamProvider<PedidoModel?>((ref) {
   final user = supabase.auth.currentUser;
   if (user == null) return Stream.value(null);
   
@@ -49,7 +49,7 @@ final incomingDriverOrderProvider = StreamProvider.autoDispose<PedidoModel?>((re
       .from('pedidos')
       .stream(primaryKey: ['id'])
       .map((list) {
-         final pending = list.where((p) => p['repartidor_id'] == user.id && p['estado'] == 'asignado');
+         final pending = list.where((p) => p['repartidor_id'] == user.id && p['estado'] == 'ofrecido');
          if (pending.isEmpty) return null;
          return PedidoModel.fromMap(pending.first);
       });
@@ -66,6 +66,7 @@ class MainShell extends ConsumerStatefulWidget {
 class _MainShellState extends ConsumerState<MainShell> {
   bool _isNavVisible = true;
   bool _isExpanded = false;
+  bool _isShowingIncomingDialog = false;
 
   @override
   Widget build(BuildContext context) {
@@ -84,6 +85,48 @@ class _MainShellState extends ConsumerState<MainShell> {
     
     final pedidosCountAsync = ref.watch(pendingPedidosCountProvider);
     final pedidosCount = pedidosCountAsync.valueOrNull ?? 0;
+
+    // ── MAGIA GLOBAL: Escuchador anti-zombies ──
+    if (!isAdmin) {
+      ref.listen<AsyncValue<PedidoModel?>>(incomingDriverOrderProvider, (previous, next) {
+        final pedido = next.valueOrNull;
+        
+        if (pedido != null && !_isShowingIncomingDialog) {
+          _isShowingIncomingDialog = true;
+          showGeneralDialog(
+            context: context,
+            barrierDismissible: false,
+            barrierColor: Colors.black87,
+            transitionDuration: const Duration(milliseconds: 300),
+            pageBuilder: (ctx, anim1, anim2) {
+              return IncomingOrderOverlay(
+                pedido: pedido,
+                onAccept: () {
+                  if (_isShowingIncomingDialog) {
+                    _isShowingIncomingDialog = false;
+                    Navigator.of(ctx).pop();
+                    context.go('/pedidos/${pedido.id}');
+                  }
+                },
+                onReject: () {
+                  if (_isShowingIncomingDialog) {
+                    _isShowingIncomingDialog = false;
+                    Navigator.of(ctx).pop();
+                  }
+                },
+              );
+            },
+          ).then((_) {
+            _isShowingIncomingDialog = false;
+          });
+        } else if (pedido == null && _isShowingIncomingDialog) {
+          // El backend (QStash) nos quitó el pedido, o el timeout pasó.
+          // Hay que destruir el popup para no dejar la pantalla zombie.
+          _isShowingIncomingDialog = false;
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+      });
+    }
 
     final tabs = [
       const _TabItem(icon: Icons.grid_view_rounded,      activeIcon: Icons.grid_view_rounded,     label: 'Dashboard',  route: '/dashboard'),
@@ -238,7 +281,7 @@ class _MainShellState extends ConsumerState<MainShell> {
             ),
           ),
           floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-          floatingActionButton: isPedidoDetail ? null : AnimatedSlide(
+          floatingActionButton: (isPedidoDetail || location == '/driver' || location == '/dashboard') ? null : AnimatedSlide(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOutCubic,
             offset: _isNavVisible || _isExpanded ? Offset.zero : const Offset(0, 2.0),

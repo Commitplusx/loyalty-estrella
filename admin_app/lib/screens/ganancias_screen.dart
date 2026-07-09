@@ -161,14 +161,61 @@ class GananciasScreen extends ConsumerWidget {
                   delegate: SliverChildBuilderDelegate(
                     (ctx, i) {
                       final p = pedidos[i];
+                      final isLast = i == pedidos.length - 1;
                       return FadeInUp(
                         delay: Duration(milliseconds: i * 60),
                         duration: const Duration(milliseconds: 350),
-                        child: _PedidoCard(
-                          pedido: p,
-                          isDark: isDark,
-                          cs: cs,
-                          index: i,
+                        child: IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // ── Timeline Node ──
+                              SizedBox(
+                                width: 36,
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      width: 14,
+                                      height: 14,
+                                      margin: const EdgeInsets.only(top: 28),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF10B981),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: isDark ? const Color(0xFF0A0A0A) : const Color(0xFFF5F5F7),
+                                          width: 3,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFF10B981).withOpacity(0.4),
+                                            blurRadius: 6,
+                                            spreadRadius: 1,
+                                          )
+                                        ],
+                                      ),
+                                    ),
+                                    if (!isLast)
+                                      Expanded(
+                                        child: Container(
+                                          width: 2,
+                                          color: isDark ? Colors.white12 : Colors.black12,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // ── Card ──
+                              Expanded(
+                                child: _PedidoCard(
+                                  pedido: p,
+                                  isDark: isDark,
+                                  cs: cs,
+                                  index: i,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       );
                     },

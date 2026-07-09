@@ -60,6 +60,7 @@ serve(async (req) => {
     // Si es un webhook, el payload viene dentro de `record`
     const payload = rawPayload.record || rawPayload;
     const pedido_uuid = payload.id;
+    const excluir_id = payload.excluir; // ID del repartidor que acaba de rechazar el pedido
 
     if (!pedido_uuid) {
       console.error("[DEBUG] pedido_uuid no encontrado en el payload.");
@@ -75,7 +76,7 @@ serve(async (req) => {
     // EXTRAER DATOS DIRECTAMENTE DE LA BD (100% SEGURO)
     const { data: dbPedido, error: dbError } = await supabase
       .from('pedidos')
-      .select('id, wb_message_id, restaurante, direccion, total, lat, lng, metodo_pago, estado, tipo_pedido, repartidor_id')
+      .select('id, wb_message_id, restaurante, direccion, total, lat, lng, lat_entrega, lng_entrega, metodo_pago, estado, tipo_pedido, repartidor_id')
       .eq(searchColumn, pedido_uuid)
       .single();
 
@@ -117,14 +118,40 @@ serve(async (req) => {
         const { data, error: rpcErr } = await supabase.rpc('buscar_repartidores_cercanos', {
             p_lat: lat,
             p_lng: lng,
-            p_radio_metros: 5000
+            p_radio_metros: 5000,
+            p_cliente_lat: dbPedido.lat_entrega,
+            p_cliente_lng: dbPedido.lng_entrega
         });
         
         if (rpcErr) {
             console.error('[RPC ERROR]', rpcErr);
             throw new Error(`Error en RPC PostGIS: ${rpcErr.message}`);
         }
-        repartidoresValidos = data || [];
+        repartidoresValidos = (data || []).map((r: any) => ({ ...r, repartidor_id: r.user_id || r.id }));
+        
+        // 🔒 CANDADO ANTI-AMONTONAMIENTO (El "Lock" del Francotirador)
+        // Filtramos a los repartidores que en este exacto milisegundo tienen un pedido 'ofrecido' 
+        // sonando en su pantalla, para no mandarles 2 alertas encimadas.
+        if (repartidoresValidos.length > 0) {
+            const repIds = repartidoresValidos.map((r: any) => r.repartidor_id);
+            const { data: pedidosOfrecidos } = await supabase
+                .from('pedidos')
+                .select('repartidor_id')
+                .in('repartidor_id', repIds)
+                .eq('estado', 'ofrecido');
+                
+            if (pedidosOfrecidos && pedidosOfrecidos.length > 0) {
+                const lockedDriverIds = new Set(pedidosOfrecidos.map((p: any) => p.repartidor_id));
+                repartidoresValidos = repartidoresValidos.filter((r: any) => !lockedDriverIds.has(r.repartidor_id));
+                console.log(`[LOCK] Se descartaron ${lockedDriverIds.size} repartidores porque están decidiendo un pedido ahora mismo.`);
+            }
+        }
+        
+        // ZERO-WAIT: Excluir al repartidor que acaba de rechazar el pedido
+        if (excluir_id && repartidoresValidos.length > 0) {
+            repartidoresValidos = repartidoresValidos.filter((r: any) => r.repartidor_id !== excluir_id);
+            console.log(`[ZERO-WAIT] Excluyendo al repartidor ${excluir_id} de la asignación.`);
+        }
         
         // 2. Refinamiento con Google Maps Distance Matrix API (ETA Real)
         const googleMapsKey = Deno.env.get('GOOGLE_MAPS_KEY');
@@ -132,7 +159,7 @@ serve(async (req) => {
             try {
                 // Recuperar lat/lng exactos de los candidatos para la API
                 const repIds = repartidoresValidos.map(r => r.repartidor_id);
-                const { data: repCoords } = await supabase.from('repartidores').select('id, lat, lng').in('id', repIds);
+                const { data: repCoords } = await supabase.from('repartidores').select('id, user_id, lat, lng').in('id', repIds);
                 
                 if (repCoords && repCoords.length > 0) {
                     const destinations = repCoords.filter(r => r.lat && r.lng).map(r => `${r.lat},${r.lng}`).join('|');
@@ -151,7 +178,7 @@ serve(async (req) => {
                                 const durationSeconds = elements[idx].duration.value;
                                 // Actualizar el score: Reemplazamos la distancia lineal con el ETA real
                                 // Score = (ETA_minutos * 10) - (batería * 10) + (carga * 50)
-                                const targetRep = repartidoresValidos.find(r => r.repartidor_id === coord.id);
+                                const targetRep = repartidoresValidos.find(r => r.repartidor_id === (coord.user_id || coord.id));
                                 if (targetRep) {
                                     const etaMinutos = durationSeconds / 60;
                                     targetRep.eta_minutos = Math.round(etaMinutos);
@@ -175,7 +202,11 @@ serve(async (req) => {
         const { data } = await supabase.from('repartidores').select('id, user_id, lat, lng, bateria, meta_envios').eq('activo', true);
         repartidoresValidos = (data || [])
           .filter(r => r.bateria === null || r.bateria >= 15)
-          .map(r => ({ ...r, repartidor_id: r.id }));
+          .map(r => ({ ...r, repartidor_id: r.user_id || r.id }));
+          
+        if (excluir_id) {
+            repartidoresValidos = repartidoresValidos.filter((r: any) => r.repartidor_id !== excluir_id);
+        }
     }
 
     if (!repartidoresValidos || repartidoresValidos.length === 0) {
@@ -185,9 +216,44 @@ serve(async (req) => {
       return new Response(JSON.stringify({ ok: false, reason: 'no_drivers' }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
     }
 
-    // 2. Lógica de Selección (Tomamos los 2 mejores del RPC)
-    const repartidor1 = repartidoresValidos[0];
-    const repartidor2 = repartidoresValidos[1] ?? null;
+    // 2. Lógica de Selección y Bloqueo Atómico (Resolviendo Thundering Herd)
+    let repartidor1 = null;
+    let repartidor2 = null;
+    let assigned = false;
+
+    // Intentamos asignarlo atómicamente. Si el #1 está ocupado decidiendo otro pedido (milisegundos antes),
+    // el RPC fallará y pasaremos al #2, y así sucesivamente.
+    for (let i = 0; i < repartidoresValidos.length; i++) {
+        const rep = repartidoresValidos[i];
+        
+        // ¡MAGIA ATÓMICA!
+        const { data: success, error: atomicErr } = await supabase.rpc('asignar_pedido_atomico', {
+            p_pedido_id: dbPedido.id,
+            p_repartidor_id: rep.repartidor_id
+        });
+
+        if (atomicErr) {
+            console.error('[ATOMIC LOCK ERROR]', atomicErr);
+            return new Response(JSON.stringify({ ok: false, reason: 'atomic_err', dbError: atomicErr }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
+        }
+
+        if (success) {
+            assigned = true;
+            repartidor1 = rep;
+            repartidor2 = repartidoresValidos[i + 1] ?? null;
+            break;
+        } else {
+            console.log(`[ATOMIC LOCK] Repartidor ${rep.repartidor_id} está ocupado decidiendo. Saltando al siguiente...`);
+        }
+    }
+
+    if (!assigned) {
+        console.log(`[ATOMIC LOCK] Todos los repartidores cercanos están ocupados decidiendo un pedido. El pedido quedará en cola.`);
+        if (ADMIN_PHONE_MAIN) {
+            await sendWA(ADMIN_PHONE_MAIN, `⚠️ *Saturación de Ping*\n\nEl pedido #${ticket_id} entró cuando todos los repartidores estaban decidiendo. Se quedó flotando.\n📦 ${restaurante}`);
+        }
+        return new Response(JSON.stringify({ ok: false, reason: 'all_busy_deciding', drivers_checked: repartidoresValidos.length }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+    }
 
     // Patrón "Stateless Event-Driven":
     // 1. Mandamos el Ping al Repartidor 1 por Realtime (para Foreground)
@@ -200,7 +266,8 @@ serve(async (req) => {
         pedido_id: String(dbPedido.id),
         restaurante: restaurante,
         direccion: direccion,
-        total: total
+        total: total,
+        viaje_apilado: repartidor1.viaje_apilado || false
       }
     });
 
@@ -231,7 +298,8 @@ serve(async (req) => {
             pedido_id: String(dbPedido.id),
             restaurante: String(restaurante || 'Estrella'),
             click_action: "FLUTTER_NOTIFICATION_CLICK",
-            target_driver_id: String(repartidor1Id || '')
+            target_driver_id: String(repartidor1Id || ''),
+            viaje_apilado: String(repartidor1.viaje_apilado || false)
           }
         });
         console.log(`[FCM SNIPER] ✅ Misil FCM DATA-ONLY disparado a driver_${repartidor1Id} con éxito.`);
@@ -265,7 +333,7 @@ serve(async (req) => {
           headers: {
             'Authorization': `Bearer ${QSTASH_TOKEN}`,
             'Content-Type': 'application/json',
-            'Upstash-Delay': '15s' // ¡La magia de QStash!
+            'Upstash-Delay': '25s' // ¡La magia de QStash!
           },
           body: JSON.stringify(payload)
         });

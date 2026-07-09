@@ -157,9 +157,7 @@ export async function handleRestaurantOnboarding(
         `👤 Responsable: *${stateObj.responsable}*\n` +
         `🏪 Restaurante: *${stateObj.nombreRest}*\n` +
         `📍 Ubicación: ${stateObj.ubicacion}\n` +
-        `📸 Foto: ${fotoText}\n\n` +
-        `✅ /rest_accept_${from10}  → APROBAR\n` +
-        `❌ /rest_reject_${from10}  → RECHAZAR`
+        `📸 Foto: ${fotoText}`
       )
 
       // Delay igual que el loyalty — Meta necesita este respiro

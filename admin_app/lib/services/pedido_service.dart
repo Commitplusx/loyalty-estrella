@@ -224,10 +224,18 @@ class PedidoService {
           'listo_para_recoger': 5, 'recibido': 6, 'en_camino': 7, 'entregado': 8, 'cancelado': 9, 'rechazado': 10
         };
         
-        final currentData = await supabase.from('pedidos').select('estado').eq('id', pedidoId).single();
+        final currentData = await supabase.from('pedidos').select('estado, repartidor_id').eq('id', pedidoId).single();
         final currentState = currentData['estado'] as String;
+        final currentRepartidor = currentData['repartidor_id'] as String?;
         final currentPriority = priority[currentState] ?? -2;
         final newPriority = priority[nuevoEstado] ?? -2;
+
+        // 🔒 CANDADO ANTI-ROBO (Si el timeout se lo dio a alguien más, no puedes aceptarlo)
+        if ((nuevoEstado == 'asignado' || nuevoEstado == 'aceptado') && user != null) {
+          if (currentRepartidor != null && currentRepartidor != user.id) {
+            throw Exception('FRAUDE DE ASIGNACIÓN: El pedido ya fue transferido a otro repartidor.');
+          }
+        }
 
         if (newPriority < currentPriority) {
           debugPrint('AVISO: Intento de regresar estado de $currentState a $nuevoEstado bloqueado.');

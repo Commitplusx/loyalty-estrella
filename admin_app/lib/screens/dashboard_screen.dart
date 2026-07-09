@@ -256,7 +256,7 @@ class DashboardScreen extends ConsumerWidget {
               )
             else
               SliverFillRemaining(
-                hasScrollBody: false,
+                hasScrollBody: true,
                 child: statsAsync.when(
                   data: (stats) => DriverDashboardView(stats: stats),
                   loading: () => const Center(child: CircularProgressIndicator()),
@@ -406,7 +406,9 @@ class _VitalStatsCard extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 24),
-              Row(
+              Wrap(
+                spacing: 24,
+                runSpacing: 16,
                 children: [
                   if (isAdmin) _MiniStat(
                     label: 'Ingresos Hoy', 
@@ -414,11 +416,15 @@ class _VitalStatsCard extends StatelessWidget {
                     isCurrency: true,
                     color: const Color(0xFF10B981),
                   ),
-                  if (isAdmin) const SizedBox(width: 32),
                   _MiniStat(
                     label: 'Gratis Hoy', 
-                    value: stats['gratis'] ?? 0,
-                    color: theme.colorScheme.onSurface.withOpacity(0.8),
+                    value: stats['enviosGratis'] ?? 0,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                  ),
+                  if (isAdmin) _MiniStat(
+                    label: 'Visitas Hoy', 
+                    value: stats['visitas'] ?? 0,
+                    color: const Color(0xFFF59E0B),
                   ),
                 ],
               ),

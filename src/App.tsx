@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { ToastProvider } from '@/components/ui/toast-native';
@@ -52,6 +53,23 @@ function App() {
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', '#ffffff');
   }, [isDark]);
+
+  // Visitor tracking
+  useEffect(() => {
+    const trackVisit = async () => {
+      const isTracked = sessionStorage.getItem('visitTracked');
+      if (!isTracked) {
+        try {
+          const plataforma = window.navigator.userAgent.toLowerCase().includes('mobi') ? 'mobile' : 'web';
+          await supabase.from('app_visitas').insert([{ plataforma }]);
+          sessionStorage.setItem('visitTracked', 'true');
+        } catch (e) {
+          console.error('Error tracking visit:', e);
+        }
+      }
+    };
+    trackVisit();
+  }, []);
 
   const handleSplashComplete = () => {
     sessionStorage.setItem('splashShown', 'true');

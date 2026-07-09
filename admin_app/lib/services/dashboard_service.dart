@@ -23,6 +23,19 @@ class DashboardService {
     int serviciosHoy = 0;
     double gananciasHoy = 0.0;
     int enviosGratisHoy = 0;
+    int visitasHoy = 0;
+
+    // Obtener visitas de hoy
+    try {
+      final visitasResponse = await supabase
+          .from('app_visitas')
+          .select('id')
+          .gte('created_at', startOfDay);
+      
+      visitasHoy = (visitasResponse as List).length;
+    } catch (e) {
+      print('Error al obtener visitas: $e');
+    }
 
     for (var p in pedidos) {
       final estado = p['estado'] as String? ?? '';
@@ -55,7 +68,8 @@ class DashboardService {
     return {
       'servicios': serviciosHoy,
       'ganancias': gananciasHoy,
-      'gratis': enviosGratisHoy,
+      'enviosGratis': enviosGratisHoy,
+      'visitas': visitasHoy,
     };
   }
 

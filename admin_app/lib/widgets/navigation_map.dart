@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:ui' as ui;
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -28,11 +30,56 @@ class _NavigationMapState extends State<NavigationMap> {
   Set<Polyline> _polylines = {};
   Set<Marker> _markers = {};
   StreamSubscription<Position>? _positionStream;
+  BitmapDescriptor? _blackMarkerIcon;
+  List<LatLng> _fullRoute = [];
+
+  Future<BitmapDescriptor> _createBlackMarker() async {
+    final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
+    final Canvas canvas = Canvas(pictureRecorder);
+    final Paint paint = Paint()..color = Colors.black;
+    final double radius = 12.0;
+    
+    canvas.drawCircle(Offset(radius, radius), radius, paint);
+    
+    final Paint borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0;
+    canvas.drawCircle(Offset(radius, radius), radius, borderPaint);
+    
+    final ui.Image image = await pictureRecorder.endRecording().toImage(
+          (radius * 2).toInt(),
+          (radius * 2).toInt(),
+        );
+    final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    final Uint8List uint8List = byteData!.buffer.asUint8List();
+    return BitmapDescriptor.fromBytes(uint8List);
+  }
 
   @override
   void initState() {
     super.initState();
+    _createBlackMarker().then((icon) {
+      if (mounted) {
+        setState(() => _blackMarkerIcon = icon);
+        _updateMarkers();
+      }
+    });
     _checkLocationPermissionAndStart();
+  }
+
+  @override
+  void didUpdateWidget(NavigationMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.destLat != widget.destLat || oldWidget.destLng != widget.destLng) {
+      _updateMarkers();
+      if (widget.googleMapsApiKey != null && widget.googleMapsApiKey!.isNotEmpty) {
+        _fullRoute = []; // Clear old route bounds
+        _getPolyline();
+      } else {
+        _moveCamera(LatLng(widget.destLat, widget.destLng));
+      }
+    }
   }
 
   Future<void> _checkLocationPermissionAndStart() async {
@@ -50,13 +97,14 @@ class _NavigationMapState extends State<NavigationMap> {
     if (permission == LocationPermission.deniedForever) return;
 
     final position = await Geolocator.getCurrentPosition();
-    setState(() {
-      _currentPosition = LatLng(position.latitude, position.longitude);
-      _updateMarkers();
-    });
-
-    if (widget.googleMapsApiKey != null && widget.googleMapsApiKey!.isNotEmpty) {
-      _getPolyline();
+    if (mounted) {
+      setState(() {
+        _currentPosition = LatLng(position.latitude, position.longitude);
+        _updateMarkers();
+      });
+      if (widget.googleMapsApiKey != null && widget.googleMapsApiKey!.isNotEmpty) {
+        _getPolyline();
+      }
     }
 
     _positionStream = Geolocator.getPositionStream(
@@ -65,12 +113,12 @@ class _NavigationMapState extends State<NavigationMap> {
         distanceFilter: 10,
       ),
     ).listen((Position position) {
-      setState(() {
-        _currentPosition = LatLng(position.latitude, position.longitude);
-        _updateMarkers();
-      });
       if (mounted) {
-        _moveCamera(_currentPosition!);
+        setState(() {
+          _currentPosition = LatLng(position.latitude, position.longitude);
+          _updateMarkers();
+        });
+        // Si no hay ruta aún, o queremos centrar, podemos hacerlo aquí
       }
     });
   }
@@ -81,16 +129,35 @@ class _NavigationMapState extends State<NavigationMap> {
         Marker(
           markerId: const MarkerId('currentLocation'),
           position: _currentPosition!,
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          icon: _blackMarkerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
           infoWindow: const InfoWindow(title: 'Mi Ubicación'),
         ),
       Marker(
         markerId: const MarkerId('destination'),
         position: LatLng(widget.destLat, widget.destLng),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+        icon: _blackMarkerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
         infoWindow: InfoWindow(title: widget.destinationName),
       ),
     };
+  }
+
+  LatLngBounds _boundsFromLatLngList(List<LatLng> list) {
+    double? x0, x1, y0, y1;
+    for (LatLng latLng in list) {
+      if (x0 == null) {
+        x0 = x1 = latLng.latitude;
+        y0 = y1 = latLng.longitude;
+      } else {
+        if (latLng.latitude > x1!) x1 = latLng.latitude;
+        if (latLng.latitude < x0) x0 = latLng.latitude;
+        if (latLng.longitude > y1!) y1 = latLng.longitude;
+        if (latLng.longitude < y0!) y0 = latLng.longitude;
+      }
+    }
+    return LatLngBounds(
+      northeast: LatLng(x1!, y1!),
+      southwest: LatLng(x0!, y0!),
+    );
   }
 
   Future<void> _getPolyline() async {
@@ -111,11 +178,12 @@ class _NavigationMapState extends State<NavigationMap> {
       for (var point in result.points) {
         polylineCoordinates.add(LatLng(point.latitude, point.longitude));
       }
+      _fullRoute = polylineCoordinates;
 
       List<LatLng> animatedCoordinates = [];
       int i = 0;
       
-      Timer.periodic(const Duration(milliseconds: 30), (timer) {
+      Timer.periodic(const Duration(milliseconds: 30), (timer) async {
         if (!mounted) {
           timer.cancel();
           return;
@@ -127,18 +195,19 @@ class _NavigationMapState extends State<NavigationMap> {
             _polylines.add(
               Polyline(
                 polylineId: const PolylineId('route'),
-                color: const Color(0xFF3B82F6), // Azul vibrante
-                points: List.from(animatedCoordinates),
+                color: Colors.black87,
                 width: 6,
-                jointType: JointType.round,
-                startCap: Cap.roundCap,
-                endCap: Cap.roundCap,
+                points: List.from(animatedCoordinates),
               ),
             );
           });
           i++;
         } else {
           timer.cancel();
+          // Al terminar la animación, ajustamos el zoom a los bordes
+          final GoogleMapController controller = await _controller.future;
+          LatLngBounds bounds = _boundsFromLatLngList(polylineCoordinates);
+          controller.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80)); // Padding de 80
         }
       });
     }
@@ -146,15 +215,27 @@ class _NavigationMapState extends State<NavigationMap> {
 
   Future<void> _moveCamera(LatLng pos) async {
     final GoogleMapController controller = await _controller.future;
-    controller.animateCamera(CameraUpdate.newCameraPosition(
-      CameraPosition(target: pos, zoom: 17, tilt: 45),
-    ));
+    if (_fullRoute.isNotEmpty) {
+      LatLngBounds bounds = _boundsFromLatLngList(_fullRoute);
+      controller.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
+    } else {
+      controller.animateCamera(CameraUpdate.newCameraPosition(
+        CameraPosition(target: pos, zoom: 17, tilt: 45),
+      ));
+    }
   }
 
   @override
   void dispose() {
     _positionStream?.cancel();
     super.dispose();
+  }
+
+  String _getMapStyle(bool isDark) {
+    if (isDark) {
+      return '''[{"elementType":"geometry","stylers":[{"color":"#212121"}]},{"elementType":"labels.icon","stylers":[{"visibility":"off"}]},{"elementType":"labels.text.fill","stylers":[{"color":"#757575"}]},{"elementType":"labels.text.stroke","stylers":[{"color":"#212121"}]},{"featureType":"administrative","elementType":"geometry","stylers":[{"color":"#757575"}]},{"featureType":"administrative.country","elementType":"labels.text.fill","stylers":[{"color":"#9e9e9e"}]},{"featureType":"administrative.land_parcel","stylers":[{"visibility":"off"}]},{"featureType":"administrative.locality","elementType":"labels.text.fill","stylers":[{"color":"#bdbdbd"}]},{"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#757575"}]},{"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#181818"}]},{"featureType":"poi.park","elementType":"labels.text.fill","stylers":[{"color":"#616161"}]},{"featureType":"poi.park","elementType":"labels.text.stroke","stylers":[{"color":"#1b1b1b"}]},{"featureType":"road","elementType":"geometry.fill","stylers":[{"color":"#2c2c2c"}]},{"featureType":"road","elementType":"labels.text.fill","stylers":[{"color":"#8a8a8a"}]},{"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#373737"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#3c3c3c"}]},{"featureType":"road.highway.controlled_access","elementType":"geometry","stylers":[{"color":"#4e4e4e"}]},{"featureType":"road.local","elementType":"labels.text.fill","stylers":[{"color":"#616161"}]},{"featureType":"transit","elementType":"labels.text.fill","stylers":[{"color":"#757575"}]},{"featureType":"water","elementType":"geometry","stylers":[{"color":"#000000"}]},{"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#3d3d3d"}]}]''';
+    }
+    return '''[{"elementType":"geometry","stylers":[{"color":"#f5f5f5"}]},{"elementType":"labels.icon","stylers":[{"visibility":"off"}]},{"elementType":"labels.text.fill","stylers":[{"color":"#616161"}]},{"elementType":"labels.text.stroke","stylers":[{"color":"#f5f5f5"}]},{"featureType":"administrative.land_parcel","elementType":"labels.text.fill","stylers":[{"color":"#bdbdbd"}]},{"featureType":"poi","elementType":"geometry","stylers":[{"color":"#eeeeee"}]},{"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#757575"}]},{"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#e5e5e5"}]},{"featureType":"poi.park","elementType":"labels.text.fill","stylers":[{"color":"#9e9e9e"}]},{"featureType":"road","elementType":"geometry","stylers":[{"color":"#ffffff"}]},{"featureType":"road.arterial","elementType":"labels.text.fill","stylers":[{"color":"#757575"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#dadada"}]},{"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#616161"}]},{"featureType":"road.local","elementType":"labels.text.fill","stylers":[{"color":"#9e9e9e"}]},{"featureType":"transit.line","elementType":"geometry","stylers":[{"color":"#e5e5e5"}]},{"featureType":"transit.station","elementType":"geometry","stylers":[{"color":"#eeeeee"}]},{"featureType":"water","elementType":"geometry","stylers":[{"color":"#c9c9c9"}]},{"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#9e9e9e"}]}]''';
   }
 
   @override
@@ -171,6 +252,8 @@ class _NavigationMapState extends State<NavigationMap> {
       );
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       height: 350,
       decoration: BoxDecoration(
@@ -185,12 +268,12 @@ class _NavigationMapState extends State<NavigationMap> {
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
-        children: [
-          GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: _currentPosition!,
-              zoom: 16,
-            ),
+      children: [
+        GoogleMap(
+          initialCameraPosition: CameraPosition(
+            target: _currentPosition!,
+            zoom: 12.5,
+          ),
             markers: _markers,
             polylines: _polylines,
             myLocationEnabled: false, 
@@ -198,7 +281,10 @@ class _NavigationMapState extends State<NavigationMap> {
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
             onMapCreated: (GoogleMapController controller) {
-              _controller.complete(controller);
+              if (!_controller.isCompleted) {
+                _controller.complete(controller);
+              }
+              controller.setMapStyle(_getMapStyle(isDark));
             },
           ),
           Positioned(

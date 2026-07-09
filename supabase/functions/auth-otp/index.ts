@@ -136,12 +136,75 @@ serve(async (req) => {
       return new Response(JSON.stringify({ ok: true, role }), { headers: { ...cors, 'Content-Type': 'application/json' } })
     }
 
+    // ── ACCIÓN: REQUEST CLIENT OTP (Pagos Efectivo) ──
+    if (action === 'request-client-otp') {
+      
+      // 1. Generar PIN de 4 dígitos (más fácil para clientes)
+      const pin = Math.floor(1000 + Math.random() * 9000).toString()
+
+      // 2. Guardar en otp_codes (expira en 5 minutos)
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+      
+      let targetPhone = cleanPhone
+      if (targetPhone.length === 10) {
+        targetPhone = `521${targetPhone}` // Asumimos Lada México para clientes
+      }
+
+      await supabase.from('otp_codes').delete().eq('telefono', cleanPhone)
+      const { error: dbError } = await supabase.from('otp_codes').insert({
+        telefono: cleanPhone,
+        codigo: pin,
+        expires_at: expiresAt
+      })
+
+      if (dbError) throw dbError
+
+      // 3. Enviar WhatsApp usando la plantilla de Meta oficial (Authentication Template)
+      const waRes = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: targetPhone,
+          type: 'template',
+          template: {
+            name: 'auth_codigo_efectivo',
+            language: { code: 'es_MX' },
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  { type: 'text', text: pin }
+                ]
+              },
+              {
+                type: 'button',
+                sub_type: 'url',
+                index: '0',
+                parameters: [
+                  { type: 'text', text: pin }
+                ]
+              }
+            ]
+          }
+        })
+      })
+
+      if (!waRes.ok) {
+        const errorBody = await waRes.text()
+        console.error('WhatsApp Template Error:', waRes.status, waRes.statusText, errorBody)
+      }
+
+      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } })
+    }
+
     // ── ACCIÓN: VERIFY CODE ONLY ──
     if (action === 'verify-code') {
       if (!codigo) {
         return new Response(JSON.stringify({ error: 'Falta código' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } })
       }
-      if (!/^\d{6}$/.test(codigo)) {
+      if (!/^\d{4,6}$/.test(codigo)) {
         return new Response(JSON.stringify({ error: 'Formato de código inválido' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } })
       }
 

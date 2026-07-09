@@ -180,7 +180,7 @@ export async function handleButtonEvent(
     const ticket_id = buttonId.replace('REST_ORDER_PREPARE_', '');
     // Buscar el pedido por ID o wb_message_id. Evitar error de casteo de UUID si el ticket_id es corto.
     const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(ticket_id);
-    const { data: p, error } = await supabase.from('pedidos').select('id, restaurante').eq(isUUID ? 'id' : 'wb_message_id', ticket_id).maybeSingle();
+    const { data: p, error } = await supabase.from('pedidos').select('id, restaurante, descripcion').eq(isUUID ? 'id' : 'wb_message_id', ticket_id).maybeSingle();
     
     if (error) console.error("Error buscando pedido:", error);
     
@@ -202,7 +202,7 @@ export async function handleButtonEvent(
 
       await sendInteractiveButton(
         fromPhone,
-        `✅ *Pedido marcado en cocina.*\nSe le ha notificado al cliente que ya comenzaste a prepararlo.\n\nCuando la comida esté empacada y lista, presiona el botón abajo para avisar.`,
+        `🛒 *DETALLES DEL PEDIDO:*\n------------------------\n${p.descripcion || 'Sin detalles'}\n------------------------\n\n✅ *Pedido marcado en cocina.*\nSe le ha notificado al cliente que ya comenzaste a prepararlo.\n\nCuando la comida esté empacada y lista, presiona el botón abajo para avisar.`,
         `REST_ORDER_READY_${ticket_id}`,
         'Pedido Listo'
       );

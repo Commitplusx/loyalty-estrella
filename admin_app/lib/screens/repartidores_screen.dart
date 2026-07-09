@@ -39,7 +39,7 @@ Map<String, DateTime?> _getDateRange(DateFilter filter) {
   }
 }
 
-final repartidoresProvider = StreamProvider.autoDispose<List<Map<String, dynamic>>>((ref) async* {
+final repartidoresProvider = StreamProvider<List<Map<String, dynamic>>>((ref) async* {
   const cacheKey = 'repartidores_list_full';
 
   // 1. Mostrar caché primero

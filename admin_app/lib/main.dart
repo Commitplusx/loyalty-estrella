@@ -143,7 +143,7 @@ void main() async {
   RealtimeChannel? _alarmaChannel;
 
   // Escuchar cuando llega un push mientras la app ESTÁ ABIERTA (Foreground)
-  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
     debugPrint("==== FOREGROUND FIREBASE PUSH RECEIVED ====");
     debugPrint("Data: ${message.data}");
     
@@ -156,10 +156,13 @@ void main() async {
         
         if (isAdmin) {
           try {
-            alarmPlayer.setVolume(1.0);
-            alarmPlayer.setReleaseMode(ReleaseMode.loop);
-            alarmPlayer.play(AssetSource('sounds/rappi_alarm.mp3'));
-          } catch (_) {}
+            await alarmPlayer.stop(); // Stop previous
+            await alarmPlayer.setVolume(1.0);
+            await alarmPlayer.setReleaseMode(ReleaseMode.loop);
+            await alarmPlayer.play(AssetSource('sounds/rappi_alarm.mp3'));
+          } catch (e) {
+            debugPrint('Error reproduciendo sonido admin: $e');
+          }
           // El Admin solo necesita saber que hay un nuevo pedido
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

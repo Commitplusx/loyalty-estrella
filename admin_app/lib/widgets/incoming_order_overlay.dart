@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:ui' as ui;
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -27,31 +29,100 @@ class IncomingOrderOverlay extends ConsumerStatefulWidget {
 }
 
 class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
+  bool _isStacked = false;
   GoogleMapController? _mapController;
   Position? _currentPosition;
   Set<Polyline> _polylines = {};
   Set<Marker> _markers = {};
   bool _isAccepting = false;
   final String _googleMapsKey = 'AIzaSyBOZkp595ze0Agwb7yPG5u7MD29EL9gHMw';
+  BitmapDescriptor? _blackMarkerIcon;
+  double _routeDistanceKm = 0.0;
+
+  Future<BitmapDescriptor> _createBlackMarker() async {
+    final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
+    final Canvas canvas = Canvas(pictureRecorder);
+    final Paint paint = Paint()..color = Colors.black;
+    final double radius = 12.0;
+    
+    canvas.drawCircle(Offset(radius, radius), radius, paint);
+    
+    final Paint borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0;
+    canvas.drawCircle(Offset(radius, radius), radius, borderPaint);
+    
+    final ui.Image image = await pictureRecorder.endRecording().toImage(
+          (radius * 2).toInt(),
+          (radius * 2).toInt(),
+        );
+    final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    final Uint8List uint8List = byteData!.buffer.asUint8List();
+    return BitmapDescriptor.fromBytes(uint8List);
+  }
 
   @override
   void initState() {
     super.initState();
     _playAlarm();
+    _createBlackMarker().then((icon) {
+      if (mounted) {
+        setState(() => _blackMarkerIcon = icon);
+        if (_currentPosition != null) {
+          _updateRoute();
+        }
+      }
+    });
     _startTracking();
+    _verificarSiEsApilado();
   }
 
-  void _playAlarm() {
+  double _totalGananciaRuta = 0.0;
+
+  Future<void> _verificarSiEsApilado() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+    
+    // Contar pedidos activos del repartidor (excluyendo este que está pendiente)
+    final response = await Supabase.instance.client
+        .from('pedidos')
+        .select('id, precio_entrega')
+        .eq('repartidor_id', userId)
+        .inFilter('estado', ['asignado', 'aceptado', 'en_cocina', 'listo_para_recoger', 'en_camino']);
+        
+    final pedidosActivos = response as List;
+    if (mounted && pedidosActivos.isNotEmpty) {
+      double sum = 0.0;
+      for (var p in pedidosActivos) {
+         final val = p['precio_entrega'];
+         if (val != null) {
+            sum += double.tryParse(val.toString()) ?? 0.0;
+         }
+      }
+      setState(() {
+        _isStacked = true;
+        _totalGananciaRuta = sum + (widget.pedido.precioEntrega ?? 0.0);
+      });
+    }
+  }
+
+  Future<void> _playAlarm() async {
     try {
-      alarmPlayer.setVolume(1.0);
-      alarmPlayer.setReleaseMode(ReleaseMode.loop);
-      alarmPlayer.play(AssetSource('sounds/rappi_alarm.mp3'));
-    } catch (_) {}
+      await alarmPlayer.stop(); // Stop any previous glitchy instance
+      await alarmPlayer.setVolume(1.0);
+      await alarmPlayer.setReleaseMode(ReleaseMode.loop);
+      await alarmPlayer.play(AssetSource('sounds/rappi_alarm.mp3'));
+    } catch (e) {
+      debugPrint('Error en playAlarm: $e');
+    }
   }
 
   @override
   void dispose() {
-    stopAlarm();
+    try {
+      stopAlarm();
+    } catch (_) {}
     _mapController?.dispose();
     super.dispose();
   }
@@ -89,14 +160,14 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
         Marker(
           markerId: const MarkerId('driver'),
           position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          icon: _blackMarkerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
           infoWindow: const InfoWindow(title: 'Tú'),
         ),
         if (destLat != null && destLng != null)
           Marker(
             markerId: const MarkerId('destination'),
             position: LatLng(destLat, destLng),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+            icon: _blackMarkerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
             infoWindow: const InfoWindow(title: 'Restaurante'),
           ),
       };
@@ -115,19 +186,29 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
 
     if (result.points.isNotEmpty) {
       List<LatLng> polylineCoordinates = result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
+      
+      double totalDistance = 0;
+      for (int i = 0; i < polylineCoordinates.length - 1; i++) {
+        totalDistance += Geolocator.distanceBetween(
+          polylineCoordinates[i].latitude, polylineCoordinates[i].longitude,
+          polylineCoordinates[i+1].latitude, polylineCoordinates[i+1].longitude,
+        );
+      }
+
       if (!mounted) return;
       setState(() {
+        _routeDistanceKm = totalDistance / 1000.0;
         _polylines = {
           Polyline(
             polylineId: const PolylineId('route'),
-            color: const Color(0xFF00897B),
-            width: 5,
+            color: Colors.black87,
+            width: 4,
             points: polylineCoordinates,
           )
         };
       });
       LatLngBounds bounds = _boundsFromLatLngList(polylineCoordinates);
-      _mapController?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100));
+      _mapController?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 120));
     }
   }
 
@@ -148,32 +229,92 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
   }
 
   Future<void> _aceptarViaje() async {
+    if (_isAccepting) return;
     setState(() => _isAccepting = true);
-    stopAlarm();
+    
+    // Parar alarma inmediatamente de forma robusta
     try {
-      await Supabase.instance.client
+      stopAlarm();
+    } catch (_) {}
+
+    try {
+      final response = await Supabase.instance.client
           .from('pedidos')
           .update({'estado': 'asignado', 'repartidor_id': Supabase.instance.client.auth.currentUser!.id})
-          .eq('id', widget.pedido.id);
+          .eq('id', widget.pedido.id)
+          .eq('estado', 'ofrecido') // Asegurar que el pedido está en estado 'ofrecido' (lock atómico)
+          .select();
+      
+      final data = response as List<dynamic>;
+      
+      if (data.isEmpty) {
+        // El pedido ya no estaba pendiente o hubo un error de concurrencia
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Este viaje ya no está disponible o expiró.'),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          // Cerramos la pantalla silenciosamente
+          if (widget.onReject != null) {
+            widget.onReject!();
+          } else {
+            context.go('/dashboard');
+          }
+        }
+        return;
+      }
       
       if (widget.onAccept != null) {
         widget.onAccept!();
       } else if (mounted) {
         context.go('/pedidos/${widget.pedido.id}');
       }
-    } catch (_) {
-      if (mounted) setState(() => _isAccepting = false);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error de conexión: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        setState(() => _isAccepting = false);
+      }
     }
   }
 
   Future<void> _rechazarViaje() async {
+    if (_isAccepting) return;
     setState(() => _isAccepting = true);
-    stopAlarm();
+    
+    try {
+      stopAlarm();
+    } catch (_) {}
+
     try {
       await Supabase.instance.client
           .from('pedidos')
           .update({'estado': 'pendiente', 'repartidor_id': null})
           .eq('id', widget.pedido.id);
+          
+      // ZERO-WAIT REASSIGNMENT: Disparar la Edge Function para buscar otro repartidor inmediatamente,
+      // excluyendo al usuario actual para que no se le vuelva a asignar en este ciclo.
+      try {
+        final userId = Supabase.instance.client.auth.currentUser?.id;
+        await Supabase.instance.client.functions.invoke(
+          'asignar-repartidor',
+          body: {
+            'id': widget.pedido.id,
+            'excluir': userId,
+          },
+        );
+      } catch (e) {
+        debugPrint('Error en zero-wait reassignment: $e');
+      }
           
       if (widget.onReject != null) {
         widget.onReject!();
@@ -197,9 +338,14 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Material(
-      color: isDark ? Colors.black : Colors.white,
-      child: Stack(
+    return PopScope(
+      canPop: false, // BLOQUEO 1: Anula el botón "Atrás" de Android
+      onPopInvokedWithResult: (didPop, result) {
+        // No hace nada, ignoramos el intento de salida.
+      },
+      child: Material(
+        color: isDark ? Colors.black : Colors.white,
+        child: Stack(
         children: [
           Positioned.fill(
             child: _currentPosition == null
@@ -207,6 +353,7 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
                     color: isDark ? Colors.black : const Color(0xFFF3F4F6),
                     child: const Center(child: CircularProgressIndicator(color: Color(0xFF00897B))))
                 : GoogleMap(
+                    padding: const EdgeInsets.only(bottom: 250),
                     initialCameraPosition: CameraPosition(
                         target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
                         zoom: 15),
@@ -270,12 +417,20 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          'Nuevo pedido',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: isDark ? Colors.white70 : Colors.black54,
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.white : Colors.black,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            _isStacked ? '🚀 VIAJE APILADO' : '🌟 NUEVO PEDIDO',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: isDark ? Colors.black : Colors.white,
+                              letterSpacing: 0.5,
+                            ),
                           ),
                         ),
                         GestureDetector(
@@ -321,7 +476,7 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
                                   ),
                                 ),
                                 Text(
-                                  '1 pedido en la ruta',
+                                  _routeDistanceKm > 0 ? '${_isStacked ? "2 pedidos" : "1 pedido"} en la ruta • ${_routeDistanceKm.toStringAsFixed(1)} km' : 'Calculando ruta...',
                                   style: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : Colors.black54),
                                 ),
                               ],
@@ -346,43 +501,85 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Text(
-                      '\$${widget.pedido.precioEntrega?.toStringAsFixed(2) ?? "45.50"}',
-                      style: TextStyle(
-                        fontSize: 48,
-                        fontWeight: FontWeight.w900,
-                        color: isDark ? Colors.white : Colors.black,
-                        height: 1.1,
-                        letterSpacing: -1.5,
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          '\$${widget.pedido.precioEntrega?.toStringAsFixed(2) ?? "45.50"}',
+                          style: TextStyle(
+                            fontSize: 48,
+                            fontWeight: FontWeight.w900,
+                            color: isDark ? Colors.white : Colors.black,
+                            height: 1.1,
+                            letterSpacing: -1.5,
+                          ),
+                        ),
+                        if (_isStacked)
+                          Container(
+                            margin: const EdgeInsets.only(left: 12.0),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white : Colors.black,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '+ EXTRA',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: isDark ? Colors.black : Colors.white,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
+                    if (_isStacked && _totalGananciaRuta > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
+                        child: Text(
+                          'En total por tu ruta ganarás \$${_totalGananciaRuta.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: isDark ? Colors.white70 : Colors.black87,
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE0F2F1),
+                        color: widget.pedido.metodoPago == 'efectivo' ? const Color(0xFFE0F2F1) : const Color(0xFFF3E5F5),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: const Color(0xFF00897B), width: 1.5),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Text(
-                              '+1',
-                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF00897B)),
-                            ),
+                          Icon(
+                            widget.pedido.metodoPago == 'efectivo' ? Icons.payments_rounded : Icons.credit_card_rounded,
+                            color: widget.pedido.metodoPago == 'efectivo' ? const Color(0xFF00897B) : const Color(0xFF8E24AA),
+                            size: 22,
                           ),
                           const SizedBox(width: 8),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text('En tu incentivo asegurado', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF00897B))),
-                              Text('Revisa el avance al finalizar', style: TextStyle(fontSize: 9, color: Color(0xFF00695C))),
+                            children: [
+                              Text(
+                                widget.pedido.metodoPago == 'efectivo' ? 'Pago en Efectivo' : 'Pago en Línea',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: widget.pedido.metodoPago == 'efectivo' ? const Color(0xFF00897B) : const Color(0xFF8E24AA),
+                                ),
+                              ),
+                              Text(
+                                widget.pedido.metodoPago == 'efectivo' ? 'Debes cobrar el total al entregar' : 'Viaje ya pagado, no cobres',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: widget.pedido.metodoPago == 'efectivo' ? const Color(0xFF00695C) : const Color(0xFF6A1B9A),
+                                ),
+                              ),
                             ],
                           )
                         ],
@@ -426,31 +623,81 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
                     SizedBox(
                       width: double.infinity,
                       height: 56,
-                      child: ElevatedButton(
-                        onPressed: _isAccepting ? null : _aceptarViaje,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0C625D),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-                          elevation: 0,
-                        ),
-                        child: _isAccepting
-                            ? const CircularProgressIndicator(color: Colors.white)
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const SizedBox(width: 32),
-                                  const Text(
-                                    'Aceptar pedido',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: -0.5,
-                                    ),
-                                  ),
-                                  _buildCircularCountdown(),
-                                ],
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(28),
+                        child: Stack(
+                          children: [
+                            // ── FEEDBACK VISUAL: Barra de progreso en el fondo ──
+                            Positioned.fill(
+                              child: TweenAnimationBuilder<double>(
+                                tween: Tween<double>(begin: 1.0, end: 0.0),
+                                duration: const Duration(milliseconds: 23500), // 23.5s (Grace Period)
+                                onEnd: () {
+                                  if (!_isAccepting && mounted) {
+                                    _rechazarViaje();
+                                  }
+                                },
+                                builder: (context, value, child) {
+                                  // Color psychology: Green -> Orange -> Red
+                                  Color bgColor = const Color(0xFF0C625D);
+                                  if (value < 0.3) {
+                                    bgColor = Colors.redAccent.shade700;
+                                  } else if (value < 0.6) {
+                                    bgColor = Colors.orange.shade700;
+                                  }
+
+                                  return Stack(
+                                    children: [
+                                      Container(color: Colors.grey.withOpacity(isDark ? 0.2 : 0.1)),
+                                      FractionallySizedBox(
+                                        alignment: Alignment.centerLeft,
+                                        widthFactor: value,
+                                        child: AnimatedContainer(
+                                          duration: const Duration(milliseconds: 300),
+                                          color: bgColor,
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
                               ),
+                            ),
+                            
+                            // ── CONTENIDO DEL BOTÓN ──
+                            Positioned.fill(
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: _isAccepting ? null : _aceptarViaje,
+                                  child: Center(
+                                    child: _isAccepting
+                                        ? const SizedBox(
+                                            width: 24,
+                                            height: 24,
+                                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                                          )
+                                        : Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: const [
+                                              Text(
+                                                'Aceptar pedido',
+                                                style: TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: Colors.white,
+                                                  letterSpacing: -0.5,
+                                                ),
+                                              ),
+                                              SizedBox(width: 8),
+                                              Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+                                            ],
+                                          ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -460,47 +707,6 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildCircularCountdown() {
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 1.0, end: 0.0),
-      duration: const Duration(seconds: 15),
-      onEnd: () {
-        if (!_isAccepting && mounted) {
-          _rechazarViaje();
-        }
-      },
-      builder: (context, value, child) {
-        return Container(
-          width: 36,
-          height: 36,
-          decoration: const BoxDecoration(
-            color: Color(0xFF167B75),
-            shape: BoxShape.circle,
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              CircularProgressIndicator(
-                value: value,
-                backgroundColor: Colors.transparent,
-                color: Colors.white,
-                strokeWidth: 3,
-              ),
-              Text(
-                '${(value * 15).ceil()}',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
+    ));
   }
 }

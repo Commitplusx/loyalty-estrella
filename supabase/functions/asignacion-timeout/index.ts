@@ -81,6 +81,13 @@ serve(async (req) => {
       return new Response(JSON.stringify({ ok: true, status: 'ya_aceptado' }), { headers: CORS_HEADERS })
     }
 
+    // MEJORA ZERO-WAIT: Si el repartidor de la BD no es el repartidor al que le caducó el tiempo,
+    // significa que el pedido ya fue reasignado manualmente a otra persona. Abortamos para no robar el pedido.
+    if (p && p.repartidor_id && p.repartidor_id !== repartidor_actual_id) {
+      console.log(`[TIMEOUT ABORTADO] El pedido ${pedido_uuid || ticket_id} ya fue re-asignado a ${p.repartidor_id}.`);
+      return new Response(JSON.stringify({ ok: true, status: 'ya_reasignado' }), { headers: CORS_HEADERS })
+    }
+
     
     // Si fue cancelado por el cliente, IGNORAR
     if (p && p.estado === 'cancelado') {
@@ -102,9 +109,11 @@ serve(async (req) => {
       console.log(`[ROUND-ROBIN] Turno 2: Mandando a ${siguiente_repartidor_nombre}`);
       
       // Aseguramos que el estado regrese a algo neutro por si el anterior le dio "Rechazar"
-      if (p?.estado === 'rechazado') {
-        await supabase.from('pedidos').update({ estado: 'pagado' }).eq('id', ticket_id);
-      }
+      // LOCK / RESERVA INSTANTÁNEA: Bloqueamos el viaje para el Repartidor 2
+      await supabase.from('pedidos').update({ 
+        estado: 'ofrecido',
+        repartidor_id: siguiente_repartidor_id 
+      }).eq('id', pedido_uuid || ticket_id);
 
       // Mandar Ping al Repartidor 2
       await supabase.channel('repartidores_ping').send({
@@ -168,6 +177,10 @@ serve(async (req) => {
 
     // 3. Ya no hay más repartidores (Fallback a Admin)
     console.warn(`[TIMEOUT FATAL] Ningún repartidor aceptó el pedido ${ticket_id}`);
+    
+    // Limpiamos el bloqueo para que quede libre en la base de datos
+    await supabase.from('pedidos').update({ estado: 'pagado', repartidor_id: null }).eq('id', pedido_uuid || ticket_id);
+
     if (ADMIN_PHONE_MAIN) {
       await sendWA(ADMIN_PHONE_MAIN, `⏰ *Pedido #${ticket_id} sin aceptar*\n\nHan pasado 30s (2 intentos) y ningún repartidor aceptó.\n\n🍽️ ${restaurante}\n📍 ${direccion || 'Sin dirección'}\n💰 $${total}\n\nAsigna manualmente desde la app.`);
     }

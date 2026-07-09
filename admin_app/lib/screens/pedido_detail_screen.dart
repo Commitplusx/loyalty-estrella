@@ -83,6 +83,7 @@ class PedidoDetailScreen extends ConsumerWidget {
               ref.invalidate(_pedidoProvider(pedidoId));
               ref.invalidate(statsProvider);
               ref.invalidate(pedidosActivosProvider);
+              context.go('/dashboard');
             },
           );
         }
@@ -528,6 +529,21 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
     final isDark = theme.brightness == Brightness.dark;
     final isAdmin = ref.watch(isAdminProvider);
 
+    final pedidosAsync = ref.watch(pedidosActivosProvider);
+    String? nextPendingPickupId;
+    
+    pedidosAsync.whenData((pedidosList) {
+      for (var p in (pedidosList ?? [])) {
+        if (p.id.toString() != pedido.id.toString()) {
+          final estado = p.estado;
+          if (['asignado', 'aceptado', 'en_cocina', 'listo_para_recoger'].contains(estado)) {
+            nextPendingPickupId = p.id.toString();
+            break;
+          }
+        }
+      }
+    });
+
     final minutosRetraso =
         DateTime.now().difference(pedido.createdAt).inMinutes;
     final estaAtrasado = pedido.estado != 'entregado' &&
@@ -667,13 +683,13 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
           const SizedBox(height: 24),
         ],
 
-        // 🗺️ Navigation Map 🗺️
-        if (finalLat != null && finalLng != null && pedido.estado != 'entregado' && (isAdmin || pedido.estado == 'en_camino' || _mostrarMapa)) ...[
+        // 🌍 Navigation Map 🌍
+        if (finalLat != null && finalLng != null && pedido.estado != 'entregado' && (isAdmin || pedido.estado == 'en_camino' || pedido.estado == 'asignado' || _mostrarMapa)) ...[
           const SizedBox(height: 16),
           NavigationMap(
-            key: ValueKey('map_${pedido.id}_${pedido.estado}'),
-            destLat: finalLat,
-            destLng: finalLng,
+            key: ValueKey('map_${pedido.id}'),
+            destLat: pedido.estado == 'asignado' ? (pedido.restauranteLat ?? finalLat) : finalLat,
+            destLng: pedido.estado == 'asignado' ? (pedido.restauranteLng ?? finalLng) : finalLng,
             destinationName: pedido.estado == 'asignado'
                 ? (pedido.restaurante ?? 'Restaurante')
                 : (pedido.clienteNombre ?? 'Cliente'),
@@ -682,7 +698,7 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
           const SizedBox(height: 16),
         ],
 
-        // â”€â”€ SecciÃ³n: Restaurante (asignado) â”€â”€
+        // ── Sección: Restaurante (asignado) ──
         if (isAdmin || pedido.estado == 'asignado') ...[
           _SectionTitle(
               title: 'Recolección en Restaurante',
@@ -733,9 +749,9 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
                           height: 72,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(16),
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                            color: const Color(0xFF1E293B),
                           ),
-                          child: Icon(Icons.storefront_rounded, size: 36, color: Theme.of(context).colorScheme.primary),
+                          child: const Icon(Icons.storefront_rounded, size: 36, color: Colors.white),
                         ),
                       const SizedBox(width: 16),
                       // Text
@@ -744,12 +760,21 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (!isAdmin && pedido.estado == 'asignado')
-                              const Text(
-                                'Dirígete a recoger en:',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFFF59E0B),
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isDark ? Colors.white : Colors.black,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  'DIRÍGETE A RECOGER EN:',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    color: isDark ? Colors.black : Colors.white,
+                                    letterSpacing: 0.5,
+                                  ),
                                 ),
                               )
                             else
@@ -776,31 +801,6 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
                           ],
                         ),
                       ),
-                      // Map Button (Rappi style)
-                      if (!isAdmin && pedido.estado == 'asignado' && !_mostrarMapa)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 12),
-                          child: InkWell(
-                            onTap: () {
-                              setState(() {
-                                _mostrarMapa = true;
-                              });
-                            },
-                            borderRadius: BorderRadius.circular(30),
-                            child: Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF10B981).withOpacity(0.15),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.near_me_rounded,
-                                color: Color(0xFF10B981),
-                                size: 28,
-                              ),
-                            ),
-                          ),
-                        ),
                     ],
                   ),
                 ),
@@ -936,7 +936,7 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
           const SizedBox(height: 24),
         ],
 
-        // â”€â”€ SecciÃ³n: Cliente (en_camino o entregado) â”€â”€
+        // ── Sección: Cliente (en_camino o entregado) ──
         if (isAdmin ||
             pedido.estado == 'en_camino' ||
             pedido.estado == 'entregado') ...[
@@ -968,9 +968,9 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
                         height: 72,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(16),
-                          color: Theme.of(context).colorScheme.secondary.withOpacity(0.1),
+                          color: const Color(0xFF1E293B),
                         ),
-                        child: Icon(Icons.person_rounded, size: 36, color: Theme.of(context).colorScheme.secondary),
+                        child: const Icon(Icons.person_rounded, size: 36, color: Colors.white),
                       ),
                       const SizedBox(width: 16),
                       // Text
@@ -979,12 +979,21 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (!isAdmin && pedido.estado == 'en_camino')
-                              const Text(
-                                'Dirígete a entregar a:',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFFF59E0B),
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isDark ? Colors.white : Colors.black,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  'DIRÍGETE A ENTREGAR A:',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    color: isDark ? Colors.black : Colors.white,
+                                    letterSpacing: 0.5,
+                                  ),
                                 ),
                               )
                             else
@@ -1044,12 +1053,12 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
                                 child: Container(
                                   padding: const EdgeInsets.all(14),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF10B981).withOpacity(0.15),
+                                    color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFF10B981).withOpacity(0.15),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.directions_rounded,
-                                    color: Color(0xFF10B981),
+                                    color: isDark ? Colors.white : const Color(0xFF10B981),
                                     size: 28,
                                   ),
                                 ),
@@ -1069,12 +1078,12 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
                               child: Container(
                                 padding: const EdgeInsets.all(14),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF3B82F6).withOpacity(0.15),
+                                  color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFF3B82F6).withOpacity(0.15),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(
+                                child: Icon(
                                   Icons.phone_rounded,
-                                  color: Color(0xFF3B82F6),
+                                  color: isDark ? Colors.white : const Color(0xFF3B82F6),
                                   size: 28,
                                 ),
                               ),
@@ -1123,36 +1132,8 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
           const SizedBox(height: 24),
         ],
 
-        // ── Acción Principal ──
-        if (pedido.siguienteEstado != null)
-          _loading
-              ? const Center(child: CircularProgressIndicator())
-              : ElevatedButton(
-                  onPressed: _avanzarEstado,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _estadoColor(pedido.siguienteEstado!),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 60),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20)),
-                    elevation: 0,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(_estadoIcon(pedido.siguienteEstado!), size: 24),
-                      const SizedBox(width: 12),
-                      Text(
-                        pedido.siguienteEstadoLabel ?? 'Actualizar',
-                        style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5),
-                      ),
-                    ],
-                  ),
-                )
-        else
+        // 🎯 Acción Principal 🎯
+        if (pedido.siguienteEstado == null)
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
@@ -1232,7 +1213,7 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
 
         const SizedBox(height: 16),
 
-        // Ã¢â€â‚¬Ã¢â€â‚¬ BotÃƒÂ³n Reasignar Ã¢â€â‚¬Ã¢â€â‚¬
+        // Ã¢â€ â‚¬Ã¢â€ â‚¬ BotÃƒÂ³n Reasignar Ã¢â€ â‚¬Ã¢â€ â‚¬
         if (isAdmin &&
             pedido.estado != 'entregado' &&
             pedido.estado != 'cancelado')
@@ -1251,11 +1232,53 @@ class _PedidoBodyState extends ConsumerState<_PedidoBody> {
             ),
           ),
 
-        const SizedBox(height: 100),
+        const SizedBox(height: 120),
           ],
         ),
 
-        // ── Overlay de Transición de Estado ──
+        // 🎯 SwipeButton Pinned al Fondo 🎯
+        if (pedido.siguienteEstado != null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: EdgeInsets.only(left: 20, right: 20, bottom: MediaQuery.of(context).padding.bottom == 0 ? 24 : MediaQuery.of(context).padding.bottom, top: 16),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
+                    blurRadius: 20,
+                    offset: const Offset(0, -5),
+                  )
+                ],
+              ),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : (!isAdmin && pedido.estado == 'recibido' && nextPendingPickupId != null)
+                      ? ElevatedButton(
+                          onPressed: () => context.go('/pedidos/$nextPendingPickupId'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1E293B),
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size(double.infinity, 56),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 0,
+                          ),
+                          child: const Text('RECOGER SIGUIENTE PEDIDO', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1)),
+                        )
+                      : SwipeButton(
+                          text: pedido.siguienteEstadoLabel ?? 'Siguiente',
+                          onSwipe: _avanzarEstado,
+                          activeColor: _estadoColor(pedido.siguienteEstado!),
+                          baseColor: const Color(0xFF1E293B),
+                          textColor: Colors.white,
+                        ),
+            ),
+          ),
+
+        // ✨ Overlay de Transición de Estado ✨──
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 350),
           transitionBuilder: (child, animation) => FadeTransition(

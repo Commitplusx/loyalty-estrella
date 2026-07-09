@@ -5,6 +5,7 @@ class SwipeButton extends StatefulWidget {
   final VoidCallback onSwipe;
   final Color activeColor;
   final Color baseColor;
+  final Color? textColor;
   final IconData icon;
 
   const SwipeButton({
@@ -13,6 +14,7 @@ class SwipeButton extends StatefulWidget {
     required this.onSwipe,
     this.activeColor = Colors.green,
     this.baseColor = Colors.black12,
+    this.textColor,
     this.icon = Icons.chevron_right_rounded,
   });
 
@@ -51,7 +53,7 @@ class _SwipeButtonState extends State<SwipeButton> with SingleTickerProviderStat
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: _confirmed ? widget.activeColor : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    color: _confirmed ? widget.activeColor : (widget.textColor ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.6)),
                     letterSpacing: 0.5,
                   ),
                 ),
