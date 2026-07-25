@@ -43,7 +43,8 @@ export function Monitor() {
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
-    libraries: LIBRARIES
+    libraries: LIBRARIES,
+    version: '3.64' // Pin version to 3.64 since HeatmapLayer is removed in 3.65+
   });
 
   const [viewMode, setViewMode] = useState<'flota' | 'heatmap'>('flota');
@@ -52,6 +53,15 @@ export function Monitor() {
 
   const [heatmapData, setHeatmapData] = useState<any[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
+
+  useEffect(() => {
+    if (mapInstance && repartidores.length > 0) {
+      const bounds = new window.google.maps.LatLngBounds();
+      repartidores.forEach(r => bounds.extend(new window.google.maps.LatLng(r.lat, r.lng)));
+      mapInstance.fitBounds(bounds);
+    }
+  }, [mapInstance, repartidores]);
 
   const fetchHeatmap = async () => {
     try {
@@ -136,6 +146,8 @@ export function Monitor() {
             mapContainerStyle={mapContainerStyle}
             center={center}
             zoom={14}
+            onLoad={(map) => setMapInstance(map)}
+            onUnmount={() => setMapInstance(null)}
             options={{
               styles: silverMapStyle,
               disableDefaultUI: true,
