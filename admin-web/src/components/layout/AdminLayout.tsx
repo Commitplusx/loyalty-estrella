@@ -35,7 +35,7 @@ export function AdminLayout() {
   };
 
 
-  const { pedidosLoaded, repartidoresLoaded, setPedidos, setRepartidores, updatePedido, updateRepartidor } = useAppStore();
+  const { pedidosLoaded, repartidoresLoaded, setPedidos, setRepartidores } = useAppStore();
 
   useEffect(() => {
     // 1. Inicializar Datos (Solo si no están en caché)

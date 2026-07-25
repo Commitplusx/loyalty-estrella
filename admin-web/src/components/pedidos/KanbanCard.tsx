@@ -1,21 +1,21 @@
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { AlertCircle, Bike, ChefHat, Store, Navigation, MoreVertical, CheckCircle2, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertCircle, Bike, ChefHat, Store, MoreVertical, CheckCircle2, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { toast } from 'sonner';
 import { useAppStore } from '../../store/useAppStore';
 import { motion } from 'framer-motion';
 
 export function KanbanCard({ pedido, onForceAction }: { pedido: any, onForceAction?: (id: string, action: string) => void }) {
-  const [ticker, setTicker] = useState(0);
   const [showOptions, setShowOptions] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const { repartidores } = useAppStore();
   const prevEstado = useRef(pedido.estado);
   const prevDriverId = useRef(pedido.repartidor_id);
   
+  // Use effectively dummy interval to force re-renders if we want to show dynamic time ago, but for now we'll just omit ticker
   useEffect(() => {
-    const interval = setInterval(() => setTicker(t => t + 1), 30000); // Check every 30s
+    const interval = setInterval(() => {}, 30000); 
     return () => clearInterval(interval);
   }, []);
   

@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow, DirectionsRenderer } from '@react-google-maps/api';
-import { PackageOpen, Navigation, Store, Bike, Crosshair } from 'lucide-react';
+import { Navigation, Store, Bike, Crosshair } from 'lucide-react';
 
 const mapContainerStyle = {
   width: '100%',
@@ -264,8 +264,7 @@ export function RadarMap({ pedidos, repartidores }: { pedidos: any[], repartidor
                 polylineOptions: {
                   strokeColor: '#10b981', // Emerald 500 para que haga match
                   strokeOpacity: 0.8,
-                  strokeWeight: 4,
-                  strokeDasharray: '5,5' // Linea punteada de ruta
+                  strokeWeight: 4
                 }
               }}
             />

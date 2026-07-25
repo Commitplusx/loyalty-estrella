@@ -408,3 +408,10 @@ function ExcepcionesView() {
     </div>
   );
 }
+
+function SystemLogsView() {
+  return <div className="p-4 bg-white rounded-2xl border border-zinc-200">
+    <h3 className="font-bold mb-4">Logs del Sistema</h3>
+    <p className="text-sm text-zinc-500">Módulo en construcción...</p>
+  </div>;
+}

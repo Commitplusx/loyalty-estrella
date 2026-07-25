@@ -4,9 +4,8 @@ import { useAppStore } from '../store/useAppStore';
 const ALARM_THRESHOLD_MINUTES = 45;
 
 export function useOrderAlarms() {
-  const { pedidos } = useAppStore();
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Play Sonar Ping using Web Audio API
   const playSonarPing = () => {

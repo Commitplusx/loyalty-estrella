@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { DataTable } from '../components/ui/DataTable';
 import { ConfirmSheet } from '../components/ui/ConfirmSheet';
-import { CheckCircle2, XCircle, Search, AlertCircle, ShieldAlert, LayoutList, Columns, Activity, TrendingUp, Clock, Package } from 'lucide-react';
+import { CheckCircle2, XCircle, Search, AlertCircle, ShieldAlert, LayoutList, Columns, Activity, Clock, Package } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { DndContext, DragOverlay, closestCorners, useDroppable } from '@dnd-kit/core';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -272,6 +272,7 @@ export function Pedidos() {
     return searchMatch && statusMatch;
   });
 
+  /*
   const todayStr = new Date().toDateString();
   const hoyPedidos = pedidos.filter(p => new Date(p.created_at).toDateString() === todayStr);
   const totalHoy = hoyPedidos.length;
@@ -280,7 +281,7 @@ export function Pedidos() {
   
   const nowTime = Date.now();
   const retrasados = activos.filter(p => (nowTime - new Date(p.created_at).getTime()) > 30 * 60 * 1000).length;
-
+  */
   const columns = [
     {
       header: 'ID / Fecha',

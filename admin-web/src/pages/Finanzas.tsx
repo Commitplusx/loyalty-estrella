@@ -212,7 +212,7 @@ export function Finanzas() {
               <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#71717A' }} tickFormatter={(value) => `$${value}`} />
               <Tooltip 
                 contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
-                formatter={(value: number) => [`$${value}`, 'Ganancias']}
+                formatter={(value: any) => [`$${value}`, 'Ganancias']}
               />
               <Area type="monotone" dataKey="ganancia" stroke="#10B981" strokeWidth={3} fillOpacity={1} fill="url(#colorGanancia)" />
             </AreaChart>
