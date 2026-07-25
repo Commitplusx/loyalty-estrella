@@ -13,7 +13,7 @@ serve(async (req) => {
     const { data: pedidos, error } = await supabase
       .from('pedidos')
       .select('id, updated_at')
-      .eq('estado', 'pendiente')
+      .in('estado', ['pendiente', 'buscando_repartidor'])
       .lt('updated_at', twoMinutesAgo)
 
     if (error) {

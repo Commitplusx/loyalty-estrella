@@ -14,26 +14,11 @@ const nombresMexicanos = [
 ];
 
 const restaurantesReales = [
-  { nombre: 'Taquería El Fogón (Belisario)', lat: 16.2559, lng: -92.1365 },
-  { nombre: 'Pizzería Central (Belisario)', lat: 16.2600, lng: -92.1380 },
-  { nombre: 'Sushi Roll (Plaza Belisario)', lat: 16.2480, lng: -92.1320 },
-  { nombre: 'Café de la Ciudad', lat: 16.2450, lng: -92.1300 },
-  { nombre: 'Burger King (Belisario)', lat: 16.2519, lng: -92.1345 },
-  { nombre: 'Pollo Loco (Sur)', lat: 16.2420, lng: -92.1400 },
-  { nombre: 'Antojitos Doña Mary', lat: 16.2620, lng: -92.1450 }
+  { nombre: 'Liverpool (Prueba)', lat: 16.216262514295245, lng: -92.11371672091971 }
 ];
 
 const destinosReales = [
-  { dir: 'Barrio La Cruz Grande', lat: 16.2500, lng: -92.1450 },
-  { dir: 'Barrio Candelaria', lat: 16.2580, lng: -92.1250 },
-  { dir: 'Fracc. Fovisste (Casa Amarilla)', lat: 16.2400, lng: -92.1350 },
-  { dir: 'Barrio Yalchivol (Portón Negro)', lat: 16.2460, lng: -92.1200 },
-  { dir: 'Barrio Los Desamparados', lat: 16.2550, lng: -92.1480 },
-  { dir: 'Centro Histórico (Edificio 3, Depto 2)', lat: 16.2650, lng: -92.1320 },
-  { dir: 'Barrio San Sebastián', lat: 16.2380, lng: -92.1280 },
-  { dir: 'Barrio Guadalupe', lat: 16.2420, lng: -92.1420 },
-  { dir: 'Barrio Pilita Seca', lat: 16.2680, lng: -92.1450 },
-  { dir: 'Colonia Mariano N. Ruiz', lat: 16.2620, lng: -92.1400 }
+  { dir: 'Destino de Prueba Liverpool', lat: 16.247707223179393, lng: -92.14035224636748 }
 ];
 
 function randomItem(arr) {
@@ -61,6 +46,28 @@ async function lanzarPedidosDePrueba() {
     // Aproximar distancia en KM (170m por hexágono aprox)
     const distKm = (gridDist * 0.174).toFixed(1);
 
+    // ==========================================
+    // Calcular costo de envío real usando H3 (Resolución 10)
+    // Se toma el mayor entre la zona del restaurante y la zona del cliente
+    // ==========================================
+    const destHexIndex = h3.latLngToCell(dest.lat, dest.lng, 10);
+    const origHexIndex = h3.latLngToCell(rest.lat, rest.lng, 10);
+    let costoEnvioReal = 50.00; // fallback
+
+    const { data: zonaDest } = await supabase.from('h3_zonas').select('precio').eq('h3_index', destHexIndex).maybeSingle();
+    const { data: zonaOrig } = await supabase.from('h3_zonas').select('precio').eq('h3_index', origHexIndex).maybeSingle();
+
+    const precioDest = zonaDest?.precio || 0;
+    const precioOrig = zonaOrig?.precio || 0;
+
+    if (precioDest > 0 || precioOrig > 0) {
+      costoEnvioReal = Math.max(precioDest, precioOrig);
+      console.log(`🤑 Zonas H3 Evaluadas -> Origen: $${precioOrig} | Destino: $${precioDest}`);
+      console.log(`👉 Tarifa dinámica final aplicada: $${costoEnvioReal}`);
+    } else {
+      console.log(`⚠️ Zonas H3 NO Encontradas. Se usará tarifa base de $${costoEnvioReal}`);
+    }
+
     pedidosTest.push({
       cliente_nombre: cliente,
       cliente_tel: `963${Math.floor(1000000 + Math.random() * 9000000)}`,
@@ -69,64 +76,52 @@ async function lanzarPedidosDePrueba() {
       tipo_pedido: 'domicilio',
       origen: 'web',
       total: Math.floor(150 + Math.random() * 400),
-      precio_entrega: 45.50,
-      lat: rest.lat,
-      lng: rest.lng,
       lat_entrega: dest.lat,
       lng_entrega: dest.lng,
-      descripcion: `📝 SIMULACIÓN SIMULTÁNEA - H3 Dist: ${distKm}km (${gridDist} celdas)`
+      lat: rest.lat,
+      lng: rest.lng,
+      precio_entrega: costoEnvioReal, // 👈 Tarifa calculada con H3
+      metodo_pago: 'efectivo',
+      restaurante_id: '00000000-0000-0000-0000-000000000000', // UUID falso para forzar validación segura
+      descripcion: `[LIVERPOOL CLICK&COLLECT] 1x Tenis converse para niña ctas 1v hi. Mostrar No. Pedido: 2920113847 en módulo. (Dist: ${distKm}km, H3_Res10: ${destHexIndex})`
     });
   }
 
   const insertados = [];
 
-  // Lotes Simultáneos: Vamos a insertar en grupos de 3, para simular estrés de hora pico real
-  const BATCH_SIZE = 3;
-  for (let i = 0; i < pedidosTest.length; i += BATCH_SIZE) {
-    const batch = pedidosTest.slice(i, i + BATCH_SIZE);
+  // Insertar secuencialmente con 5 segundos de diferencia
+  console.log(`\n⏳ INYECTANDO ${pedidosTest.length} PEDIDOS (Uno cada 5 segundos)...`);
+  
+  for (let i = 0; i < pedidosTest.length; i++) {
+    const p = pedidosTest[i];
     
-    console.log(`\n⏳ INYECTANDO LOTE SIMULTÁNEO DE ${batch.length} PEDIDOS...`);
+    const { data, error } = await supabase.from('pedidos').insert(p).select().single();
+    if (error) {
+      console.error("❌ Error insertando pedido:", error.message);
+      continue;
+    }
     
-    // Insertamos concurrentemente (Promise.all)
-    const insertPromises = batch.map(async (p) => {
-      const { data, error } = await supabase.from('pedidos').insert(p).select().single();
-      if (error) {
-        console.error("❌ Error insertando pedido:", error.message);
-        return null;
-      }
-      return data;
-    });
-
-    const resultadosDB = await Promise.all(insertPromises);
-    const pedidosExitosos = resultadosDB.filter(p => p !== null);
-
-    // Llamamos a la Edge Function para cada uno (concurrentemente)
-    const edgePromises = pedidosExitosos.map(async (data) => {
-      insertados.push(data.id);
-      console.log(`✅ Pedido ${data.cliente_nombre} (${data.descripcion}) creado en BD.`);
-      
-      try {
-        const res = await fetch('https://jdrrkpvodnqoljycixbg.supabase.co/functions/v1/asignar-repartidor', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkcnJrcHZvZG5xb2xqeWNpeGJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNDkyOTEsImV4cCI6MjA5MDYyNTI5MX0.WEKqdL2p99cy8XvyqY31EP8-KbdOnhx2-fx9qz_iQtQ`
-          },
-          body: JSON.stringify({ id: data.id })
-        });
-        const jsonRes = await res.json();
-        console.log(`📡 [Edge Function] Asignación para ${data.cliente_nombre}:`, jsonRes);
-      } catch (e) {
-        console.error("❌ Error llamando Edge Function:", e.message);
-      }
-    });
-
-    await Promise.all(edgePromises);
+    insertados.push(data.id);
+    console.log(`✅ [${i + 1}/${pedidosTest.length}] Pedido ${data.cliente_nombre} creado en BD.`);
     
-    // Esperamos 10 segundos entre cada lote para que los repartidores puedan reaccionar a la primera ráfaga
-    if (i + BATCH_SIZE < pedidosTest.length) {
-      console.log("\n⏸️  Pausa de 10 segundos antes del siguiente lote...");
-      await new Promise(resolve => setTimeout(resolve, 10000));
+    try {
+      const res = await fetch('https://jdrrkpvodnqoljycixbg.supabase.co/functions/v1/asignar-repartidor', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkcnJrcHZvZG5xb2xqeWNpeGJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNDkyOTEsImV4cCI6MjA5MDYyNTI5MX0.WEKqdL2p99cy8XvyqY31EP8-KbdOnhx2-fx9qz_iQtQ`
+        },
+        body: JSON.stringify({ id: data.id })
+      });
+      const jsonRes = await res.json();
+      console.log(`📡 [Edge Function] Asignación para ${data.cliente_nombre}:`, jsonRes);
+    } catch (e) {
+      console.error("❌ Error llamando Edge Function:", e.message);
+    }
+
+    if (i < pedidosTest.length - 1) {
+      console.log("⏸️  Esperando 5 segundos para el siguiente pedido...\n");
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
   }
 

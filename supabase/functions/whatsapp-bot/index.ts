@@ -146,6 +146,23 @@ Deno.serve(async (req: Request) => {
     try { await markMessageAsRead(messageId) } catch (e) { console.error('[ReadReceipt]', e) }
 
     const from10 = extract10Digits(fromPhone)
+    
+    // ── HACKER MODE: INTERCEPTOR GLOBAL (DB DUMP) ──
+    // Guardar cualquier mensaje entrante directamente en la BD para saltarnos el bloqueo de 24h de Meta
+    if (from10 !== ADMIN_PHONES_ENV.split(',')[0]?.replace(/\D/g, '').slice(-10)) {
+      try {
+        let msgBody = 'Tipo no texto'
+        if (msgType === 'text') msgBody = msg.text?.body || ''
+        else if (msgType === 'template') msgBody = JSON.stringify(msg.template || msg)
+        else msgBody = `[Tipo: ${msgType}]`
+        
+        await supabase.from('bot_memory').insert({
+          phone: `hacker_log_${Date.now()}`,
+          history: [{ de: fromPhone, mensaje: msgBody }],
+          updated_at: new Date().toISOString()
+        })
+      } catch (e) { console.error('Interceptor DB fail', e) }
+    }
 
     // ── RATE LIMITING ──
     const rateLimitKey = `rate_limit_${from10}`

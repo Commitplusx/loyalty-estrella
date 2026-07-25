@@ -1,4 +1,4 @@
-import { sendWA, sendInteractiveButtons, sendWADocument, sendInteractiveButton } from './whatsapp.ts'
+import { sendWA, sendInteractiveButtons, sendWADocument, sendInteractiveButton, sendInteractiveCTAUrl } from './whatsapp.ts'
 import { handleAdminInteractive } from './slash-commands-handler.ts'
 import { handleRepButtons } from './rep-handler.ts'
 import { handleCalificacion, handleTerminos, handleAdminCommands } from './admin-handler.ts'
@@ -175,21 +175,53 @@ export async function handleButtonEvent(
     return new Response('OK', { status: 200 })
   }
 
-  // ── Restaurante: Empezar a Preparar (REST_ORDER_PREPARE_) ──
+  // 🧑‍🍳 Restaurante: Empezar a Preparar (Paso 1: Pedir Tiempo) 🧑‍🍳
   if (buttonId.startsWith('REST_ORDER_PREPARE_')) {
     const ticket_id = buttonId.replace('REST_ORDER_PREPARE_', '');
-    // Buscar el pedido por ID o wb_message_id. Evitar error de casteo de UUID si el ticket_id es corto.
     const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(ticket_id);
     const { data: p, error } = await supabase.from('pedidos').select('id, restaurante, descripcion').eq(isUUID ? 'id' : 'wb_message_id', ticket_id).maybeSingle();
     
     if (error) console.error("Error buscando pedido:", error);
     
     if (p) {
-      // 1. Actualizar estado a 'en_cocina'
-      await supabase.from('pedidos').update({ estado_cocina: 'en_cocina' }).eq('id', p.id);
+      await sendInteractiveButtons(
+        fromPhone,
+        `¡Perfecto! ¿En cuánto tiempo estará listo el pedido para que llegue el repartidor? ⏱️`,
+        [
+          { id: `REST_TIME_15_${ticket_id}`, title: '15 minutos' },
+          { id: `REST_TIME_30_${ticket_id}`, title: '30 minutos' },
+          { id: `REST_TIME_45_${ticket_id}`, title: '45 minutos' }
+        ]
+      );
+    } else {
+      await sendWA(fromPhone, `❌ Lo siento, no encontré el pedido #${ticket_id}.`);
+    }
+    return new Response('OK', { status: 200 });
+  }
+
+  // 🧑‍🍳 Restaurante: Confirmar Tiempo y Preparar (Paso 2) 🧑‍🍳
+  if (buttonId.startsWith('REST_TIME_')) {
+    const timeMatch = buttonId.match(/REST_TIME_(\d+)_/);
+    if (!timeMatch) return new Response('OK', { status: 200 });
+    
+    const minutes = parseInt(timeMatch[1], 10);
+    const ticket_id = buttonId.replace(`REST_TIME_${minutes}_`, '');
+    const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(ticket_id);
+    const { data: p, error } = await supabase.from('pedidos').select('id, restaurante, descripcion').eq(isUUID ? 'id' : 'wb_message_id', ticket_id).maybeSingle();
+    
+    if (error) console.error("Error buscando pedido (tiempo):", error);
+    
+    if (p) {
+      // 1. Actualizar estado a 'buscando_repartidor', asignar tiempo y 'en_cocina'
+      const { error: updError } = await supabase.from('pedidos').update({ 
+        estado_cocina: 'en_cocina',
+        estado: 'buscando_repartidor',
+        tiempo_preparacion_minutos: minutes
+      }).eq('id', p.id);
+      
+      if (updError) console.error("Error al actualizar estado a buscando_repartidor:", updError);
       
       // 2. Notificar al cliente que ya se está preparando
-      // Importante: disparamos notificar-whatsapp para reusar su lógica de 'preparando'
       const edgeUrl = supabase.functionsUrl ? `${supabase.functionsUrl}/notificar-whatsapp` : Deno.env.get('SUPABASE_URL') + '/functions/v1/notificar-whatsapp';
       await fetch(edgeUrl, {
         method: 'POST',
@@ -197,17 +229,37 @@ export async function handleButtonEvent(
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${SUPABASE_KEY}`
         },
-        body: JSON.stringify({ tipo: 'preparando', pedido_id: p.id, restaurante: p.restaurante })
+        body: JSON.stringify({ tipo: 'preparando', pedido_id: p.id, restaurante: p.restaurante, tiempo_preparacion_minutos: minutes })
       }).catch(e => console.error("Error trigger preparando from WA:", e));
 
+      // 3. ¡Hacer que el celular del repartidor SUENE!
+      const asignarUrl = supabase.functionsUrl ? `${supabase.functionsUrl}/asignar-repartidor` : Deno.env.get('SUPABASE_URL') + '/functions/v1/asignar-repartidor';
+      await fetch(asignarUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        },
+        body: JSON.stringify({ pedido_id: p.id })
+      }).catch(e => console.error("Error disparando asignar-repartidor desde WA:", e));
+
+      // Primer burbuja: Mensaje con detalles y botón URL para abrir el monitor
+      await sendInteractiveCTAUrl(
+        fromPhone,
+        `¡Excelente! 👨‍🍳 Ya le avisamos al cliente y estamos buscando repartidor (T. Est: ${minutes} min).\n\nAquí tienes el resumen:\n📝 *Lo que pidieron:*\n${p.descripcion || 'Sin detalles'}\n\n👇 _Toca abajo para abrirlo en tu pantalla:_`,
+        'Ver pedido',
+        'https://restaurantes-app-estrella.shop/portal'
+      );
+      
+      // Segunda burbuja: Botón de respuesta rápida "Pedido Listo"
       await sendInteractiveButton(
         fromPhone,
-        `🛒 *DETALLES DEL PEDIDO:*\n------------------------\n${p.descripcion || 'Sin detalles'}\n------------------------\n\n✅ *Pedido marcado en cocina.*\nSe le ha notificado al cliente que ya comenzaste a prepararlo.\n\nCuando la comida esté empacada y lista, presiona el botón abajo para avisar.`,
+        `Cuando tengas la comida empacada y lista, presiona este botón para mandar al repartidor 🛵💨`,
         `REST_ORDER_READY_${ticket_id}`,
-        'Pedido Listo'
+        '¡Ya está listo!'
       );
     } else {
-      await sendWA(fromPhone, `⚠️ Lo siento, no encontré el pedido #${ticket_id}.`);
+      await sendWA(fromPhone, `❌ Lo siento, no encontré el pedido #${ticket_id}.`);
     }
     return new Response('OK', { status: 200 });
   }

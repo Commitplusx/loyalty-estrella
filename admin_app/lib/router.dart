@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/login_screen.dart';
-import 'screens/main_shell.dart';
+import 'screens/admin_shell.dart';
+import 'core/user_role.dart';
 import 'screens/clients_screen.dart';
 import 'screens/client_detail_screen.dart';
 import 'screens/lock_screen.dart';
@@ -14,6 +15,7 @@ import 'screens/scanner_screen.dart';
 import 'screens/map_screen.dart';
 import 'screens/repartidores_screen.dart';
 import 'screens/repartidor_detail_screen.dart';
+import 'screens/admin_map_screen.dart';
 import 'screens/leaderboard_screen.dart';
 import 'screens/pedidos_screen.dart';
 import 'screens/pedido_detail_screen.dart';
@@ -24,43 +26,60 @@ import 'screens/excepciones_precio_screen.dart';
 import 'screens/solicitudes_screen.dart';
 import 'screens/h3_editor_webview_screen.dart';
 import 'screens/ganancias_screen.dart';
+import 'screens/promociones_screen.dart';
 
 
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
+// Helper class to trigger GoRouter refreshes on Riverpod state changes
+class RouterNotifier extends ChangeNotifier {
+  RouterNotifier(this.ref) {
+    ref.listen(isAdminProvider, (_, __) => notifyListeners());
+    ref.listen(authStateProvider, (_, __) => notifyListeners());
+  }
+  final Ref ref;
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
+  final notifier = RouterNotifier(ref);
+
   return GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: '/lock',
-    // Deep links: https://www.app-estrella.shop/pedido/:id
-    // iOS/Android App Links intercept and open this route directly
+    refreshListenable: notifier,
     redirect: (context, state) {
       final session = Supabase.instance.client.auth.currentSession;
       final isLogin = state.matchedLocation == '/login';
-      if (session == null && !isLogin) return '/login';
-      if (session != null && isLogin) return '/lock';
+      final isLock  = state.matchedLocation == '/lock';
+
+      debugPrint('[ROUTER] redirect → loc=${state.matchedLocation} session=${session != null ? "SI" : "NO"} email=${session?.user.email ?? "-"}');
+
+      // Sin sesión → siempre al login
+      if (session == null && !isLogin) {
+        debugPrint('[ROUTER] Sin sesión → /login');
+        return '/login';
+      }
+      // Con sesión en el login → al lock para que el admin autentique
+      if (session != null && isLogin) {
+        debugPrint('[ROUTER] Con sesión en login → /lock');
+        return '/lock';
+      }
 
       if (session != null) {
-        final email = session.user.email ?? '';
+        final email   = session.user.email ?? '';
         final isAdmin = email.toLowerCase().endsWith('@admin.com');
-        final loc = state.matchedLocation;
-        const adminOnlyPrefixes = [
-          '/clients',
-          '/config',
-          '/leaderboard',
-          '/map',
-          '/solicitudes',
-        ];
-        if (!isAdmin && adminOnlyPrefixes.any((p) => loc.startsWith(p))) {
-          // Repartidores sí pueden ver el detalle de su pedido via deep link
-          if (loc.startsWith('/pedidos/')) return null;
-          return '/dashboard';
-        }
-        if (!isAdmin && loc.startsWith('/repartidores/')) {
-          return '/repartidores';
+
+        debugPrint('[ROUTER] isAdmin=$isAdmin isLock=$isLock');
+
+        // Si no es admin y está intentando acceder a la app, rechazarlo
+        // Podríamos redirigirlo a una pantalla de error o forzar logout.
+        if (!isAdmin) {
+          debugPrint('[ROUTER] Acceso denegado: Usuario no es admin');
+          return '/login'; // O alguna ruta de acceso denegado
         }
       }
+      debugPrint('[ROUTER] Sin redirección → null');
       return null;
     },
     routes: [
@@ -71,34 +90,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/lock',
         builder: (ctx, state) => const LockScreen(),
-      ),
-      GoRoute(
-        path: '/config',
-        builder: (ctx, state) => const ConfigScreen(),
-        routes: [
-          GoRoute(
-            path: 'zonas',
-            builder: (ctx, state) => const ZonasConfigScreen(),
-          ),
-          GoRoute(
-            path: 'zonas-entrega',
-            builder: (ctx, state) => const ZonasEntregaScreen(),
-            routes: [
-              GoRoute(
-                path: 'h3-editor',
-                builder: (ctx, state) => const H3EditorWebViewScreen(),
-              ),
-            ],
-          ),
-          GoRoute(
-            path: 'excepciones',
-            builder: (ctx, state) => const ExcepcionesPrecioScreen(),
-          ),
-          GoRoute(
-            path: 'mapa-zonas',
-            builder: (ctx, state) => const MapaZonasScreen(),
-          ),
-        ],
       ),
       GoRoute(
         path: '/map',
@@ -116,8 +107,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/ganancias',
         builder: (ctx, state) => const GananciasScreen(),
       ),
+      // Mapa interactivo completo de repartidores
+      GoRoute(
+        path: '/live-map',
+        builder: (ctx, state) => const AdminMapScreen(),
+      ),
       ShellRoute(
-        builder: (ctx, state, child) => MainShell(child: child),
+        builder: (ctx, state, child) {
+          return AdminShell(child: child);
+        },
         routes: [
           GoRoute(
             path: '/dashboard',
@@ -158,6 +156,38 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/solicitudes',
             pageBuilder: (ctx, state) => _buildPageWithTransition(const SolicitudesScreen(), state),
+          ),
+          GoRoute(
+            path: '/promociones',
+            pageBuilder: (ctx, state) => _buildPageWithTransition(const PromocionesScreen(), state),
+          ),
+          GoRoute(
+            path: '/config',
+            pageBuilder: (ctx, state) => _buildPageWithTransition(const ConfigScreen(), state),
+            routes: [
+              GoRoute(
+                path: 'zonas',
+                builder: (ctx, state) => const ZonasConfigScreen(),
+              ),
+              GoRoute(
+                path: 'zonas-entrega',
+                builder: (ctx, state) => const ZonasEntregaScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'h3-editor',
+                    builder: (ctx, state) => const H3EditorWebViewScreen(),
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: 'excepciones',
+                builder: (ctx, state) => const ExcepcionesPrecioScreen(),
+              ),
+              GoRoute(
+                path: 'mapa-zonas',
+                builder: (ctx, state) => const MapaZonasScreen(),
+              ),
+            ],
           ),
         ],
       ),

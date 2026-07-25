@@ -66,7 +66,7 @@ export function generateCloudinaryVIPCard(
  * Si no (registros viejos), cae al fallback del slice del UUID.
  */
 export function pedidoLink(pedidoId: string, accessToken?: string): string {
-  const BASE_LINK = 'https://www.app-estrella.shop/pedido'
+  const BASE_LINK = 'https://www.estrella-eats.mx/pedido'
   const key = accessToken || pedidoId.replace(/-/g, '').slice(0, 8)
   return `${BASE_LINK}/${pedidoId}?key=${key}`
 }

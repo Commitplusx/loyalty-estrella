@@ -55,7 +55,8 @@ serve(async (req) => {
       .update({
         mp_access_token: tokenData.access_token,
         mp_refresh_token: tokenData.refresh_token,
-        mp_user_id: tokenData.user_id.toString()
+        mp_user_id: tokenData.user_id.toString(),
+        acepta_pago_online: true
       })
       .eq('id', restaurante_id)
 

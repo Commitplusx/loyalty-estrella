@@ -72,19 +72,26 @@ serve(async (req) => {
           // 1. Obtener detalles del pedido para WhatsApp
           const { data: pedidoData, error: selectError } = await supabaseClient
             .from('pedidos')
-            .select('wb_message_id, restaurante, descripcion, tipo_pedido, direccion, referencias_entrega, total, lat, lng')
+            .select('wb_message_id, restaurante, descripcion, tipo_pedido, direccion, referencias_entrega, total, lat, lng, estado')
             .eq('wb_message_id', pedidoId)
             .single()
 
           if (!selectError && pedidoData) {
+            const updates: any = { 
+              estado_pago: 'pagado',
+              mp_payment_id: id.toString()
+            }
+            
+            // Bug lógico: Solo cambiar el estado a 'pendiente' si el pedido estaba esperando pago.
+            // Si el webhook llega tarde y el restaurante ya lo está 'preparando', no queremos regresarlo a 'pendiente'.
+            if (pedidoData.estado === 'pendiente_pago') {
+              updates.estado = 'pendiente'
+            }
+
             // 2. Actualizar el pedido en Supabase a pagado
             const { error: updateError } = await supabaseClient
               .from('pedidos')
-              .update({ 
-                estado: 'pendiente',
-                estado_pago: 'pagado',
-                mp_payment_id: id.toString()
-              })
+              .update(updates)
               .eq('wb_message_id', pedidoId)
 
             if (updateError) throw new Error(`Error actualizando pedido: ${updateError.message}`)
@@ -100,13 +107,7 @@ serve(async (req) => {
               }
             }).catch(err => console.warn('Error mandando WA desde webhook:', err))
 
-            // 4. Asignar repartidor (Garantía de que siempre suene la venta tras pagar en línea)
-            if (pedidoData.tipo_pedido === 'domicilio') {
-              console.log(`Disparando asignacion de repartidor para pedido en linea: ${pedidoId}`)
-              await supabaseClient.functions.invoke('asignar-repartidor', {
-                body: { id: pedidoId } // Pasamos el wb_message_id o id, asignar-repartidor maneja ambos internamente si adaptamos
-              }).catch(err => console.warn('Error invocando asignar-repartidor desde webhook MP:', err))
-            }
+            // 4. Se eliminó la asignación de repartidor automática aquí para que el restaurante decida cuándo despachar.
 
             
             

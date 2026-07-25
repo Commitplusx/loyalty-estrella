@@ -37,10 +37,37 @@ class DashboardService {
       print('Error al obtener visitas: $e');
     }
 
+    double gastosHoy = 0.0;
+    try {
+      final gastosResponse = await supabase
+          .from('gastos_motos')
+          .select('monto')
+          .gte('fecha', startOfDay);
+      for (var g in gastosResponse as List<dynamic>) {
+        gastosHoy += (g['monto'] as num?)?.toDouble() ?? 0.0;
+      }
+    } catch (e) {
+      print('Error al obtener gastos: $e');
+    }
+
+    int pedidosAtrasados = 0;
+    final nowRef = DateTime.now();
+
     for (var p in pedidos) {
       final estado = p['estado'] as String? ?? '';
       
-      // Solo contar en el dashboard los pedidos que ya fueron entregados.
+      // Contar pedidos demorados (> 45 min y no completados)
+      if (estado == 'pendiente' || estado == 'preparando' || estado == 'en_camino') {
+        final createdAtStr = p['created_at'] as String?;
+        if (createdAtStr != null) {
+          final createdAt = DateTime.tryParse(createdAtStr)?.toLocal();
+          if (createdAt != null && nowRef.difference(createdAt).inMinutes > 45) {
+            pedidosAtrasados++;
+          }
+        }
+      }
+
+      // Solo contar en el dashboard financiero los pedidos que ya fueron entregados.
       if (estado != 'entregado') continue;
 
       serviciosHoy++;
@@ -68,6 +95,9 @@ class DashboardService {
     return {
       'servicios': serviciosHoy,
       'ganancias': gananciasHoy,
+      'gastos': gastosHoy,
+      'utilidadNeta': gananciasHoy - gastosHoy,
+      'pedidosAtrasados': pedidosAtrasados,
       'enviosGratis': enviosGratisHoy,
       'visitas': visitasHoy,
     };
@@ -213,9 +243,38 @@ class DashboardService {
 
     final sorted = map.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
     
-    return sorted.take(5).map((e) => {
+    final topList = sorted.take(5).map((e) => {
       'nombre': e.key,
       'pedidos': e.value,
+      'imagen_url': '',
     }).toList();
+
+    try {
+      final topNames = topList.map((e) => e['nombre'] as String).toList();
+      if (topNames.isNotEmpty) {
+        final resImages = await supabase
+            .from('restaurantes')
+            .select('nombre, foto_fachada_url')
+            .inFilter('nombre', topNames);
+
+        final imgMap = <String, String>{};
+        for (var r in resImages as List<dynamic>) {
+          if (r['nombre'] != null && r['foto_fachada_url'] != null) {
+            imgMap[(r['nombre'] as String).trim()] = r['foto_fachada_url'] as String;
+          }
+        }
+
+        for (var item in topList) {
+          final name = item['nombre'] as String;
+          if (imgMap.containsKey(name)) {
+            item['imagen_url'] = imgMap[name]!;
+          }
+        }
+      }
+    } catch (e) {
+      print('Error fetching restaurant images: $e');
+    }
+
+    return topList;
   }
 }

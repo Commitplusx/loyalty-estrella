@@ -1,8 +1,12 @@
 // supabase/functions/asignar-repartidor/index.ts
-// Asignación Inteligente (Round-Robin):
-// 1. Repartidor más cercano (30s)
-// 2. Repartidor con menos pedidos (30s)
-// 3. Fallback (Admin)
+// ══════════════════════════════════════════════════════════════
+//  Motor de Asignación Inteligente v2.0
+//  Score Multi-Factor (menor = mejor):
+//    40% → Proximidad al restaurante (PostGIS + Google Maps)
+//    25% → Carga de trabajo (pedidos activos, hard cap en 3)
+//    25% → Tasa de aceptación (premia a quien siempre acepta)
+//    10% → Tiempo sin pedido (fairness / turno de trabajo)
+// ══════════════════════════════════════════════════════════════
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -48,314 +52,392 @@ async function sendWA(to: string, body: string): Promise<void> {
   })
 }
 
-// La distancia de Haversine ya no es necesaria, ahora delegamos el cálculo espacial a PostGIS (RPC)
+async function initFirebase() {
+  if (isFirebaseInitialized) return true;
+  const serviceAccountStr = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
+  if (!serviceAccountStr) {
+    console.warn(`[FCM] ⚠️ No se encontró FIREBASE_SERVICE_ACCOUNT.`);
+    return false;
+  }
+  initializeApp({ credential: cert(JSON.parse(serviceAccountStr)) });
+  isFirebaseInitialized = true;
+  return true;
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
 
-    try {
+  try {
     const rawPayload = await req.json();
-    console.log("[DEBUG ASIGNAR-REPARTIDOR] Payload recibido:", JSON.stringify(rawPayload));
+    console.log("[ASIGNAR v2.0] Payload recibido:", JSON.stringify(rawPayload));
 
-    // Si es un webhook, el payload viene dentro de `record`
+    // Soporta tanto webhook (record.id) como llamada directa (id)
     const payload = rawPayload.record || rawPayload;
     const pedido_uuid = payload.id;
-    const excluir_id = payload.excluir; // ID del repartidor que acaba de rechazar el pedido
+    const excluir_id = payload.excluir; // ID del repartidor que rechazó
 
     if (!pedido_uuid) {
-      console.error("[DEBUG] pedido_uuid no encontrado en el payload.");
       return new Response(JSON.stringify({ error: 'id requerido' }), { status: 400, headers: CORS_HEADERS })
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
-    // Determinar si el payload trae un UUID o un ID corto
+    // ── 1. LEER PEDIDO DE LA BD ─────────────────────────────────────
     const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(pedido_uuid);
     const searchColumn = isUuid ? 'id' : 'wb_message_id';
 
-    // EXTRAER DATOS DIRECTAMENTE DE LA BD (100% SEGURO)
     const { data: dbPedido, error: dbError } = await supabase
       .from('pedidos')
-      .select('id, wb_message_id, restaurante, direccion, total, lat, lng, lat_entrega, lng_entrega, metodo_pago, estado, tipo_pedido, repartidor_id')
+      .select('id, wb_message_id, restaurante, direccion, total, lat, lng, lat_entrega, lng_entrega, metodo_pago, estado, tipo_pedido, repartidor_id, ofertas_rechazadas')
       .eq(searchColumn, pedido_uuid)
       .single();
 
     if (dbError || !dbPedido) {
-      console.error(`[DEBUG] No se pudo obtener el pedido (buscando por ${searchColumn}):`, dbError);
+      console.error(`[ASIGNAR v2.0] Pedido no encontrado (${searchColumn}=${pedido_uuid}):`, dbError);
       return new Response(JSON.stringify({ error: 'Pedido no existe en BD' }), { status: 404, headers: CORS_HEADERS })
     }
 
+    // Solo pedidos de domicilio necesitan repartidor
     if (dbPedido.tipo_pedido !== 'domicilio') {
-      console.log("[DEBUG] El pedido no es a domicilio. Se aborta asignación.");
+      console.log("[ASIGNAR v2.0] Pedido para recoger. Abortando.");
       return new Response(JSON.stringify({ ok: true, message: 'No es domicilio' }), { headers: CORS_HEADERS })
     }
 
-    const ticket_id = dbPedido.wb_message_id || dbPedido.id;
-    const restaurante = dbPedido.restaurante || "Estrella";
-    const direccion = dbPedido.direccion || "";
-    const total = dbPedido.total || "0";
-    const lat = dbPedido.lat;
-    const lng = dbPedido.lng;
-
-    // EVITAR DOBLE ASIGNACIÓN Y EVENTOS BASURA (ROBUSTEZ)
-    if (dbPedido.estado !== 'pendiente' && dbPedido.estado !== 'pagado') {
-        console.log("[DEBUG] Estado inválido para asignación (" + dbPedido.estado + "). Ignorando webhook.");
-        return new Response(JSON.stringify({ ok: true, message: 'Estado ignorable' }), { headers: CORS_HEADERS })
+    // ── 2. GUARDIANES DE IDEMPOTENCIA ────────────────────────────────
+    // Evitan procesar el mismo evento dos veces (webhook duplicado, etc.)
+    if (dbPedido.estado !== 'buscando_repartidor') {
+      console.log(`[ASIGNAR v2.0] Estado '${dbPedido.estado}' no es buscando_repartidor. Ignorando.`);
+      return new Response(JSON.stringify({ ok: true, message: 'Estado ignorable' }), { headers: CORS_HEADERS })
     }
-    
-    // Si ya tiene un repartidor asignado, ignorar (esto es por si el webhook se dispara por accidente en un UPDATE)
     if (dbPedido.repartidor_id) {
-        console.log("[DEBUG] El pedido ya tiene repartidor asignado. Ignorando webhook.");
-        return new Response(JSON.stringify({ ok: true, message: 'Ya asignado' }), { headers: CORS_HEADERS })
+      console.log("[ASIGNAR v2.0] Pedido ya tiene repartidor. Ignorando.");
+      return new Response(JSON.stringify({ ok: true, message: 'Ya asignado' }), { headers: CORS_HEADERS })
     }
 
-    // 1. Obtener Repartidores Cercanos (Vía PostGIS)
-    // El RPC 'buscar_repartidores_cercanos' funciona como un pre-filtro súper rápido (Línea Recta 5km)
+    const ticket_id  = dbPedido.wb_message_id || dbPedido.id;
+    const restaurante = dbPedido.restaurante || "Estrella";
+    const direccion   = dbPedido.direccion || "";
+    const total       = dbPedido.total || "0";
+    const lat         = dbPedido.lat;
+    const lng         = dbPedido.lng;
+
+    // ── 3. BUSCAR CANDIDATOS VÍA RPC INTELIGENTE ─────────────────────
+    // El nuevo RPC ya incorpora: pedidos_activos, tasa_aceptacion, minutos_sin_pedido
+    // y aplica el hard cap de 3 pedidos activos.
     let repartidoresValidos: any[] = [];
-    
+    let driversLockedCount = 0;
+
     if (lat && lng) {
-        // En tu DB ya tienes el H3 o lat/lng, usamos el RPC para el filtro grueso
-        const { data, error: rpcErr } = await supabase.rpc('buscar_repartidores_cercanos', {
-            p_lat: lat,
-            p_lng: lng,
-            p_radio_metros: 5000,
-            p_cliente_lat: dbPedido.lat_entrega,
-            p_cliente_lng: dbPedido.lng_entrega
-        });
-        
-        if (rpcErr) {
-            console.error('[RPC ERROR]', rpcErr);
-            throw new Error(`Error en RPC PostGIS: ${rpcErr.message}`);
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('buscar_repartidores_cercanos', {
+        p_lat: lat,
+        p_lng: lng,
+        p_radio_metros: 5000,
+        p_cliente_lat: dbPedido.lat_entrega,
+        p_cliente_lng: dbPedido.lng_entrega
+      });
+
+      if (rpcErr) {
+        console.error('[RPC ERROR]', rpcErr);
+        throw new Error(`Error en RPC PostGIS: ${rpcErr.message}`);
+      }
+
+      repartidoresValidos = (rpcData || []).map((r: any) => ({
+        ...r,
+        repartidor_id: r.user_id || r.repartidor_id
+      }));
+
+      console.log(`[ASIGNAR v2.0] Candidatos del RPC (score multi-factor):`,
+        repartidoresValidos.map(r =>
+          `${r.nombre || r.repartidor_id}: score=${Math.round(r.score)} | activos=${r.pedidos_activos} | aceptacion=${r.tasa_aceptacion} | idle=${Math.round(r.minutos_sin_pedido)}min`
+        )
+      );
+
+      // ── 3a. EXCLUIR RECHAZADORES PREVIOS ─────────────────────
+      const currentRechazos = Array.isArray(dbPedido.ofertas_rechazadas) 
+                              ? dbPedido.ofertas_rechazadas 
+                              : [];
+      if (excluir_id && !currentRechazos.includes(excluir_id)) {
+        currentRechazos.push(excluir_id);
+      }
+      if (currentRechazos.length > 0) {
+        repartidoresValidos = repartidoresValidos.filter((r: any) => !currentRechazos.includes(r.repartidor_id));
+        console.log(`[ZERO-WAIT] Excluyendo ${currentRechazos.length} repartidores que ya rechazaron.`);
+      }
+
+      // ── 3b. CANDADO: Excluir a quien ya tiene un pedido 'ofrecido' sonando ──
+      if (repartidoresValidos.length > 0) {
+        const repIds = repartidoresValidos.map((r: any) => r.repartidor_id);
+        const { data: ofrecidos } = await supabase
+          .from('pedidos')
+          .select('repartidor_id')
+          .in('repartidor_id', repIds)
+          .eq('estado', 'ofrecido');
+
+        if (ofrecidos && ofrecidos.length > 0) {
+          const lockedIds = new Set(ofrecidos.map((p: any) => p.repartidor_id));
+          driversLockedCount += lockedIds.size;
+          repartidoresValidos = repartidoresValidos.filter((r: any) => !lockedIds.has(r.repartidor_id));
+          console.log(`[LOCK] Excluidos ${lockedIds.size} repartidores con oferta activa en pantalla.`);
         }
-        repartidoresValidos = (data || []).map((r: any) => ({ ...r, repartidor_id: r.user_id || r.id }));
-        
-        // 🔒 CANDADO ANTI-AMONTONAMIENTO (El "Lock" del Francotirador)
-        // Filtramos a los repartidores que en este exacto milisegundo tienen un pedido 'ofrecido' 
-        // sonando en su pantalla, para no mandarles 2 alertas encimadas.
-        if (repartidoresValidos.length > 0) {
-            const repIds = repartidoresValidos.map((r: any) => r.repartidor_id);
-            const { data: pedidosOfrecidos } = await supabase
-                .from('pedidos')
-                .select('repartidor_id')
-                .in('repartidor_id', repIds)
-                .eq('estado', 'ofrecido');
-                
-            if (pedidosOfrecidos && pedidosOfrecidos.length > 0) {
-                const lockedDriverIds = new Set(pedidosOfrecidos.map((p: any) => p.repartidor_id));
-                repartidoresValidos = repartidoresValidos.filter((r: any) => !lockedDriverIds.has(r.repartidor_id));
-                console.log(`[LOCK] Se descartaron ${lockedDriverIds.size} repartidores porque están decidiendo un pedido ahora mismo.`);
-            }
-        }
-        
-        // ZERO-WAIT: Excluir al repartidor que acaba de rechazar el pedido
-        if (excluir_id && repartidoresValidos.length > 0) {
-            repartidoresValidos = repartidoresValidos.filter((r: any) => r.repartidor_id !== excluir_id);
-            console.log(`[ZERO-WAIT] Excluyendo al repartidor ${excluir_id} de la asignación.`);
-        }
-        
-        // 2. Refinamiento con Google Maps Distance Matrix API (ETA Real)
-        const googleMapsKey = Deno.env.get('GOOGLE_MAPS_KEY');
-        if (googleMapsKey && repartidoresValidos.length > 0) {
-            try {
-                // Recuperar lat/lng exactos de los candidatos para la API
-                const repIds = repartidoresValidos.map(r => r.repartidor_id);
-                const { data: repCoords } = await supabase.from('repartidores').select('id, user_id, lat, lng').in('id', repIds);
-                
-                if (repCoords && repCoords.length > 0) {
-                    const destinations = repCoords.filter(r => r.lat && r.lng).map(r => `${r.lat},${r.lng}`).join('|');
-                    const origin = `${lat},${lng}`;
-                    
-                    const gmapUrl = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin}&destinations=${destinations}&key=${googleMapsKey}`;
-                    const gmapRes = await fetch(gmapUrl);
-                    const gmapData = await gmapRes.json();
-                    
-                    if (gmapData.status === 'OK') {
-                        const elements = gmapData.rows[0].elements;
-                        
-                        // Map the ETAs back to the drivers
-                        repCoords.forEach((coord, idx) => {
-                            if (elements[idx] && elements[idx].status === 'OK') {
-                                const durationSeconds = elements[idx].duration.value;
-                                // Actualizar el score: Reemplazamos la distancia lineal con el ETA real
-                                // Score = (ETA_minutos * 10) - (batería * 10) + (carga * 50)
-                                const targetRep = repartidoresValidos.find(r => r.repartidor_id === (coord.user_id || coord.id));
-                                if (targetRep) {
-                                    const etaMinutos = durationSeconds / 60;
-                                    targetRep.eta_minutos = Math.round(etaMinutos);
-                                    targetRep.score = (etaMinutos * 10) - ((targetRep.bateria || 0) * 10) + ((targetRep.meta_envios || 0) * 50);
-                                }
-                            }
-                        });
-                        
-                        // Re-ordenar basado en el nuevo score con ETA real
-                        repartidoresValidos.sort((a, b) => (a.score || 0) - (b.score || 0));
-                        console.log('[DEBUG] Candidatos re-ordenados con Google Maps ETA:', repartidoresValidos.map(r => `${r.repartidor_id}: ${r.eta_minutos}min`));
+      }
+
+      // ── 3c. REFINAMIENTO CON GOOGLE MAPS (Top 5 candidatos) ───────
+      // Solo refinamos el ETA de los mejores 5 para no gastar la cuota de la API
+      const googleMapsKey = Deno.env.get('GOOGLE_MAPS_KEY');
+      if (googleMapsKey && repartidoresValidos.length > 0) {
+        try {
+          const top5 = repartidoresValidos.slice(0, 5);
+          const repIds = top5.map((r: any) => r.repartidor_id);
+          const { data: repCoords } = await supabase
+            .from('repartidores')
+            .select('id, user_id, lat, lng')
+            .in('user_id', repIds);
+
+          if (repCoords && repCoords.length > 0) {
+            const validCoords = repCoords.filter((r: any) => r.lat && r.lng);
+            if (validCoords.length > 0) {
+              const destinations = validCoords.map((r: any) => `${r.lat},${r.lng}`).join('|');
+              const gmapUrl = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${lat},${lng}&destinations=${destinations}&key=${googleMapsKey}`;
+              const gmapRes = await fetch(gmapUrl);
+              const gmapData = await gmapRes.json();
+
+              if (gmapData.status === 'OK') {
+                const elements = gmapData.rows[0].elements;
+                validCoords.forEach((coord: any, idx: number) => {
+                  if (elements[idx]?.status === 'OK') {
+                    const etaMinutos = elements[idx].duration.value / 60;
+                    const driverId = coord.user_id || coord.id;
+                    const rep = repartidoresValidos.find((r: any) => r.repartidor_id === driverId);
+                    if (rep) {
+                      rep.eta_minutos = Math.round(etaMinutos);
+                      // Re-calcular score reemplazando la distancia lineal con el ETA real de Google
+                      // Mantenemos los factores de carga, aceptación y fairness del RPC
+                      const tasa = rep.tasa_aceptacion || 0.8;
+                      const idle = rep.minutos_sin_pedido || 0;
+                      const activos = rep.pedidos_activos || 0;
+                      rep.score = (etaMinutos * 60 * 0.40)       // ETA como distancia equivalente
+                                + (activos * 2500)                 // carga de trabajo
+                                - (tasa * 3000)                    // tasa de aceptación
+                                - (Math.min(idle, 120) * 5.0)      // fairness
+                                - ((rep.bateria || 0) * 8.0);      // batería
                     }
-                }
-            } catch (err) {
-                console.error('[ERROR Google Maps API]', err);
-                // Si falla, el arreglo sigue ordenado por la distancia del RPC original (Fallback robusto)
+                  }
+                });
+                // Re-ordenar con ETA real de Google Maps
+                repartidoresValidos.sort((a: any, b: any) => (a.score || 0) - (b.score || 0));
+                console.log('[GOOGLE MAPS] Re-ordenados con ETA real:',
+                  repartidoresValidos.map((r: any) => `${r.nombre}: ${r.eta_minutos}min, score=${Math.round(r.score)}`)
+                );
+              }
             }
+          }
+        } catch (err) {
+          console.error('[GOOGLE MAPS ERROR]', err);
+          // Fallback: usar el score del RPC (distancia Haversine)
         }
+      }
+
     } else {
-        // Fallback si el pedido no tiene lat/lng
-        const { data } = await supabase.from('repartidores').select('id, user_id, lat, lng, bateria, meta_envios').eq('activo', true);
-        repartidoresValidos = (data || [])
-          .filter(r => r.bateria === null || r.bateria >= 15)
-          .map(r => ({ ...r, repartidor_id: r.user_id || r.id }));
-          
-        if (excluir_id) {
-            repartidoresValidos = repartidoresValidos.filter((r: any) => r.repartidor_id !== excluir_id);
-        }
+      // ── Fallback sin coordenadas: cualquier repartidor activo ─────
+      console.warn('[ASIGNAR v2.0] Pedido sin lat/lng. Usando fallback sin geolocalización.');
+      const { data: todos } = await supabase
+        .from('repartidores')
+        .select('id, user_id, nombre, lat, lng, bateria, meta_envios, total_ofertas, total_aceptaciones')
+        .eq('activo', true);
+
+      repartidoresValidos = (todos || [])
+        .filter((r: any) => (r.bateria === null || r.bateria >= 15))
+        .filter((r: any) => r.repartidor_id !== excluir_id)
+        .map((r: any) => ({ ...r, repartidor_id: r.user_id || r.id }));
     }
 
+    // ── 4. ¿HAY CANDIDATOS? ──────────────────────────────────────────
     if (!repartidoresValidos || repartidoresValidos.length === 0) {
-      if (ADMIN_PHONE_MAIN) {
-        await sendWA(ADMIN_PHONE_MAIN, `⚠️ *Pedido #${ticket_id} sin repartidor*\n\nNo hay ningún repartidor activo cerca. Asigna manualmente.\n📦 ${restaurante}`)
-      }
-      return new Response(JSON.stringify({ ok: false, reason: 'no_drivers' }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
-    }
-
-    // 2. Lógica de Selección y Bloqueo Atómico (Resolviendo Thundering Herd)
-    let repartidor1 = null;
-    let repartidor2 = null;
-    let assigned = false;
-
-    // Intentamos asignarlo atómicamente. Si el #1 está ocupado decidiendo otro pedido (milisegundos antes),
-    // el RPC fallará y pasaremos al #2, y así sucesivamente.
-    for (let i = 0; i < repartidoresValidos.length; i++) {
-        const rep = repartidoresValidos[i];
-        
-        // ¡MAGIA ATÓMICA!
-        const { data: success, error: atomicErr } = await supabase.rpc('asignar_pedido_atomico', {
-            p_pedido_id: dbPedido.id,
-            p_repartidor_id: rep.repartidor_id
+      if (driversLockedCount > 0) {
+        // Hay repartidores pero están decidiendo otro pedido → reintentar en 10s
+        console.log(`[RETRY] ${driversLockedCount} repartidor(es) bloqueados. Reintentando en 10s.`);
+        const QSTASH_TOKEN = Deno.env.get('QSTASH_TOKEN');
+        if (QSTASH_TOKEN) {
+          await fetch(`https://qstash-us-east-1.upstash.io/v2/publish/${SUPABASE_URL}/functions/v1/asignar-repartidor`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${QSTASH_TOKEN}`,
+              'Content-Type': 'application/json',
+              'Upstash-Delay': '10s'
+            },
+            body: JSON.stringify(payload)
+          }).catch(e => console.error("Error QStash Retry", e));
+        }
+        return new Response(JSON.stringify({ ok: true, reason: 'retrying_due_to_locks' }), {
+          headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
         });
-
-        if (atomicErr) {
-            console.error('[ATOMIC LOCK ERROR]', atomicErr);
-            return new Response(JSON.stringify({ ok: false, reason: 'atomic_err', dbError: atomicErr }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
-        }
-
-        if (success) {
-            assigned = true;
-            repartidor1 = rep;
-            repartidor2 = repartidoresValidos[i + 1] ?? null;
-            break;
-        } else {
-            console.log(`[ATOMIC LOCK] Repartidor ${rep.repartidor_id} está ocupado decidiendo. Saltando al siguiente...`);
-        }
-    }
-
-    if (!assigned) {
-        console.log(`[ATOMIC LOCK] Todos los repartidores cercanos están ocupados decidiendo un pedido. El pedido quedará en cola.`);
-        if (ADMIN_PHONE_MAIN) {
-            await sendWA(ADMIN_PHONE_MAIN, `⚠️ *Saturación de Ping*\n\nEl pedido #${ticket_id} entró cuando todos los repartidores estaban decidiendo. Se quedó flotando.\n📦 ${restaurante}`);
-        }
-        return new Response(JSON.stringify({ ok: false, reason: 'all_busy_deciding', drivers_checked: repartidoresValidos.length }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
-    }
-
-    // Patrón "Stateless Event-Driven":
-    // 1. Mandamos el Ping al Repartidor 1 por Realtime (para Foreground)
-    const repartidor1Id = repartidor1.user_id || repartidor1.id;
-    await supabase.channel('repartidores_ping').send({
-      type: 'broadcast',
-      event: 'order_offered',
-      payload: { 
-        target_driver_id: repartidor1Id, 
-        pedido_id: String(dbPedido.id),
-        restaurante: restaurante,
-        direccion: direccion,
-        total: total,
-        viaje_apilado: repartidor1.viaje_apilado || false
       }
+
+      // No hay nadie disponible → alertar al admin
+      console.warn(`[ASIGNAR v2.0] Sin repartidores disponibles para pedido ${ticket_id}`);
+      if (ADMIN_PHONE_MAIN) {
+        await sendWA(ADMIN_PHONE_MAIN,
+          `⚠️ *Pedido #${ticket_id} sin repartidor*\n\nNo hay repartidores activos cerca o todos están al tope de carga.\n📦 ${restaurante}\n📍 ${direccion}\n\nAsigna manualmente.`
+        );
+      }
+      return new Response(JSON.stringify({ ok: false, reason: 'no_drivers' }), {
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // ── 5. ASIGNACIÓN ATÓMICA AL MEJOR CANDIDATO ─────────────────────
+    // El #1 ya es el ganador del score multi-factor. Intentamos asignárselo
+    // atómicamente en la BD para prevenir race conditions.
+    const mejorCandidato = repartidoresValidos[0];
+    const segundoCandidato = repartidoresValidos[1] ?? null;
+    const mejorId = mejorCandidato.repartidor_id;
+
+    const { data: atomicSuccess, error: atomicErr } = await supabase.rpc('asignar_pedido_atomico', {
+      p_pedido_id: dbPedido.id,
+      p_repartidor_id: mejorId
     });
 
-    // 2. Mandamos FCM Push de alta prioridad para despertar la app (Background/Killed)
-    try {
-      if (!isFirebaseInitialized) {
-        const serviceAccountStr = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
-        if (serviceAccountStr) {
-          initializeApp({ credential: cert(JSON.parse(serviceAccountStr)) });
-          isFirebaseInitialized = true;
-        } else {
-          console.log(`[FCM SNIPER] ⚠️ No se encontró FIREBASE_SERVICE_ACCOUNT. Saltando FCM.`);
-        }
-      }
+    if (atomicErr) {
+      console.error('[ATOMIC ERROR]', atomicErr);
+      return new Response(JSON.stringify({ ok: false, reason: 'atomic_err', error: atomicErr }), {
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
+      });
+    }
 
-      if (isFirebaseInitialized) {
-        console.log(`[FCM SNIPER] 🚀 Disparando misil FCM a driver_${repartidor1Id}...`);
+    if (!atomicSuccess) {
+      // El pedido ya no está disponible (otro proceso lo tomó en el mismo milisegundo)
+      console.log('[ATOMIC] El pedido ya no está disponible. Otro proceso lo tomó.');
+      return new Response(JSON.stringify({ ok: true, reason: 'already_taken' }), {
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // ── 6. ACTUALIZAR MÉTRICAS DEL REPARTIDOR ────────────────────────
+    // Incrementar total_ofertas (para calcular tasa de aceptación futura)
+    supabase
+      .from('repartidores')
+      .update({ total_ofertas: (mejorCandidato.total_ofertas || 0) + 1 })
+      .eq('user_id', mejorId)
+      .then(({ error }) => {
+        if (error) console.error('[METRICS] Error incrementando total_ofertas:', error);
+        else console.log(`[METRICS] total_ofertas++ para repartidor ${mejorId}`);
+      });
+
+    // ── 7. GENERAR PIN DE RECOLECCIÓN ────────────────────────────────
+    const pickupPin = Math.floor(1000 + Math.random() * 9000).toString();
+    supabase
+      .from('pedidos')
+      .update({ pickup_pin: pickupPin })
+      .eq('id', dbPedido.id)
+      .then(({ error }) => {
+        if (error) console.error('[PIN ERROR]', error);
+        else console.log(`[PIN] ${pickupPin} generado para pedido ${dbPedido.id}`);
+      });
+
+    // ── 8. NOTIFICAR AL REPARTIDOR ───────────────────────────────────
+    // Canal 1: Realtime Broadcast (app en primer plano)
+    await new Promise((resolve) => {
+      const pingChannel = supabase.channel('repartidores_ping');
+      pingChannel.subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await pingChannel.send({
+            type: 'broadcast',
+            event: 'order_offered',
+            payload: {
+              target_driver_id: mejorId,
+              pedido_id: String(dbPedido.id),
+              restaurante,
+              direccion,
+              total,
+              viaje_apilado: mejorCandidato.viaje_apilado || false,
+              eta_minutos: mejorCandidato.eta_minutos || null
+            }
+          });
+          supabase.removeChannel(pingChannel);
+          resolve(true);
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          resolve(false);
+        }
+      });
+      // Fallback timeout in case subscribe hangs
+      setTimeout(() => resolve(false), 2000);
+    });
+
+    // Canal 2: FCM Data Push (app en background/cerrada)
+    try {
+      const fbOk = await initFirebase();
+      if (fbOk) {
         await getMessaging().send({
-          topic: `driver_${repartidor1Id}`,
-          // No usamos bloque 'notification' para que sea un DATA-ONLY push.
-          // Esto obliga a que el handler en background de Flutter se ejecute
-          // y podamos disparar el fullScreenIntent manualmente.
-          android: {
-            priority: "high",
-          },
+          topic: `driver_${mejorId}`,
+          android: { priority: "high", ttl: 0 },
           data: {
             tipo: "pedido_asignado",
             pedido_id: String(dbPedido.id),
-            restaurante: String(restaurante || 'Estrella'),
+            restaurante: String(restaurante),
             click_action: "FLUTTER_NOTIFICATION_CLICK",
-            target_driver_id: String(repartidor1Id || ''),
-            viaje_apilado: String(repartidor1.viaje_apilado || false)
+            target_driver_id: String(mejorId),
+            viaje_apilado: String(mejorCandidato.viaje_apilado || false)
           }
         });
-        console.log(`[FCM SNIPER] ✅ Misil FCM DATA-ONLY disparado a driver_${repartidor1Id} con éxito.`);
+        console.log(`[FCM] ✅ Push enviado a driver_${mejorId}`);
       }
     } catch (fcmErr) {
-      console.error("[FCM SNIPER] ❌ Error enviando FCM al repartidor:", fcmErr);
+      console.error("[FCM] ❌ Error:", fcmErr);
     }
-    console.log(`[QSTASH INIT] Turno 1: ${repartidor1.nombre} (${repartidor1Id}). Ping enviado.`);
 
-    // 2. Programamos a QStash para que revise la DB en exactamente 15 segundos
+    console.log(`[ASIGNAR v2.0] ✅ Pedido ${ticket_id} ofrecido a ${mejorCandidato.nombre || mejorId} | score=${Math.round(mejorCandidato.score)} | activos=${mejorCandidato.pedidos_activos} | aceptacion=${mejorCandidato.tasa_aceptacion}`);
+
+    // ── 9. PROGRAMAR TIMEOUT CON QSTASH ─────────────────────────────
+    // Si el repartidor no acepta en 15s, asignacion-timeout se encarga de rotar al siguiente
     const QSTASH_TOKEN = Deno.env.get('QSTASH_TOKEN');
     if (QSTASH_TOKEN) {
-      const qstashUrl = `https://qstash-us-east-1.upstash.io/v2/publish/${SUPABASE_URL}/functions/v1/asignacion-timeout`;
-      
-      const payload = {
+      const timeoutPayload = {
         ticket_id,
         pedido_uuid: dbPedido.id,
         restaurante,
         direccion,
         total,
-        repartidor_actual_id: repartidor1Id,
-        repartidor_actual_nombre: repartidor1.nombre,
-        siguiente_repartidor_id: repartidor2 ? (repartidor2.user_id || repartidor2.id) : null,
-        siguiente_repartidor_nombre: repartidor2 ? repartidor2.nombre : null,
-        intento: 1
+        repartidor_actual_id: mejorId,
+        repartidor_actual_nombre: mejorCandidato.nombre,
+        siguiente_repartidor_id: segundoCandidato ? (segundoCandidato.repartidor_id) : null,
+        siguiente_repartidor_nombre: segundoCandidato?.nombre ?? null,
+        intento: payload.intento || 1
       };
 
-      try {
-        const qRes = await fetch(qstashUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${QSTASH_TOKEN}`,
-            'Content-Type': 'application/json',
-            'Upstash-Delay': '25s' // ¡La magia de QStash!
-          },
-          body: JSON.stringify(payload)
-        });
-        
-        if (!qRes.ok) {
-          const errText = await qRes.text();
-          console.error('[QSTASH ERROR]', errText);
-        } else {
-          console.log(`[QSTASH SUCCESS] Timeout de 15s programado para ${ticket_id}`);
-        }
-      } catch (e) {
-        console.error('[QSTASH FETCH ERROR]', e);
-      }
+      fetch(`https://qstash-us-east-1.upstash.io/v2/publish/${SUPABASE_URL}/functions/v1/asignacion-timeout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${QSTASH_TOKEN}`,
+          'Content-Type': 'application/json',
+          'Upstash-Delay': '25s'
+        },
+        body: JSON.stringify(timeoutPayload)
+      }).then(async (r) => {
+        if (!r.ok) console.error('[QSTASH ERROR]', await r.text());
+        else console.log(`[QSTASH] Timeout de 25s programado para ${ticket_id}`);
+      }).catch(e => console.error('[QSTASH FETCH ERROR]', e));
     } else {
-      console.warn('[QSTASH] Faltan las llaves de Upstash. El pedido se quedará flotando si no lo aceptan.');
+      console.warn('[QSTASH] Token no configurado. El pedido flotará si no lo aceptan.');
     }
 
-    // Retornamos instantáneamente al cliente (0 milisegundos de espera por timeouts).
-    return new Response(JSON.stringify({ ok: true, drivers_planned: repartidor2 ? 2 : 1 }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        assigned_to: mejorId,
+        score: Math.round(mejorCandidato.score),
+        pedidos_activos: mejorCandidato.pedidos_activos,
+        tasa_aceptacion: mejorCandidato.tasa_aceptacion,
+        eta_minutos: mejorCandidato.eta_minutos ?? null,
+        fallback_driver: segundoCandidato ? (segundoCandidato.repartidor_id) : null
+      }),
+      { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
+    );
 
   } catch (err: any) {
-    console.error('[ASIGNAR-REPARTIDOR] Error:', err)
-    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+    console.error('[ASIGNAR v2.0] Error crítico:', err)
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
+    })
   }
 })

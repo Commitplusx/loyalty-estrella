@@ -133,7 +133,7 @@ class _MainShellState extends ConsumerState<MainShell> {
       const _TabItem(icon: Icons.qr_code_scanner_rounded, activeIcon: Icons.qr_code_scanner_rounded, label: 'Escanear', route: '/scanner'),
       if (isAdmin) const _TabItem(icon: Icons.delivery_dining_rounded, activeIcon: Icons.delivery_dining_rounded, label: 'Equipo',   route: '/repartidores'),
       if (isAdmin) const _TabItem(icon: Icons.people_outline,       activeIcon: Icons.people_rounded,       label: 'Clientes',  route: '/clients'),
-      _TabItem(icon: Icons.inventory_2_outlined, activeIcon: Icons.inventory_2_rounded,  label: isAdmin ? 'Pedidos' : 'Asignados',   route: '/pedidos', badge: isAdmin ? pedidosCount : 0),
+      if (isAdmin) _TabItem(icon: Icons.inventory_2_outlined, activeIcon: Icons.inventory_2_rounded,  label: 'Pedidos',   route: '/pedidos', badge: pedidosCount),
       if (isAdmin) _TabItem(icon: Icons.store_outlined, activeIcon: Icons.store_rounded, label: 'Aliados', route: '/solicitudes', badge: pendingCount),
     ];
 

@@ -14,6 +14,38 @@ serve(async (req) => {
     const record = payload.record || payload.new;
     const oldRecord = payload.old;
     
+    // Soporte para asignación manual desde el dashboard
+    if (payload.type === "manual_assign" && payload.repartidor_id) {
+      if (!isFirebaseInitialized) {
+        const serviceAccountStr = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
+        if (!serviceAccountStr) throw new Error("Missing FIREBASE_SERVICE_ACCOUNT");
+        const serviceAccount = JSON.parse(serviceAccountStr);
+        initializeApp({ credential: cert(serviceAccount) });
+        isFirebaseInitialized = true;
+      }
+
+      const message = {
+        topic: `driver_${payload.repartidor_id}`,
+        // No usamos bloque 'notification' para que sea un DATA-ONLY push
+        // Esto obliga a que el handler en background de Flutter se ejecute y despierte la pantalla
+        android: {
+          priority: "high" as const,
+        },
+        data: {
+          tipo: "pedido_asignado", // El mismo tipo que espera Flutter en background
+          pedido_id: payload.pedido_id,
+          restaurante: "Estrella", // O extraer del payload si viene
+          click_action: "FLUTTER_NOTIFICATION_CLICK",
+          target_driver_id: payload.repartidor_id,
+          es_asignacion_manual: "true"
+        }
+      };
+
+      const response = await getMessaging().send(message);
+      console.log(`[FCM] Notificación de asignación manual enviada al repartidor ${payload.repartidor_id}`);
+      return new Response(JSON.stringify({ success: true, messageId: response }), { status: 200 });
+    }
+    
     // Solo enviar notificación si el estado es 'pendiente'
     // Y (es un insert O es un update desde otro estado hacia pendiente)
     if (!record || record.estado !== "pendiente") {

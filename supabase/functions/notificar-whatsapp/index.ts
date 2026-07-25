@@ -285,7 +285,7 @@ serve(async (req: Request) => {
                     parameters: [
                       { type: 'text', text: ticketId }, // {{1}} Orden
                       { type: 'text', text: record.metodo_pago === 'en_linea' ? 'Tarjeta/Web' : 'Efectivo' }, // {{2}} Metodo de pago
-                      { type: 'text', text: (record.total || 0).toString() } // {{3}} Total
+                      { type: 'text', text: ((record.total || 0) - (record.precio_entrega || 0)).toString() } // {{3}} Total sin envio
                     ]
                   },
                   {
@@ -302,6 +302,14 @@ serve(async (req: Request) => {
                     index: '1',
                     parameters: [
                       { type: 'payload', payload: `REST_ORDER_REJECT_${record.id}` }
+                    ]
+                  },
+                  {
+                    type: 'button',
+                    sub_type: 'url',
+                    index: '2',
+                    parameters: [
+                      { type: 'text', text: record.id } // sufijo dinámico: el UUID del pedido
                     ]
                   }
                 ]

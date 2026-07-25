@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../services/origin_island_service.dart';
 
 class DriverPermissionsChecker extends StatefulWidget {
   final Widget child;
@@ -14,13 +15,27 @@ class _DriverPermissionsCheckerState extends State<DriverPermissionsChecker> wit
   bool _isLoading = true;
   bool _hasNotifications = false;
   bool _hasAlertWindow = false;
+  bool _hasAlertWindowOverride = false;
   bool _hasBatteryOpt = false;
+  bool _hasAutoStartAck = false;
+
+  bool _isBBK = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _checkPermissions();
+    _initDevice();
+  }
+
+  Future<void> _initDevice() async {
+    final bbk = await OriginIslandService.isBBKDevice();
+    if (mounted) {
+      setState(() {
+        _isBBK = bbk;
+      });
+      _checkPermissions();
+    }
   }
 
   @override
@@ -37,21 +52,27 @@ class _DriverPermissionsCheckerState extends State<DriverPermissionsChecker> wit
   }
 
   Future<void> _checkPermissions() async {
-    setState(() => _isLoading = true);
-    
     final notifications = await Permission.notification.isGranted;
     final alertWindow = await Permission.systemAlertWindow.isGranted;
     final batteryOpt = await Permission.ignoreBatteryOptimizations.isGranted;
 
-    setState(() {
-      _hasNotifications = notifications;
-      _hasAlertWindow = alertWindow;
-      _hasBatteryOpt = batteryOpt;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _hasNotifications = notifications;
+        _hasAlertWindow = alertWindow;
+        _hasBatteryOpt = batteryOpt;
+        _isLoading = false;
+      });
+    }
   }
 
-  bool get _allGranted => _hasNotifications && _hasAlertWindow && _hasBatteryOpt;
+  bool get _allGranted {
+    if (_isBBK) {
+      return _hasNotifications && _hasBatteryOpt && _hasAutoStartAck;
+    } else {
+      return _hasNotifications && (_hasAlertWindow || _hasAlertWindowOverride) && _hasBatteryOpt;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -107,21 +128,28 @@ class _DriverPermissionsCheckerState extends State<DriverPermissionsChecker> wit
                         _checkPermissions();
                       },
                     ),
-                    const SizedBox(height: 16),
-                    _PermissionItem(
-                      title: 'Mostrar sobre otras apps',
-                      subtitle: 'Permite que la alerta se muestre a pantalla completa.',
-                      icon: Icons.layers_rounded,
-                      isGranted: _hasAlertWindow,
-                      onTap: () async {
-                        final status = await Permission.systemAlertWindow.request();
-                        if (status.isPermanentlyDenied) {
-                          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permiso denegado. Redirigiendo a Ajustes...')));
-                          await openAppSettings();
-                        }
-                        _checkPermissions();
-                      },
-                    ),
+                    if (!_isBBK) ...[
+                      const SizedBox(height: 16),
+                      _PermissionItem(
+                        title: 'Mostrar sobre otras apps',
+                        subtitle: 'Permite que la alerta se muestre a pantalla completa.',
+                        icon: Icons.layers_rounded,
+                        isGranted: _hasAlertWindow || _hasAlertWindowOverride,
+                        onTap: () async {
+                          final status = await Permission.systemAlertWindow.request();
+                          if (!status.isGranted) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Si no te deja activarlo, por favor búscalo manualmente en Configuración.')));
+                            }
+                            await openAppSettings();
+                          }
+                          setState(() {
+                            _hasAlertWindowOverride = true; // Bypass automático
+                          });
+                          _checkPermissions();
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     _PermissionItem(
                       title: 'Sin restricción de batería',
@@ -137,6 +165,30 @@ class _DriverPermissionsCheckerState extends State<DriverPermissionsChecker> wit
                         _checkPermissions();
                       },
                     ),
+                    if (_isBBK) ...[
+                      const SizedBox(height: 16),
+                      _PermissionItem(
+                        title: 'Auto-Inicio Inteligente',
+                        subtitle: 'VITAL: Abre los ajustes y activa el "Inicio automático" o "Autostart" para que el sistema no mate la app.',
+                        icon: Icons.rocket_launch_rounded,
+                        isGranted: _hasAutoStartAck,
+                        onTap: () async {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Por favor busca "Inicio automático" o "Autostart" y actívalo manualmente.'),
+                                duration: Duration(seconds: 4),
+                              ),
+                            );
+                          }
+                          await openAppSettings();
+                          setState(() {
+                            _hasAutoStartAck = true;
+                          });
+                          _checkPermissions();
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -168,6 +220,7 @@ class _PermissionItem extends StatelessWidget {
   final IconData icon;
   final bool isGranted;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const _PermissionItem({
     required this.title,
@@ -175,6 +228,7 @@ class _PermissionItem extends StatelessWidget {
     required this.icon,
     required this.isGranted,
     required this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -184,6 +238,7 @@ class _PermissionItem extends StatelessWidget {
 
     return InkWell(
       onTap: isGranted ? null : onTap,
+      onLongPress: isGranted ? null : onLongPress,
       borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(16),

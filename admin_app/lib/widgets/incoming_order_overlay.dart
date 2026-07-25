@@ -36,42 +36,89 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
   Set<Marker> _markers = {};
   bool _isAccepting = false;
   final String _googleMapsKey = 'AIzaSyBOZkp595ze0Agwb7yPG5u7MD29EL9gHMw';
-  BitmapDescriptor? _blackMarkerIcon;
+  BitmapDescriptor? _driverIcon;
+  BitmapDescriptor? _destIcon;
   double _routeDistanceKm = 0.0;
 
-  Future<BitmapDescriptor> _createBlackMarker() async {
+  Future<BitmapDescriptor> _createModernMarker(bool isDriver) async {
     final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
     final Canvas canvas = Canvas(pictureRecorder);
-    final Paint paint = Paint()..color = Colors.black;
-    final double radius = 12.0;
     
-    canvas.drawCircle(Offset(radius, radius), radius, paint);
+    double size = 100.0;
+    const double padding = 25.0;
+    const double tailHeight = 30.0;
     
-    final Paint borderPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0;
-    canvas.drawCircle(Offset(radius, radius), radius, borderPaint);
+    final double canvasWidth = size + (padding * 2);
+    final double canvasHeight = size + tailHeight + padding;
+    final center = Offset(canvasWidth / 2, padding + size / 2);
     
-    final ui.Image image = await pictureRecorder.endRecording().toImage(
-          (radius * 2).toInt(),
-          (radius * 2).toInt(),
-        );
+    // Sombra base
+    final shadowPath = Path();
+    if (isDriver) {
+      shadowPath.addOval(Rect.fromCircle(center: center, radius: size / 2));
+    } else {
+      shadowPath.addRRect(RRect.fromRectAndRadius(
+        Rect.fromCenter(center: center, width: size, height: size),
+        const Radius.circular(28)
+      ));
+    }
+    
+    shadowPath.moveTo(center.dx - 18, padding + size - 10);
+    shadowPath.lineTo(center.dx, canvasHeight);
+    shadowPath.lineTo(center.dx + 18, padding + size - 10);
+    shadowPath.close();
+    
+    canvas.drawShadow(shadowPath, Colors.black87, 16.0, false);
+    
+    final color = isDriver ? Colors.cyan.shade600 : Colors.orange.shade600;
+    
+    final paint = Paint()..color = color..style = PaintingStyle.fill;
+    final borderPaint = Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 8.0;
+
+    final tailPath = Path();
+    tailPath.moveTo(center.dx - 18, padding + size - 15);
+    tailPath.lineTo(center.dx, canvasHeight - 2);
+    tailPath.lineTo(center.dx + 18, padding + size - 15);
+    tailPath.close();
+    
+    canvas.drawPath(tailPath, paint);
+    canvas.drawPath(tailPath, borderPaint);
+    
+    if (isDriver) {
+      canvas.drawCircle(center, size / 2, paint);
+      canvas.drawCircle(center, size / 2, borderPaint);
+    } else {
+      final rrect = RRect.fromRectAndRadius(Rect.fromCenter(center: center, width: size, height: size), const Radius.circular(28));
+      canvas.drawRRect(rrect, paint);
+      canvas.drawRRect(rrect, borderPaint);
+    }
+
+    final iconData = isDriver ? Icons.motorcycle_rounded : Icons.storefront_rounded;
+    TextPainter textPainter = TextPainter(textDirection: TextDirection.ltr);
+    textPainter.text = TextSpan(
+      text: String.fromCharCode(iconData.codePoint),
+      style: TextStyle(fontSize: size * 0.55, fontFamily: iconData.fontFamily, package: iconData.fontPackage, color: Colors.white),
+    );
+    textPainter.layout();
+    textPainter.paint(canvas, Offset(center.dx - (textPainter.width / 2), center.dy - (textPainter.height / 2)));
+
+    final ui.Image image = await pictureRecorder.endRecording().toImage(canvasWidth.toInt(), canvasHeight.toInt());
     final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    final Uint8List uint8List = byteData!.buffer.asUint8List();
-    return BitmapDescriptor.fromBytes(uint8List);
+    return BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
   }
 
   @override
   void initState() {
     super.initState();
     _playAlarm();
-    _createBlackMarker().then((icon) {
+    
+    _createModernMarker(true).then((icon) {
+      if (mounted) setState(() => _driverIcon = icon);
+    });
+    _createModernMarker(false).then((icon) {
       if (mounted) {
-        setState(() => _blackMarkerIcon = icon);
-        if (_currentPosition != null) {
-          _updateRoute();
-        }
+        setState(() => _destIcon = icon);
+        if (_currentPosition != null) _updateRoute();
       }
     });
     _startTracking();
@@ -160,15 +207,19 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
         Marker(
           markerId: const MarkerId('driver'),
           position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-          icon: _blackMarkerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          anchor: const Offset(0.5, 1.0),
+          icon: _driverIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
           infoWindow: const InfoWindow(title: 'Tú'),
+          zIndex: 10,
         ),
         if (destLat != null && destLng != null)
           Marker(
             markerId: const MarkerId('destination'),
             position: LatLng(destLat, destLng),
-            icon: _blackMarkerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+            anchor: const Offset(0.5, 1.0),
+            icon: _destIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
             infoWindow: const InfoWindow(title: 'Restaurante'),
+            zIndex: 5,
           ),
       };
     });
@@ -399,55 +450,68 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
           ),
           Align(
             alignment: Alignment.bottomCenter,
-            child: Container(
-              margin: const EdgeInsets.only(left: 12, right: 12, bottom: 24),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1E28) : const Color(0xFFF3F4F6),
-                borderRadius: BorderRadius.circular(32),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 10))
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E1E28).withOpacity(0.85) : Colors.white.withOpacity(0.9),
+                    border: Border(top: BorderSide(color: Colors.white.withOpacity(0.2), width: 1)),
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.only(top: 24, left: 24, right: 24, bottom: MediaQuery.of(context).padding.bottom + 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: isDark ? Colors.white : Colors.black,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            _isStacked ? '🚀 VIAJE APILADO' : '🌟 NUEVO PEDIDO',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                              color: isDark ? Colors.black : Colors.white,
-                              letterSpacing: 0.5,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: _isStacked 
+                                      ? [const Color(0xFF6A1B9A), const Color(0xFF8E24AA)]
+                                      : [const Color(0xFF00B4DB), const Color(0xFF0083B0)],
+                                ),
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (_isStacked ? const Color(0xFF8E24AA) : const Color(0xFF00B4DB)).withOpacity(0.4),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  )
+                                ],
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(_isStacked ? Icons.rocket_launch_rounded : Icons.local_fire_department_rounded, color: Colors.white, size: 16),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    _isStacked ? 'VIAJE APILADO' : 'NUEVO PEDIDO',
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 0.5),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () {
-                            if (!_isAccepting) _rechazarViaje();
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
-                              shape: BoxShape.circle,
+                            GestureDetector(
+                              onTap: () {
+                                if (!_isAccepting) _rechazarViaje();
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(Icons.close_rounded, size: 22, color: isDark ? Colors.white70 : Colors.black54),
+                              ),
                             ),
-                            child: Icon(Icons.close_rounded, size: 20, color: isDark ? Colors.white70 : Colors.black54),
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
                     const SizedBox(height: 16),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -639,7 +703,7 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
                                 },
                                 builder: (context, value, child) {
                                   // Color psychology: Green -> Orange -> Red
-                                  Color bgColor = const Color(0xFF0C625D);
+                                  Color bgColor = const Color(0xFF00B4DB);
                                   if (value < 0.3) {
                                     bgColor = Colors.redAccent.shade700;
                                   } else if (value < 0.6) {
@@ -648,13 +712,18 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
 
                                   return Stack(
                                     children: [
-                                      Container(color: Colors.grey.withOpacity(isDark ? 0.2 : 0.1)),
+                                      Container(color: isDark ? Colors.black26 : Colors.white24),
                                       FractionallySizedBox(
                                         alignment: Alignment.centerLeft,
                                         widthFactor: value,
                                         child: AnimatedContainer(
                                           duration: const Duration(milliseconds: 300),
-                                          color: bgColor,
+                                          decoration: BoxDecoration(
+                                            color: bgColor,
+                                            boxShadow: [
+                                              BoxShadow(color: bgColor.withOpacity(0.5), blurRadius: 20, spreadRadius: -5)
+                                            ]
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -705,8 +774,10 @@ class _IncomingOrderOverlayState extends ConsumerState<IncomingOrderOverlay> {
               ),
             ),
           ),
-        ],
+        ),
       ),
-    ));
+    ],
+  ),
+));
   }
 }

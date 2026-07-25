@@ -11,7 +11,8 @@ import '../services/gasto_service.dart';
 import '../services/pedido_service.dart';
 import '../core/user_role.dart';
 import '../core/ui_helpers.dart';
-
+import 'admin_pedido_detail_view.dart';
+import '../models/pedido_model.dart';
 final repartidorDetailProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, id) async {
   final reps = await ref.read(repartidorServiceProvider).getRepartidores();
   return reps.firstWhere((r) => r['id'].toString() == id, orElse: () => {});
@@ -576,95 +577,111 @@ class _ServicioCard extends StatelessWidget {
     final esRestaurante = tipoServicio == 'restaurante' || (isBot && restaurante != null);
     final notas = servicio['notas'];
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: onSurface.withValues(alpha: 0.03), blurRadius: 4, offset: const Offset(0, 2))
-        ],
-        border: Border.all(color: onSurface.withValues(alpha: 0.06)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: (esRestaurante ? const Color(0xFFF59E0B) : const Color(0xFF3B82F6)).withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              esRestaurante ? Icons.restaurant_rounded : Icons.person_rounded,
-              size: 20,
-              color: esRestaurante ? const Color(0xFFF59E0B) : const Color(0xFF3B82F6),
+    return GestureDetector(
+      onTap: () {
+        final pedido = PedidoModel.fromMap(servicio);
+        PremiumBottomSheet.showCustom<void>(
+          context,
+          title: 'Detalles del Pedido (Admin)',
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.85,
+            child: AdminPedidoDetailView(
+              pedido: pedido,
+              onRefresh: () {}, // Refresh will be handled by the parent if needed
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (esRestaurante)
-                  Text(restaurante ?? 'Pedido Bot', style: TextStyle(color: onSurface, fontWeight: FontWeight.w700, fontSize: 14))
-                else if (cliente.isNotEmpty)
-                  Text(cliente, style: TextStyle(color: onSurface, fontWeight: FontWeight.w700, fontSize: 14)),
-                
-                if (isBot)
-                   Container(
-                     margin: const EdgeInsets.only(top: 2, bottom: 4),
-                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                     decoration: BoxDecoration(color: const Color(0xFFFF6B35).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
-                     child: const Text('BOT', style: TextStyle(color: Color(0xFFFF6B35), fontSize: 9, fontWeight: FontWeight.bold)),
-                   ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(color: onSurface.withValues(alpha: 0.03), blurRadius: 4, offset: const Offset(0, 2))
+          ],
+          border: Border.all(color: onSurface.withValues(alpha: 0.06)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: (esRestaurante ? const Color(0xFFF59E0B) : const Color(0xFF3B82F6)).withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                esRestaurante ? Icons.restaurant_rounded : Icons.person_rounded,
+                size: 20,
+                color: esRestaurante ? const Color(0xFFF59E0B) : const Color(0xFF3B82F6),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (esRestaurante)
+                    Text(restaurante ?? 'Pedido Bot', style: TextStyle(color: onSurface, fontWeight: FontWeight.w700, fontSize: 14))
+                  else if (cliente.isNotEmpty)
+                    Text(cliente, style: TextStyle(color: onSurface, fontWeight: FontWeight.w700, fontSize: 14)),
+                  
+                  if (isBot)
+                     Container(
+                       margin: const EdgeInsets.only(top: 2, bottom: 4),
+                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                       decoration: BoxDecoration(color: const Color(0xFFFF6B35).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
+                       child: const Text('BOT', style: TextStyle(color: Color(0xFFFF6B35), fontSize: 9, fontWeight: FontWeight.bold)),
+                     ),
 
-                if (servicio['descripcion'] != null && servicio['descripcion'].toString().isNotEmpty && !isBot)
-                  Text(
-                    servicio['descripcion'],
-                    style: TextStyle(color: onSurface.withValues(alpha: 0.5), fontSize: 12),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                if (notas != null && notas.toString().isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text('📍 $notas', style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 11)),
-                  ),
+                  if (servicio['descripcion'] != null && servicio['descripcion'].toString().isNotEmpty && !isBot)
+                    Text(
+                      servicio['descripcion'],
+                      style: TextStyle(color: onSurface.withValues(alpha: 0.5), fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  if (notas != null && notas.toString().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text('📍 $notas', style: TextStyle(color: onSurface.withValues(alpha: 0.4), fontSize: 11)),
+                    ),
+                  const SizedBox(height: 4),
+                  Text(timeStr, style: TextStyle(color: onSurface.withValues(alpha: 0.3), fontSize: 11)),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('\$${servicio['monto']}',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                      color: isCompleto ? const Color(0xFFFF6B35) : onSurface.withValues(alpha: 0.2),
+                    )),
                 const SizedBox(height: 4),
-                Text(timeStr, style: TextStyle(color: onSurface.withValues(alpha: 0.3), fontSize: 11)),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: (isCompleto ? const Color(0xFF11998E) : Colors.orange).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    isCompleto ? 'Finalizado' : 'Pendiente',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      color: isCompleto ? const Color(0xFF11998E) : Colors.orange,
+                    ),
+                  ),
+                ),
               ],
             ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text('\$${servicio['monto']}',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                    color: isCompleto ? const Color(0xFFFF6B35) : onSurface.withValues(alpha: 0.2),
-                  )),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: (isCompleto ? const Color(0xFF11998E) : Colors.orange).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  isCompleto ? 'Finalizado' : 'Pendiente',
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.bold,
-                    color: isCompleto ? const Color(0xFF11998E) : Colors.orange,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

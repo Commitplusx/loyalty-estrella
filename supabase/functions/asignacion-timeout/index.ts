@@ -113,7 +113,9 @@ serve(async (req) => {
       await supabase.from('pedidos').update({ 
         estado: 'ofrecido',
         repartidor_id: siguiente_repartidor_id 
-      }).eq('id', pedido_uuid || ticket_id);
+      })
+      .eq('id', pedido_uuid || ticket_id)
+      .eq('repartidor_id', repartidor_actual_id); // <-- EL CANDADO MAGICO
 
       // Mandar Ping al Repartidor 2
       await supabase.channel('repartidores_ping').send({
@@ -160,7 +162,7 @@ serve(async (req) => {
         headers: {
           'Authorization': `Bearer ${QSTASH_TOKEN}`,
           'Content-Type': 'application/json',
-          'Upstash-Delay': '15s'
+          'Upstash-Delay': '25s' // <-- CORREGIDO A 25s
         },
         body: JSON.stringify({
           ...payload,
@@ -178,8 +180,13 @@ serve(async (req) => {
     // 3. Ya no hay más repartidores (Fallback a Admin)
     console.warn(`[TIMEOUT FATAL] Ningún repartidor aceptó el pedido ${ticket_id}`);
     
-    // Limpiamos el bloqueo para que quede libre en la base de datos
-    await supabase.from('pedidos').update({ estado: 'pagado', repartidor_id: null }).eq('id', pedido_uuid || ticket_id);
+    // Limpiamos el bloqueo para que quede libre en la base de datos y vuelva al pool de búsqueda
+    await supabase.from('pedidos').update({ 
+        estado: 'buscando_repartidor', 
+        repartidor_id: null 
+    })
+    .eq('id', pedido_uuid || ticket_id)
+    .eq('repartidor_id', repartidor_actual_id); // <-- EVITA BORRAR ASIGNACIÓN MANUAL
 
     if (ADMIN_PHONE_MAIN) {
       await sendWA(ADMIN_PHONE_MAIN, `⏰ *Pedido #${ticket_id} sin aceptar*\n\nHan pasado 30s (2 intentos) y ningún repartidor aceptó.\n\n🍽️ ${restaurante}\n📍 ${direccion || 'Sin dirección'}\n💰 $${total}\n\nAsigna manualmente desde la app.`);

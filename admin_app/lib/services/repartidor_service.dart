@@ -230,30 +230,17 @@ class RepartidorService {
     final startStr = (fechaInicio ?? DateTime.now()).toIso8601String().split('T')[0];
     final endStr = (fechaFin ?? fechaInicio ?? DateTime.now()).toIso8601String().split('T')[0];
     
-    // 1. Fetch from servicios_repartidor
-    var queryServicios = supabase
-        .from('servicios_repartidor')
-        .select('*, repartidores(nombre, alias, estado_actividad), clientes(nombre), restaurantes(nombre)')
-        .filter('turno_fecha', 'gte', startStr)
-        .filter('turno_fecha', 'lte', endStr)
-        .eq('liquidado', false);
-    if (repartidorId != null) queryServicios = queryServicios.eq('repartidor_id', repartidorId);
-    
-    final dataServicios = await queryServicios;
-    final List<Map<String, dynamic>> combined = List<Map<String, dynamic>>.from(dataServicios);
+    final List<Map<String, dynamic>> combined = [];
 
-    // 2. Fetch from pedidos (WhatsApp / Bot)
     var queryPedidos = supabase
         .from('pedidos')
         .select('*, repartidores:repartidor_id(nombre, alias, estado_actividad)')
         .filter('created_at', 'gte', '${startStr}T00:00:00')
         .filter('created_at', 'lte', '${endStr}T23:59:59')
-        .eq('estado', 'entregado') // Solo los entregados
-        .eq('liquidado', false); // Agregamos filtro de liquidado para pedidos
+        .eq('estado', 'entregado')
+        .eq('liquidado', false);
 
-    
     if (repartidorId != null) {
-      // Find the user_id if we only have repartidorId
       final rep = await supabase.from('repartidores').select('user_id').eq('id', repartidorId).maybeSingle();
       if (rep != null && rep['user_id'] != null) {
         queryPedidos = queryPedidos.eq('repartidor_id', rep['user_id']);
@@ -262,12 +249,14 @@ class RepartidorService {
 
     final dataPedidos = await queryPedidos;
     for (var p in dataPedidos) {
-      // BUG FIX #3: Leer precio real del pedido en lugar de hardcodear $45
-      double montoPedido = 45.0; // Fallback si no hay precio
-      if (p['precio'] != null) {
+      double montoPedido = 45.0;
+      if (p['precio_entrega'] != null) {
+        montoPedido = (p['precio_entrega'] as num).toDouble();
+      } else if (p['precio'] != null) {
         final precioStr = p['precio'].toString().replaceAll(RegExp(r'[^0-9.]'), '');
         montoPedido = double.tryParse(precioStr) ?? 45.0;
       }
+      
       combined.add({
         'id': p['id'],
         'repartidor_id': repartidorId,
@@ -285,19 +274,6 @@ class RepartidorService {
       });
     }
 
-    // ── Local Offline Queue ──
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final queue = prefs.getStringList('offline_servicios') ?? [];
-      for (var item in queue) {
-        final payload = jsonDecode(item) as Map<String, dynamic>;
-        if (repartidorId == null || payload['repartidor_id'] == repartidorId) {
-          payload['es_offline'] = true;
-          combined.insert(0, payload);
-        }
-      }
-    } catch (_) {}
-
     combined.sort((a, b) => b['creado_en'].toString().compareTo(a['creado_en'].toString()));
     return combined;
   }
@@ -305,17 +281,8 @@ class RepartidorService {
   /// Obtiene el historial completo de un repartidor (últimos 30 días o todos).
   Future<List<Map<String, dynamic>>> getHistorialServicios(String repartidorId) async {
     try {
-      // 1. Fetch manual services
-      final dataServicios = await supabase
-          .from('servicios_repartidor')
-          .select('*, clientes(nombre), restaurantes(nombre)')
-          .eq('repartidor_id', repartidorId)
-          .order('creado_en', ascending: false)
-          .limit(100);
-      
-      final List<Map<String, dynamic>> combined = List<Map<String, dynamic>>.from(dataServicios);
+      final List<Map<String, dynamic>> combined = [];
 
-      // 2. Fetch bot orders
       final rep = await supabase.from('repartidores').select('user_id').eq('id', repartidorId).maybeSingle();
       if (rep != null && rep['user_id'] != null) {
         final dataPedidos = await supabase
@@ -328,7 +295,9 @@ class RepartidorService {
             
         for (var p in dataPedidos) {
           double montoPedido = 45.0;
-          if (p['precio'] != null) {
+          if (p['precio_entrega'] != null) {
+            montoPedido = (p['precio_entrega'] as num).toDouble();
+          } else if (p['precio'] != null) {
             final precioStr = p['precio'].toString().replaceAll(RegExp(r'[^0-9.]'), '');
             montoPedido = double.tryParse(precioStr) ?? 45.0;
           }
@@ -356,87 +325,8 @@ class RepartidorService {
       return [];
     }
   }
-  Future<bool> addServicio({
-    required String repartidorId,
-    required String descripcion,
-    required double monto,
-    String? clienteId,
-    String? notas,
-    String estado = 'pendiente',
-    bool esAdmin = false,
-    String? comprobanteUrl,
-    String? restauranteId,
-    String tipoServicio = 'cliente',
-  }) async {
-    try {
-      final user = supabase.auth.currentUser;
-      final payload = {
-        'repartidor_id': repartidorId,
-        'descripcion': descripcion,
-        'monto': monto,
-        'cliente_id': clienteId,
-        'restaurante_id': restauranteId,
-        'tipo_servicio': tipoServicio,
-        'notas': notas,
-        'asignado_por': esAdmin ? user?.id : null,
-        'creado_por': !esAdmin ? user?.id : null,
-        'turno_fecha': DateTime.now().toIso8601String().split('T')[0],
-        'estado': 'completado',
-        'comprobante_url': comprobanteUrl,
-      };
-
-      final connectivityResult = await Connectivity().checkConnectivity();
-      if (connectivityResult.contains(ConnectivityResult.none) || connectivityResult.isEmpty) {
-        await SyncService().queueServicio(payload);
-        return true;
-      }
-
-      await supabase.from('servicios_repartidor').insert(payload);
-      return true;
-    } catch (e) {
-      debugPrint('Error en addServicio: $e');
-      return false;
-    }
-  }
-
-  Future<bool> updateEstadoServicio(String id, String estado) async {
-    try {
-      await supabase.from('servicios_repartidor').update({'estado': estado}).eq('id', id);
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<bool> cerrarTurno(String repartidorId, String? fecha) async {
-    try {
-      final connectivityResult = await Connectivity().checkConnectivity();
-      if (connectivityResult.contains(ConnectivityResult.none) || connectivityResult.isEmpty) {
-        await SyncService().queueLiquidacion(repartidorId);
-        return true;
-      }
-
-      await supabase.rpc('liquidar_turno_repartidor', params: {
-        'p_repartidor_id': repartidorId
-      });
-      return true;
-    } catch (e) {
-      debugPrint('Error en cerrarTurno: $e');
-      return false;
-    }
-  }
-
   Future<bool> liquidarCorte(String repartidorId, String fechaInicio, String fechaFin) async {
     try {
-      // 1. Marcar servicios como liquidados
-      await supabase
-          .from('servicios_repartidor')
-          .update({'liquidado': true})
-          .eq('repartidor_id', repartidorId)
-          .filter('turno_fecha', 'gte', fechaInicio)
-          .filter('turno_fecha', 'lte', fechaFin);
-
-      // 2. Marcar pedidos como liquidados
       final rep = await supabase.from('repartidores').select('user_id').eq('id', repartidorId).maybeSingle();
       if (rep != null && rep['user_id'] != null) {
         await supabase
@@ -451,6 +341,11 @@ class RepartidorService {
       debugPrint('Error en liquidarCorte: $e');
       return false;
     }
+  }
+
+  Future<bool> cerrarTurno(String repartidorId, String? fecha) async {
+    if (fecha == null) return false;
+    return liquidarCorte(repartidorId, fecha, fecha);
   }
 
   Future<List<Map<String, dynamic>>> getResumenSemanal() async {

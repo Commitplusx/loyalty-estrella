@@ -202,6 +202,42 @@ export async function sendInteractiveButton(
   }
 }
 
+// ── Botón CTA URL (Abrir Navegador dentro de WA) ─────────────────────────────
+export async function sendInteractiveCTAUrl(
+  to: string,
+  text: string,
+  buttonTitle: string,
+  url: string,
+): Promise<void> {
+  try {
+    const res = await fetchConReintento(WA_BASE, {
+      method: 'POST',
+      headers: WA_HEADERS(),
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to,
+        type: 'interactive',
+        interactive: {
+          type: 'cta_url',
+          body: { text: text.substring(0, 1024) },
+          action: {
+            name: 'cta_url',
+            parameters: {
+              display_text: buttonTitle.substring(0, 20),
+              url: url
+            }
+          }
+        },
+      }),
+    })
+    if (!res.ok) console.error('WA CTA URL Error:', await res.text())
+    else syncOutgoingToChatwoot(to, `${text}\n[Link: ${buttonTitle}]`).catch(e => console.error(e))
+  } catch (e) {
+    console.error('WA Fatal Net Error (Interactive):', e)
+  }
+}
+
 // ── Múltiples botones interactivos (hasta 3) ──────────────────────────────────
 // Intento 1: con imagen en header (si aplica)
 // Intento 2: sin imagen en header

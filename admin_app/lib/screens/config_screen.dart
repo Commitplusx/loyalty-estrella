@@ -43,7 +43,7 @@ class ConfigScreen extends ConsumerWidget {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () => context.go('/dashboard'),
         ),
         title: const Text('Herramientas'),
       ),
@@ -122,9 +122,16 @@ class ConfigScreen extends ConsumerWidget {
             iconColor: Colors.redAccent,
             title: 'Cerrar Sesión',
             subtitle: supabase.auth.currentUser?.email ?? '',
-            onTap: () {
-              context.go('/login');
-              supabase.auth.signOut();
+            onTap: () async {
+              final user = supabase.auth.currentUser;
+              if (user != null) {
+                try {
+                  // Limpiar el session token en DB para escalabilidad estricta
+                  await supabase.from('repartidores').update({'current_device_id': null}).eq('user_id', user.id);
+                } catch (_) {}
+              }
+              if (context.mounted) context.go('/login');
+              await supabase.auth.signOut();
             },
           ),
           const SizedBox(height: 32),

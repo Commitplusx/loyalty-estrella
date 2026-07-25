@@ -20,7 +20,7 @@ const CHATWOOT_BASE_URL = Deno.env.get('CHATWOOT_BASE_URL') ?? 'https://app.chat
 const CHATWOOT_INBOX_ID = parseInt(Deno.env.get('CHATWOOT_INBOX_ID') ?? '0')
 const WA_TOKEN = Deno.env.get('WHATSAPP_TOKEN') ?? ''
 const WA_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_ID') ?? ''
-const BASE_LINK = 'https://www.app-estrella.shop/pedido'
+const BASE_LINK = 'https://www.estrella-eats.mx/pedido'
 
 type Supa = ReturnType<typeof createClient>
 

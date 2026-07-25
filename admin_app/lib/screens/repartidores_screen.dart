@@ -147,16 +147,6 @@ class _RepartidoresScreenState extends ConsumerState<RepartidoresScreen> with Si
                 }),
               ],
             ),
-            floatingActionButton: Padding(
-              padding: const EdgeInsets.only(bottom: 90.0, right: 8.0),
-              child: FloatingActionButton.extended(
-                heroTag: 'add_srv_me',
-                backgroundColor: const Color(0xFF11998E),
-                onPressed: () => _agregarServicioPropio(context, myId),
-                icon: const Icon(Icons.add_task_rounded, color: Colors.white),
-                label: const Text('Anotar Entrega', style: TextStyle(color: Colors.white)),
-              ),
-            ),
             body: Column(
               children: [
                 Consumer(builder: (context, ref, _) {
@@ -414,135 +404,6 @@ class _RepartidoresScreenState extends ConsumerState<RepartidoresScreen> with Si
 
 
 
-  Future<void> _agregarServicioPropio(BuildContext context, String myId) async {
-    final descCtrl = TextEditingController();
-    final montoCtrl = TextEditingController();
-    final notasCtrl = TextEditingController();
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => Consumer(
-        builder: (context, ref, _) {
-          final restsAsync = ref.watch(restaurantesProvider);
-          return StatefulBuilder(
-            builder: (ctx, setState) {
-              String? selectedRestId;
-              bool isRestaurante = false;
-
-              return Padding(
-                padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Anotar Mi Entrega', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('¿Es un Restaurante asociado?', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
-                        Switch(
-                          value: isRestaurante,
-                          activeColor: const Color(0xFF11998E),
-                          onChanged: (val) => setState(() { isRestaurante = val; selectedRestId = null; }),
-                        ),
-                      ],
-                    ),
-                    if (isRestaurante) ...[
-                      restsAsync.when(
-                        data: (rests) => DropdownButtonFormField<String>(
-                          value: selectedRestId,
-                          hint: const Text('Selecciona Restaurante'),
-                          items: rests.map((r) => DropdownMenuItem(value: r['id'].toString(), child: Text(r['nombre']))).toList(),
-                          onChanged: (val) => setState(() => selectedRestId = val),
-                        ),
-                        loading: () => const CircularProgressIndicator(),
-                        error: (_, __) => const Text('Error al cargar restaurantes'),
-                      ),
-                    ] else ...[
-                      TextField(controller: descCtrl, decoration: const InputDecoration(labelText: 'Descripción a dónde fuiste')),
-                    ],
-                    const SizedBox(height: 12),
-                    const SizedBox(height: 12),
-                    TextField(controller: montoCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Monto cobrado (\x24)')),
-                    const SizedBox(height: 12),
-                    TextField(controller: notasCtrl, decoration: const InputDecoration(labelText: 'Notas (Opcional)')),
-                    const SizedBox(height: 12),
-                    _ImageSelector(onImage: (file) => _tempFile = file),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF11998E), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)),
-                        icon: const Icon(Icons.add_task_rounded),
-                        label: const Text('Registrar'),
-                        onPressed: () async {
-                          final monto = double.tryParse(montoCtrl.text);
-                          if (monto == null) return;
-                          
-                          String finalDesc = '';
-                          if (isRestaurante) {
-                            if (selectedRestId == null) return;
-                            final restNombre = restsAsync.value?.firstWhere((r) => r['id'] == selectedRestId)['nombre'] ?? 'Restaurante';
-                            finalDesc = restNombre;
-                          } else {
-                            if (descCtrl.text.isEmpty) return;
-                            finalDesc = descCtrl.text.trim();
-                          }
-
-                          // Muestra indicador de carga si hay foto (puede tardar)
-                          if (_tempFile != null) {
-                            showDialog(context: ctx, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
-                          }
-
-                          String? fotoUrl;
-                          if (_tempFile != null) {
-                            fotoUrl = await ref.read(repartidorServiceProvider).uploadComprobante(_tempFile!);
-                          }
-
-                          final ok = await ref.read(repartidorServiceProvider).addServicio(
-                            repartidorId: myId, 
-                            descripcion: finalDesc, 
-                            monto: monto, 
-                            restauranteId: selectedRestId,
-                            tipoServicio: isRestaurante ? 'restaurante' : 'cliente',
-                            notas: notasCtrl.text.isEmpty ? null : notasCtrl.text,
-                            estado: 'completado',
-                            esAdmin: false,
-                            comprobanteUrl: fotoUrl,
-                          );
-
-                          if (_tempFile != null && ctx.mounted) {
-                            Navigator.pop(ctx); // Quitar indicador de carga
-                          }
-
-                          if (ok && ctx.mounted) {
-                            Navigator.pop(ctx);
-                            ref.invalidate(serviciosHoyProvider(myId));
-                            ref.invalidate(cuadreProvider);
-                            ref.invalidate(metaEnviosProvider);
-                            _tempFile = null;
-                          } else if (ctx.mounted) {
-                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Error al enviar el servicio al servidor.'), backgroundColor: Color(0xFFE11D48)));
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }
-          );
-        }
-      ),
-    );
-    descCtrl.dispose();
-    montoCtrl.dispose();
-    notasCtrl.dispose();
-  }
 }
 
 // ── Pestaña 1: Lista de Repartidores ─────────────────────────────────────────
@@ -907,16 +768,6 @@ class _ServiciosTab extends ConsumerWidget {
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
                                     Text('\$${s['monto']}', style: TextStyle(color: isCompleto ? const Color(0xFF11998E) : onSurface, fontWeight: FontWeight.bold, fontSize: 16)),
-                                    if (isPendiente)
-                                      GestureDetector(
-                                        onTap: () async {
-                                          await ref.read(repartidorServiceProvider).updateEstadoServicio(s['id'], 'completado');
-                                          ref.invalidate(serviciosHoyProvider(repartidorId));
-                                          ref.invalidate(cuadreProvider);
-                                          ref.invalidate(metaEnviosProvider);
-                                        },
-                                        child: const Text('✓ Completar', style: TextStyle(color: Color(0xFF11998E), fontSize: 11, fontWeight: FontWeight.bold)),
-                                      ),
                                   ],
                                 ),
                               ],
@@ -1168,97 +1019,6 @@ class _AmountCol extends StatelessWidget {
           '\$${amount.toStringAsFixed(2)}', 
           style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)
         ),
-      ],
-    );
-  }
-}
-
-class _ImageSelector extends StatefulWidget {
-  final Function(File?) onImage;
-  const _ImageSelector({required this.onImage});
-
-  @override
-  State<_ImageSelector> createState() => _ImageSelectorState();
-}
-
-class _ImageSelectorState extends State<_ImageSelector> {
-  File? _image;
-
-  Future<void> _pick(ImageSource source) async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: source, imageQuality: 70);
-    if (picked != null) {
-      final file = File(picked.path);
-      setState(() => _image = file);
-      widget.onImage(file);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    return Column(
-      children: [
-        if (_image != null) 
-          Stack(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.file(_image!, height: 120, width: double.infinity, fit: BoxFit.cover),
-              ),
-              Positioned(
-                right: 8, top: 8,
-                child: InkWell(
-                  onTap: () { setState(() => _image = null); widget.onImage(null); },
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                    child: const Icon(Icons.close_rounded, color: Colors.white, size: 16),
-                  ),
-                ),
-              )
-            ],
-          )
-        else
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: () => _pick(ImageSource.camera),
-                  child: Container(
-                    height: 50,
-                    decoration: BoxDecoration(border: Border.all(color: onSurface.withValues(alpha: 0.1)), borderRadius: BorderRadius.circular(12)),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                         Icon(Icons.camera_alt_rounded, color: onSurface.withValues(alpha: 0.5), size: 20),
-                         const SizedBox(width: 8),
-                         Text('Cámara', style: TextStyle(color: onSurface.withValues(alpha: 0.5), fontSize: 13)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: InkWell(
-                  onTap: () => _pick(ImageSource.gallery),
-                  child: Container(
-                    height: 50,
-                    decoration: BoxDecoration(border: Border.all(color: onSurface.withValues(alpha: 0.1)), borderRadius: BorderRadius.circular(12)),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                         Icon(Icons.image_rounded, color: onSurface.withValues(alpha: 0.5), size: 20),
-                         const SizedBox(width: 8),
-                         Text('Galería', style: TextStyle(color: onSurface.withValues(alpha: 0.5), fontSize: 13)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
       ],
     );
   }

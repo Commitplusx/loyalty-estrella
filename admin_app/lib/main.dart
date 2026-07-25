@@ -9,6 +9,8 @@ import 'router.dart';
 
 import 'services/sync_service.dart';
 import 'services/notification_service.dart';
+import 'services/origin_island_service.dart';
+import 'widgets/dynamic_island_overlay.dart';
 
 import 'package:audioplayers/audioplayers.dart';
 
@@ -19,6 +21,18 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 
 // Instancia global para que no sea recolectada por el recolector de basura (Garbage Collector)
 final AudioPlayer alarmPlayer = AudioPlayer();
+
+// Entry point para la ventana flotante de Flutter (Isla Falsa)
+@pragma("vm:entry-point")
+void overlayMain() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(
+    const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: DynamicIslandOverlay(),
+    ),
+  );
+}
 
 // Método global para detener la alarma desde cualquier pantalla
 void stopAlarm() {
@@ -41,6 +55,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     // Inicializamos el plugin en este Isolate (sin pedir permisos UI)
     await NotificationService().init(isBackground: true);
     
+    // Iniciar Isla Dinámica para notificar el pedido entrante
+    OriginIslandService.initService();
+    OriginIslandService.startIsland('🛵 ¡NUEVO PEDIDO!', 'Recoger en: $restaurante');
+    
     // Al ser un data-only push, disparamos la notificación local
     // que tiene configurado el fullScreenIntent para encender la pantalla.
     await NotificationService().showNotification(
@@ -54,7 +72,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  debugPrint('[MAIN] 1. ensureInitialized OK');
+
   await initializeDateFormatting('es');
+  debugPrint('[MAIN] 2. initializeDateFormatting OK');
 
   // Configurar audioplayers para que suene como ALARMA (salta el modo silencio/no molestar)
   final audioContext = AudioContext(
@@ -62,7 +83,7 @@ void main() async {
       isSpeakerphoneOn: true,
       stayAwake: true,
       contentType: AndroidContentType.sonification,
-      usageType: AndroidUsageType.alarm, // <--- CLAVE PARA SALTAR EL MODO SILENCIO
+      usageType: AndroidUsageType.alarm,
       audioFocus: AndroidAudioFocus.gainTransientExclusive,
     ),
     iOS: AudioContextIOS(
@@ -73,30 +94,48 @@ void main() async {
     ),
   );
   AudioPlayer.global.setAudioContext(audioContext);
-  
+  debugPrint('[MAIN] 3. AudioPlayer configurado OK');
+
   // Inicializar Firebase
   await Firebase.initializeApp();
+  debugPrint('[MAIN] 4. Firebase OK');
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  // Solicitar permisos para notificaciones (Android 13+ / iOS)
-  await FirebaseMessaging.instance.requestPermission(
-    alert: true,
-    badge: true,
-    sound: true,
-  );
+  // ⚠️ IMPORTANTE: NO hacer await en requestPermission ni en topic operations
+  // porque pueden bloquearse indefinidamente en algunos dispositivos antes de runApp().
+  // Los ejecutamos en segundo plano sin bloquear.
+  Future(() async {
+    try {
+      await FirebaseMessaging.instance.requestPermission(
+        alert: true, badge: true, sound: true,
+      );
+      debugPrint('[MAIN] FCM: permisos concedidos');
+    } catch (e) {
+      debugPrint('[MAIN] FCM: error requestPermission: $e');
+    }
+    try {
+      await FirebaseMessaging.instance.unsubscribeFromTopic('admins');
+      debugPrint('[MAIN] FCM: desuscrito de admins OK');
+    } catch (e) {
+      debugPrint('[MAIN] FCM: error unsubscribe: $e');
+    }
+  });
 
-  // La suscripción a tópicos (admins vs driver) ahora se maneja dinámicamente en onAuthStateChange
-
-  // Evitar que Google Fonts intente descargar fuentes en runtime (crash en release)
   GoogleFonts.config.allowRuntimeFetching = true;
+  debugPrint('[MAIN] 5. GoogleFonts OK');
 
   await Supabase.initialize(
     url: 'https://jdrrkpvodnqoljycixbg.supabase.co',
     anonKey:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkcnJrcHZvZG5xb2xqeWNpeGJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNDkyOTEsImV4cCI6MjA5MDYyNTI5MX0.WEKqdL2p99cy8XvyqY31EP8-KbdOnhx2-fx9qz_iQtQ',
   );
+  debugPrint('[MAIN] 6. Supabase OK');
 
   await NotificationService().init();
+  debugPrint('[MAIN] 7. NotificationService OK');
+
+  OriginIslandService.initService();
+  debugPrint('[MAIN] 8. OriginIslandService OK → llamando runApp()');
 
   // Escuchar cuando el usuario toca una notificación push real de Firebase
   FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
@@ -184,6 +223,7 @@ void main() async {
           final targetDriverId = message.data['target_driver_id'];
           final currentUserId = Supabase.instance.client.auth.currentUser?.id;
           if (currentUserId != null && targetDriverId == currentUserId) {
+            OriginIslandService.startIsland('🛵 ¡NUEVO PEDIDO!', 'Tienes 15 segundos para aceptar');
             rootNavigatorKey.currentContext?.go('/pedidos/$pedidoId');
           }
         }
@@ -220,6 +260,36 @@ void main() async {
       _alarmaChannel = Supabase.instance.client.channel('repartidores_ping');
       
       _alarmaChannel!.onBroadcast(
+        event: 'order_offered',
+        callback: (payload) async {
+          final data = payload['payload'] ?? {};
+          final targetDriverId = data['target_driver_id'] as String?;
+          if (targetDriverId == null) return;
+          if (targetDriverId != currentUser.id) return; // No es para este repartidor
+
+          final pedidoId = data['pedido_id'] as String? ?? '';
+          final restaurante = data['restaurante'] as String? ?? 'Estrella';
+
+          debugPrint('🛵 [ALARMA] order_offered recibido para este repartidor. Pedido: $pedidoId');
+
+          // Sonar alarma y navegar al detalle del pedido
+          OriginIslandService.startIsland('\u{1F6F5} \u00a1NUEVO PEDIDO!', 'Recoger en: $restaurante');
+          try {
+            await alarmPlayer.stop();
+            await alarmPlayer.setVolume(1.0);
+            await alarmPlayer.setReleaseMode(ReleaseMode.loop);
+            await alarmPlayer.play(AssetSource('sounds/rappi_alarm.mp3'));
+          } catch (e) {
+            debugPrint('Error reproduciendo alarma: $e');
+          }
+
+          final context = rootNavigatorKey.currentState?.overlay?.context
+              ?? rootNavigatorKey.currentContext;
+          if (context != null && pedidoId.isNotEmpty) {
+            rootNavigatorKey.currentContext?.go('/pedidos/\$pedidoId');
+          }
+        }
+      ).onBroadcast(
         event: 'order_canceled',
         callback: (payload) {
           final data = payload['payload'] ?? {};

@@ -20,7 +20,9 @@ serve(async (req) => {
       costo_envio,
       descuento,
       total,
-      originUrl
+      originUrl,
+      returnUrl,
+      idempotencyKey
     } = await req.json()
 
     // Preparar el payload para Mercado Pago
@@ -39,15 +41,20 @@ serve(async (req) => {
       .eq('wb_message_id', pedidoId)
       .single()
 
+    let comisionPorcentaje = 0
+
     if (pedidoData?.restaurante) {
       const { data: restData } = await supabaseClient
         .from('restaurantes')
-        .select('mp_access_token')
+        .select('mp_access_token, comision_porcentaje')
         .eq('nombre', pedidoData.restaurante)
         .single()
       
       if (restData?.mp_access_token) {
         mpAccessToken = restData.mp_access_token
+      }
+      if (restData?.comision_porcentaje) {
+        comisionPorcentaje = Number(restData.comision_porcentaje)
       }
     }
 
@@ -90,14 +97,21 @@ serve(async (req) => {
     // MP requiere HTTPS para back_urls, si es localhost usamos la URL de prod
     const isLocalhost = originUrl.includes('localhost') || originUrl.includes('127.0.0.1');
     const safeOriginUrl = isLocalhost ? 'https://restaurantes-app-estrella.shop' : originUrl;
+    const safeReturnUrl = returnUrl || safeOriginUrl;
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://jdrrkpvodnqoljycixbg.supabase.co';
 
-    const payload = {
+    // Cálculo de Marketplace Fee (Split de Pagos)
+    // El restaurante absorbe los descuentos: Subtotal Productos = Total final - costo de envío
+    const subtotalProductos = total - costo_envio; 
+    const gananciaPlataforma = subtotalProductos * (comisionPorcentaje / 100);
+    const marketplaceFee = costo_envio + gananciaPlataforma;
+
+    const payload: any = {
       items: preferenceItems,
       back_urls: {
         success: `${safeOriginUrl}/success?pedido=${pedidoId}`,
-        failure: `${safeOriginUrl}/?cart=open`,
-        pending: `${safeOriginUrl}/?cart=open`
+        failure: `${safeReturnUrl}?error=pago_cancelado`,
+        pending: `${safeReturnUrl}?error=pago_pendiente`
       },
       notification_url: `${supabaseUrl}/functions/v1/mercadopago-webhook?pedido=${pedidoId}`,
       auto_return: "approved",
@@ -105,13 +119,26 @@ serve(async (req) => {
       statement_descriptor: "ESTRELLA EATS"
     }
 
+    // Inyectar el marketplace_fee solo si el cobro se hace con el token del restaurante
+    // (Si estamos usando el token fallback de la plataforma, todo el dinero cae a la plataforma de todos modos)
+    if (marketplaceFee > 0 && mpAccessToken !== Deno.env.get('MP_ACCESS_TOKEN')) {
+      payload.marketplace_fee = Number(marketplaceFee.toFixed(2));
+    }
+
+    // Configurar Headers, incluyendo Idempotency-Key si fue provisto
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${mpAccessToken}`,
+      'Content-Type': 'application/json'
+    }
+    
+    if (idempotencyKey) {
+      headers['X-Idempotency-Key'] = idempotencyKey
+    }
+
     // Llamar a la API de Mercado Pago
     const mpResponse = await fetch('https://api.mercadopago.com/checkout/preferences', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${mpAccessToken}`,
-        'Content-Type': 'application/json'
-      },
+      headers: headers,
       body: JSON.stringify(payload)
     })
 

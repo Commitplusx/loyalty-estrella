@@ -23,8 +23,9 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader } }
     })
 
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
-    if (userError || !user) throw new Error("Usuario no autenticado")
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+    if (userError || !user) throw new Error(`Usuario no autenticado: ${userError?.message || 'Sin usuario'}. Revisa que tu sesión esté activa.`)
 
     // Obtener el restaurante del usuario (simplificado, asumiendo 1 a 1 por ahora o recibiendo en el body)
     const { restaurante_id } = await req.json()

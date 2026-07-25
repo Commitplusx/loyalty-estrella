@@ -8,6 +8,8 @@ import '../core/theme.dart';
 import '../core/ui_helpers.dart';
 import '../core/user_role.dart';
 import 'repartidores_screen.dart';
+import 'package:uuid/uuid.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -90,6 +92,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         throw const AuthException('Credenciales inválidas o usuario no encontrado.');
       }
 
+      // Si es repartidor, generamos su token de sesión única
+      if (repRes != null && res.session?.user != null) {
+        final newDeviceId = const Uuid().v4();
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('my_device_id', newDeviceId);
+        
+        try {
+          await Supabase.instance.client
+              .from('repartidores')
+              .update({'current_device_id': newDeviceId})
+              .eq('user_id', res.session!.user.id);
+        } catch (e) {
+          debugPrint('=== LOG: No se pudo actualizar device_id en DB: $e');
+        }
+      }
+
+      ref.invalidate(isAdminAsyncProvider);
       ref.invalidate(isAdminProvider);
       ref.invalidate(myRepartidorIdProvider);
       if (mounted) context.go('/dashboard');
@@ -97,6 +116,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       debugPrint('=== LOG: Exception General Login: $e');
       debugPrint('=== LOG: StackTrace: $stackTrace');
       
+      if (!mounted) return;
+
       if (e is AuthException) {
         setState(() => _error = 'Credenciales inválidas o usuario no encontrado.');
       } else {

@@ -15,7 +15,7 @@ class PedidoService {
   Future<List<PedidoModel>> getPedidosActivos({String? repartidorUserId}) async {
     var query = supabase
         .from('pedidos')
-        .select()
+        .select('*, repartidores(nombre)')
         .not('estado', 'in', '("entregado","cancelado")');
 
     if (repartidorUserId != null) {
@@ -23,17 +23,19 @@ class PedidoService {
     }
     
     final data = await query.order('created_at', ascending: false);
-    return (data as List).map((m) => PedidoModel.fromMap(m)).toList();
+    final list = List<Map<String, dynamic>>.from(data as List);
+    return list.map((m) => PedidoModel.fromMap(m)).toList();
   }
 
   /// Obtiene todos los pedidos (historial)
   Future<List<PedidoModel>> getTodosPedidos() async {
     final data = await supabase
         .from('pedidos')
-        .select()
+        .select('*, repartidores(nombre)')
         .order('created_at', ascending: false)
         .limit(50);
-    return (data as List).map((m) => PedidoModel.fromMap(m)).toList();
+    final list = List<Map<String, dynamic>>.from(data as List);
+    return list.map((m) => PedidoModel.fromMap(m)).toList();
   }
 
   /// Obtiene un pedido por ID
@@ -41,7 +43,7 @@ class PedidoService {
     try {
       final data = await supabase
           .from('pedidos')
-          .select()
+          .select('*, repartidores(nombre)')
           .eq('id', id)
           .single();
           

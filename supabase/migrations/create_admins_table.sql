@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS public.admins ( user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ); ALTER TABLE public.admins ENABLE ROW LEVEL SECURITY; CREATE POLICY "Admins can read own record" ON public.admins FOR SELECT USING (auth.uid() = user_id);

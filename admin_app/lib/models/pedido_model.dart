@@ -91,7 +91,12 @@ class PedidoModel {
       'id': id,
       'cliente_tel': clienteTel,
       'cliente_nombre': clienteNombre,
-      'restaurante': restaurante,
+      'restaurante': (restaurante != null || restauranteLat != null) ? {
+        'nombre_comercial': restaurante,
+        'lat': restauranteLat,
+        'lng': restauranteLng,
+        'foto_fachada_url': restauranteLogoUrl,
+      } : null,
       'repartidor_id': repartidorId,
       'descripcion': descripcion,
       'direccion': direccion,
@@ -132,7 +137,9 @@ class PedidoModel {
   String get estadoLabel {
     switch (estado) {
       case 'pendiente_pago': return 'Pendiente de Pago';
-      case 'pendiente':  return 'Pendiente (Sin asignar)';
+      case 'pendiente':  return repartidorId != null ? 'Esperando Repartidor' : 'Buscando Repartidor';
+      case 'ofrecido':   return 'Ofrecido a Repartidor';
+      case 'aceptado':   return 'Aceptado por Repartidor';
       case 'asignado':   return 'Asignado';
       case 'en_cocina':  return 'En Cocina';
       case 'listo_para_recoger': return 'Listo para Recoger';
@@ -147,6 +154,15 @@ class PedidoModel {
   bool get isTerminado => estado == 'entregado' || estado == 'cancelado';
 
   String? get siguienteEstado {
+    if (tipoPedido == 'tienda') {
+      switch (estado) {
+        case 'pendiente_pago': return 'pendiente';
+        case 'pendiente': return 'en_cocina';
+        case 'en_cocina': return 'listo_para_recoger';
+        case 'listo_para_recoger': return 'entregado';
+        default: return null;
+      }
+    }
     switch (estado) {
       case 'pendiente_pago': return 'pendiente';
       case 'pendiente': return 'asignado';
@@ -160,6 +176,15 @@ class PedidoModel {
   }
 
   String? get siguienteEstadoLabel {
+    if (tipoPedido == 'tienda') {
+      switch (siguienteEstado) {
+        case 'pendiente': return 'Marcar como Pagado';
+        case 'en_cocina': return 'Aceptar Pedido (Cocina)';
+        case 'listo_para_recoger': return 'Marcar Listo para Recoger';
+        case 'entregado': return 'Entregar al Cliente';
+        default: return null;
+      }
+    }
     switch (siguienteEstado) {
       case 'pendiente': return 'Marcar como Pagado';
       case 'asignado':  return 'Aceptar Pedido';
