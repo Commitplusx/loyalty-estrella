@@ -105,7 +105,7 @@ function CuponesView() {
         uso_maximo: usoMaximo ? parseInt(usoMaximo) : null,
         codigo: requiereCodigo ? codigo.toUpperCase() : null,
         usos_actuales: 0,
-        activa: true
+        activo: true
       }]);
       // Reset Form
       setDescripcion('');
@@ -121,8 +121,8 @@ function CuponesView() {
     }
   };
 
-  const togglePromo = async (id: string, activa: boolean) => {
-    await supabase.from('cupones_plataforma').update({ activa: !activa }).eq('id', id);
+  const togglePromo = async (id: string, activo: boolean) => {
+    await supabase.from('cupones_plataforma').update({ activo: !activo }).eq('id', id);
     fetchPromos();
   };
 
@@ -297,14 +297,14 @@ function CuponesView() {
 
                   <div className="flex gap-2 pt-4 border-t border-zinc-100">
                     <button 
-                      onClick={() => togglePromo(p.id, p.activa)}
+                      onClick={() => togglePromo(p.id, p.activo)}
                       disabled={agotada}
                       className={`flex-1 text-xs font-bold py-2 rounded-lg transition-colors ${
                         agotada ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed' :
-                        p.activa ? 'bg-zinc-100 text-zinc-900 hover:bg-zinc-200' : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
+                        p.activo ? 'bg-zinc-100 text-zinc-900 hover:bg-zinc-200' : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
                       }`}
                     >
-                      {agotada ? 'AGOTADA' : p.activa ? 'Pausar' : 'Reactivar'}
+                      {agotada ? 'AGOTADA' : p.activo ? 'Pausar' : 'Reactivar'}
                     </button>
                     <button 
                       onClick={() => setPromoToDelete(p.id)}
@@ -479,16 +479,6 @@ function AnunciosView() {
 
 // ─── AVISOS / CONTROL VIEW ──────────────────────────────────────────────────
 function AvisosView() {
-  const [activeTab, setActiveTab] = useState<'cupones' | 'anuncios' | 'avisos' | 'banners'>('cupones');
-  
-  // Estados para Cupones
-  const [cupones, setCupones] = useState<any[]>([]);
-  const [loadingCupones, setLoadingCupones] = useState(true);
-  
-  // Estados para Banners
-  const [heroBanners, setHeroBanners] = useState<any[]>([]);
-  const [loadingBanners, setLoadingBanners] = useState(true);
-
   // Estados para Push Global
   const [titulo, setTitulo] = useState('');
   const [mensaje, setMensaje] = useState('');
@@ -626,7 +616,7 @@ Responde ÚNICAMENTE con un JSON válido en este formato exacto:
             uso_maximo: null,
             codigo: String(result.cupon_codigo).toUpperCase().replace(/\s/g, ''),
             usos_actuales: 0,
-            activa: true
+            activo: true
          }]);
          
          if (dbError) {
