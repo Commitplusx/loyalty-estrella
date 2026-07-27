@@ -577,8 +577,8 @@ function AvisosView() {
 Genera una notificación push muy atractiva para enviar a todos los usuarios.
 REGLAS ESTRICTAS:
 1. Usa emojis para llamar la atención.
-2. NUNCA inventes ni menciones códigos de descuento específicos (ej. REY50) porque no existen.
-3. Puedes hablar de comida deliciosa, antojos de fin de semana, hambre, promociones automáticas en restaurantes o postres.
+2. Genera e incluye SIEMPRE un código de cupón corto y llamativo (ej. ANTOJO15, PIZZA20) que ofrezca un 15% o 20% de descuento en la app.
+3. Puedes hablar de comida deliciosa, antojos de fin de semana, hambre o postres.
 4. El mensaje (body) debe tener MÁXIMO 130 caracteres.
 5. El título debe ser corto y llamativo (max 40 caracteres).
 
