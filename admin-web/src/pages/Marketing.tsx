@@ -525,13 +525,21 @@ function AvisosView() {
     if (!titulo || !mensaje) return;
     setEnviando(true);
     try {
-      // Idealmente aquí se llamaría a un Edge Function
-      await new Promise(res => setTimeout(res, 1500)); // Simulando envío
-      alert(`¡Notificación "${titulo}" enviada a todos los usuarios con éxito! (Simulación por ahora)`);
+      const { data, error } = await supabase.functions.invoke('enviar-push-marketing', {
+        body: { title: titulo, body: mensaje }
+      });
+
+      if (error) throw error;
+      
+      const successCount = data?.exitos || 0;
+      const errorCount = data?.errores || 0;
+      
+      alert(`¡Notificación enviada con éxito a ${successCount} dispositivos! (Fallos/Dispositivos inactivos eliminados: ${errorCount})`);
       setTitulo('');
       setMensaje('');
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(`Error al enviar notificaciones: ${e.message}`);
     } finally {
       setEnviando(false);
     }
