@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Megaphone, Ticket, Zap, Info, Bell, AlertTriangle, Send, Image, Upload, Loader2, Wand2 } from 'lucide-react';
+import { Megaphone, Ticket, Zap, Info, Bell, AlertTriangle, Send, Image, Upload, Loader2, Wand2, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ConfirmSheet } from '../components/ui/ConfirmSheet';
+import { toast } from 'sonner';
 
 export function Marketing() {
   const [activeTab, setActiveTab] = useState<'cupones' | 'anuncios' | 'avisos' | 'banners'>('cupones');
@@ -534,15 +535,38 @@ function AvisosView() {
       const successCount = data?.exitos || 0;
       const errorCount = data?.errores || 0;
       
-      alert(`¡Notificación enviada con éxito a ${successCount} dispositivos! (Fallos/Dispositivos inactivos eliminados: ${errorCount})`);
+      toast.success(`¡Notificación enviada con éxito a ${successCount} dispositivos! (Inactivos eliminados: ${errorCount})`, { duration: 5000 });
       setTitulo('');
       setMensaje('');
     } catch (e: any) {
       console.error(e);
-      alert(`Error al enviar notificaciones: ${e.message}`);
+      if (e.message?.includes('Failed to send a request')) {
+        toast.error('Conexión bloqueada por tu red (AdBlock/Antivirus). Por favor, apágalo para esta página y recarga la pestaña (F5).', { duration: 8000 });
+      } else {
+        toast.error(`Error al enviar notificaciones: ${e.message}`, { duration: 5000 });
+      }
     } finally {
       setEnviando(false);
     }
+  };
+
+  const generarTextoIA = () => {
+    const templates = [
+      { t: "¡Cena como rey a mitad de precio! 👑", m: "Usa el código REY50 y obtén 50% de descuento en tu cena de hoy. Solo válido hasta medianoche." },
+      { t: "Antojo de postre gratis 🍰", m: "En la compra de cualquier combo familiar, te regalamos el postre. ¡Pídelo ya!" },
+      { t: "🔥 Promo Flash: 30% OFF", m: "Solo por las próximas 2 horas: 30% de descuento en tus tacos favoritos. ¡Corre que se acaban!" },
+      { t: "Pizza + Película = Noche perfecta 🍕", m: "Aprovecha nuestro descuento en todas las pizzerías esta noche. Pide rápido y disfruta." },
+      { t: "¡Almuerzo Godín al rescate! 💼", m: "Pide tu comida de oficina con 20% de descuento hoy usando el cupón OFICINA20." },
+      { t: "Despierta con un buen café ☕", m: "Compra un desayuno y el café va por nuestra cuenta. Para empezar el día con toda la energía." },
+      { t: "¡Fin de semana de hamburguesas! 🍔", m: "Disfruta un 15% de descuento en todas las hamburguesas artesanales de la app este sábado y domingo." },
+      { t: "Martes de antojo dulce 🍩", m: "Porque el martes también se vale. Obtén 20% OFF en postres seleccionados." },
+      { t: "Alitas para compartir 🍗", m: "Pide 1 kilo de alitas y nosotros ponemos las papas fritas. ¡No te quedes con hambre!" },
+      { t: "Día de Sushi 🍣", m: "Hoy los rollos tienen precio especial. ¡Pide 3 y paga 2 en todos nuestros restaurantes orientales!" }
+    ];
+    const random = templates[Math.floor(Math.random() * templates.length)];
+    setTitulo(random.t);
+    setMensaje(random.m);
+    toast.success('¡Textos mágicos generados!', { duration: 2000 });
   };
 
   return (
@@ -581,9 +605,18 @@ function AvisosView() {
 
         {/* PUSH NOTIFICATIONS CENTER */}
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-zinc-200">
-           <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Send size={24} /></div>
-              <h3 className="text-xl font-black tracking-tight text-zinc-900">Centro de Difusión (Push)</h3>
+           <div className="flex items-center justify-between mb-6">
+             <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Send size={24} /></div>
+                <h3 className="text-xl font-black tracking-tight text-zinc-900">Centro de Difusión (Push)</h3>
+             </div>
+             <button 
+               type="button" 
+               onClick={generarTextoIA}
+               className="bg-purple-100 hover:bg-purple-200 text-purple-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+             >
+               <Sparkles size={14} /> IA
+             </button>
            </div>
            
            <form onSubmit={handleSendPush} className="space-y-4">
