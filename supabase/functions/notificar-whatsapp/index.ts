@@ -260,7 +260,7 @@ serve(async (req: Request) => {
             `👉 ${linkWeb}`
 
           // Buscar teléfono del restaurante en BD (Seguridad: usar ID si está disponible)
-          let query = supabase.from('restaurantes').select('telefono').eq('activo', true)
+          let query = supabase.from('restaurantes').select('telefono, es_socio').eq('activo', true)
           if (record.restaurante_id) {
             query = query.eq('id', record.restaurante_id)
           } else {
@@ -268,7 +268,9 @@ serve(async (req: Request) => {
           }
           const { data: restData } = await query.limit(1).maybeSingle()
 
-          if (restData?.telefono) {
+          if (restData && restData.es_socio === false) {
+            console.log(`[DB_WEBHOOK] 🤫 Restaurante NO OFICIAL (Concierge) detectado: ${record.restaurante}. Se omitirá el envío de WhatsApp al local.`);
+          } else if (restData?.telefono) {
             console.log(`[DB_WEBHOOK] Teléfono encontrado para ${record.restaurante}: ${restData.telefono}, intentando enviar mensaje...`)
             
             const payloadTemplate = {
@@ -502,7 +504,7 @@ serve(async (req: Request) => {
 
       // 2. Notificar al Restaurante directamente (si tiene teléfono registrado y activo)
       if (restaurante || restaurante_id) {
-        let query = supabase.from('restaurantes').select('telefono').eq('activo', true)
+        let query = supabase.from('restaurantes').select('telefono, es_socio').eq('activo', true)
         if (restaurante_id) {
           query = query.eq('id', restaurante_id)
         } else if (restaurante) {
@@ -510,7 +512,9 @@ serve(async (req: Request) => {
         }
         const { data: restData } = await query.limit(1).maybeSingle();
 
-        if (restData?.telefono) {
+        if (restData && restData.es_socio === false) {
+          console.log(`[nueva_orden_admin] 🤫 Restaurante NO OFICIAL (Concierge) detectado. Se omitirá el envío de WhatsApp al local.`);
+        } else if (restData?.telefono) {
           const restTelFormateado = formatTel(restData.telefono);
 
           // Buscar datos faltantes del pedido para llenar la plantilla

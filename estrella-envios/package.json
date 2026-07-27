@@ -12,6 +12,8 @@
   "dependencies": {
     "@react-google-maps/api": "^2.20.8",
     "@supabase/supabase-js": "^2.110.8",
+    "@tanstack/react-query": "^5.101.4",
+    "@tanstack/react-query-devtools": "^5.101.4",
     "clsx": "^2.1.1",
     "framer-motion": "^12.42.2",
     "h3-js": "^4.5.0",

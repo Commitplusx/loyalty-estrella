@@ -1,4 +1,4 @@
-import { Package, ShieldCheck, Clock, Star, CreditCard, ChevronRight, ChevronDown, Bell, ArrowRight, MapPin } from 'lucide-react';
+import { Package, ShieldCheck, Clock, Star, CreditCard, ChevronRight, ChevronDown, Bell, ArrowRight, MapPin, Utensils, Gift, Zap } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../../store/useAppStore';
@@ -8,14 +8,22 @@ interface HomeViewProps {
   setIsMenuOpen: (isOpen: boolean) => void;
   setCurrentView: (view: string) => void;
   setOrderType: (type: 'envio' | 'compra' | null) => void;
-  setOrderType: (type: 'envio' | 'compra' | null) => void;
   setActiveStep: (step: number) => void;
   isLoaded: boolean;
 }
 
 export function HomeView({ setIsMenuOpen, setCurrentView, setOrderType, setActiveStep, isLoaded }: HomeViewProps) {
-  const { currentAddress, setCurrentAddress, currentLocation, setCurrentLocation } = useAppStore();
+  const { currentAddress, setCurrentAddress, currentLocation, setCurrentLocation, user } = useAppStore();
   const [isSelectingLocation, setIsSelectingLocation] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [greeting, setGreeting] = useState('Hola');
+
+  useEffect(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) setGreeting('Buenos días');
+    else if (hour < 19) setGreeting('Buenas tardes');
+    else setGreeting('Buenas noches');
+  }, []);
 
   useEffect(() => {
     // Solo busca ubicación si no la hemos buscado antes (por defecto dice 'Buscando tu ubicación...')
@@ -66,17 +74,51 @@ export function HomeView({ setIsMenuOpen, setCurrentView, setOrderType, setActiv
   }, [currentAddress, setCurrentAddress, setCurrentLocation]);
 
   return (
-    <div className="flex flex-col h-full bg-white relative w-full min-h-0">
-      <header className="px-5 pt-4 sm:pt-6 pb-3 flex justify-between items-center bg-white/90 backdrop-blur-xl sticky top-0 z-20 border-b border-gray-100/50">
+    <div className="flex flex-col h-full bg-white relative w-full">
+      <AnimatePresence>
+        {isSelectingLocation && (
+          <motion.div
+            initial={{ opacity: 0, y: "100%" }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: "100%" }}
+            transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+            className="fixed inset-0 z-[100] bg-white flex flex-col"
+          >
+            <MapLocationPicker
+              isLoaded={isLoaded}
+              initialLat={currentLocation?.lat}
+              initialLng={currentLocation?.lng}
+              onCancel={() => setIsSelectingLocation(false)}
+              onSelect={(address, lat, lng) => {
+                setCurrentAddress(address);
+                setCurrentLocation({ lat, lng });
+                setIsSelectingLocation(false);
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <header 
+        className={`px-5 pt-8 pb-4 flex items-center justify-between sticky top-0 z-20 transition-all duration-300 ${
+          isScrolled ? 'bg-white/90 backdrop-blur-xl shadow-sm border-b border-gray-100' : 'bg-transparent border-b border-transparent'
+        }`}
+      >
         
-        {/* Avatar */}
+        {/* Menu Button */}
         <button 
-          className="md:hidden relative w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-[0_2px_10px_rgb(0,0,0,0.06)] ring-1 ring-gray-100 hover:ring-yellow-400 transition-all focus:outline-none shrink-0" 
+          className={`md:hidden relative w-[42px] h-[42px] rounded-full flex items-center justify-center transition-all focus:outline-none shrink-0 ${
+            isScrolled ? 'bg-gray-100 text-gray-900 hover:bg-gray-200' : 'bg-gray-900 shadow-[0_4px_12px_rgba(0,0,0,0.1)] hover:bg-gray-800'
+          }`}
           onClick={() => setIsMenuOpen(true)}
         >
-           <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Estrella&backgroundColor=f8fafc" alt="Profile" className="w-full h-full object-cover" />
+          <div className="flex flex-col gap-1 items-center justify-center">
+             <div className={`w-4 h-[2px] rounded-full ${isScrolled ? 'bg-gray-900' : 'bg-white'}`}></div>
+             <div className={`w-4 h-[2px] rounded-full ${isScrolled ? 'bg-gray-900' : 'bg-white'}`}></div>
+             <div className={`w-4 h-[2px] rounded-full ${isScrolled ? 'bg-gray-900' : 'bg-white'}`}></div>
+          </div>
         </button>
-        <div className="hidden md:block w-10 shrink-0"></div> {/* Spacer for desktop to keep center alignment */}
+        <div className="hidden md:block w-[42px] shrink-0"></div> {/* Spacer for desktop to keep center alignment */}
 
         {/* Location Pill */}
         <div className="flex-1 flex justify-center px-2">
@@ -84,8 +126,10 @@ export function HomeView({ setIsMenuOpen, setCurrentView, setOrderType, setActiv
             className="group flex flex-col items-center cursor-pointer focus:outline-none"
             onClick={() => setIsSelectingLocation(true)}
           >
-            <span className="text-[9px] text-gray-500 font-bold uppercase tracking-[0.15em] mb-0.5">Entregar en</span>
-            <div className="flex items-center gap-1.5 px-3 py-1 bg-gray-50 group-hover:bg-gray-100 active:bg-gray-200 rounded-full transition-colors border border-gray-200/60 shadow-sm">
+            <span className={`text-[9px] font-bold uppercase tracking-[0.15em] mb-0.5 transition-colors ${isScrolled ? 'text-gray-400' : 'text-gray-500'}`}>Entregar en</span>
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-colors border shadow-sm ${
+              isScrolled ? 'bg-gray-100 border-gray-200 hover:bg-gray-200' : 'bg-white border-gray-200/60 hover:bg-gray-50'
+            }`}>
               <span className="text-[13px] font-bold text-gray-900 truncate max-w-[130px] sm:max-w-[200px] tracking-tight">{currentAddress}</span>
               <ChevronDown className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-800 transition-colors" />
             </div>
@@ -93,13 +137,30 @@ export function HomeView({ setIsMenuOpen, setCurrentView, setOrderType, setActiv
         </div>
 
         {/* Notifications */}
-        <button className="relative p-2.5 bg-white rounded-full hover:bg-gray-50 active:bg-gray-100 transition-all border border-gray-200/60 shadow-sm focus:outline-none group shrink-0">
+        <button className={`relative p-2.5 rounded-full transition-all border shadow-sm focus:outline-none group shrink-0 ${
+          isScrolled ? 'bg-gray-100 border-gray-200 hover:bg-gray-200' : 'bg-white border-gray-200/60 hover:bg-gray-50'
+        }`}>
           <Bell className="w-[18px] h-[18px] text-gray-700 group-hover:text-gray-900 transition-colors" />
           <span className="absolute top-2 right-2.5 w-[7px] h-[7px] bg-red-500 border border-white rounded-full"></span>
         </button>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-5 pb-6 custom-scrollbar min-h-0">
+      <main 
+        className="flex-1 overflow-y-auto px-5 pb-6 custom-scrollbar min-h-0"
+        onScroll={(e) => setIsScrolled(e.currentTarget.scrollTop > 10)}
+      >
+        
+        {/* Dynamic Greeting */}
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8 mt-2"
+        >
+          <h1 className="text-3xl font-black text-gray-900 tracking-tight">
+            {greeting}, <span className="text-yellow-500">{user?.id !== 'guest' ? 'Estrella' : 'Invitado'}</span> 👋
+          </h1>
+          <p className="text-gray-500 font-medium mt-1">¿Qué vamos a pedir hoy?</p>
+        </motion.div>
         <div className="max-w-5xl mx-auto w-full">
           <div className="mt-4 mb-6 relative rounded-[1.5rem] p-6 md:p-10 overflow-hidden border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white flex flex-col md:flex-row md:items-center gap-6">
             <div className="absolute -right-8 -top-8 w-32 h-32 md:w-80 md:h-80 bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-full opacity-50"></div>
@@ -112,8 +173,14 @@ export function HomeView({ setIsMenuOpen, setCurrentView, setOrderType, setActiv
                 Estrella Express
               </div>
               <h2 className="text-2xl md:text-4xl font-black text-gray-900 mb-2.5 leading-tight">Lo que necesites,<br/>en minutos.</h2>
-              <p className="text-gray-500 text-[13px] md:text-base mb-6 max-w-sm">Olvídate del tráfico. Comida, compras del súper, encargos de farmacia o documentos urgentes. Vamos por ti al instante.</p>
-              
+              <div className="bg-gradient-to-tr from-yellow-50 to-white border border-yellow-200/60 p-5 md:p-6 rounded-2xl md:rounded-3xl shadow-sm relative mb-6 md:max-w-md mt-3">
+                <div className="absolute -top-3 -left-2 md:-left-3 bg-yellow-400 text-yellow-950 text-[10px] md:text-xs font-black px-3 py-1 rounded-full shadow-sm transform -rotate-3">
+                  ¿QUÉ HACEMOS?
+                </div>
+                <p className="text-gray-600 font-medium text-[13px] md:text-base text-balance leading-relaxed">
+                  Olvídate del tráfico. Comida, compras del súper, encargos de farmacia o documentos urgentes. <span className="text-gray-900 font-black bg-yellow-100 px-1.5 py-0.5 rounded-md inline-block mt-1">Vamos por ti al instante.</span>
+                </p>
+              </div>              
               <motion.button 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.95 }}
@@ -155,6 +222,59 @@ export function HomeView({ setIsMenuOpen, setCurrentView, setOrderType, setActiv
               <CreditCard className="w-6 h-6 text-purple-500 mb-3" />
               <h3 className="font-semibold text-gray-900 text-[15px] leading-tight">Paga Fácil</h3>
               <p className="text-xs text-gray-500 mt-1">Efectivo al recibir</p>
+            </div>
+          </div>
+
+          {/* Nuestros Servicios */}
+          <div className="mb-8">
+            <h3 className="text-xl font-black text-gray-900 mb-4 px-1">Descubre más</h3>
+            <div className="flex flex-col gap-4">
+              
+              {/* Estrella Envíos */}
+              <div 
+                onClick={() => { setOrderType(null); setCurrentView('newDelivery'); setActiveStep(0); }}
+                className="bg-white border border-gray-100 rounded-[20px] p-5 shadow-[0_2px_10px_rgb(0,0,0,0.02)] flex items-center gap-4 hover:shadow-md transition-shadow cursor-pointer"
+              >
+                <div className="w-12 h-12 bg-yellow-50 rounded-2xl flex items-center justify-center shrink-0">
+                  <Zap className="w-6 h-6 text-yellow-500" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-900 text-base">Estrella Envíos</h4>
+                  <p className="text-sm text-gray-500 mt-0.5">Paquetes y mandaditos al instante.</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-300" />
+              </div>
+
+              {/* Estrella Eats */}
+              <div 
+                onClick={() => setCurrentView('eatsInfo')}
+                className="bg-white border border-gray-100 rounded-[20px] p-5 shadow-[0_2px_10px_rgb(0,0,0,0.02)] flex items-center gap-4 hover:shadow-md transition-shadow cursor-pointer"
+              >
+                <div className="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center shrink-0">
+                  <Utensils className="w-6 h-6 text-orange-500" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-900 text-base">Estrella Eats</h4>
+                  <p className="text-sm text-gray-500 mt-0.5">Comida de tus restaurantes favoritos.</p>
+                </div>
+                <div className="px-2.5 py-1 bg-orange-100 text-orange-700 text-[10px] font-black rounded-full uppercase tracking-wide">Pronto</div>
+              </div>
+
+              {/* Estrella Loyalty */}
+              <div 
+                onClick={() => setCurrentView('loyalty')}
+                className="bg-white border border-gray-100 rounded-[20px] p-5 shadow-[0_2px_10px_rgb(0,0,0,0.02)] flex items-center gap-4 hover:shadow-md transition-shadow cursor-pointer"
+              >
+                <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center shrink-0">
+                  <Gift className="w-6 h-6 text-purple-500" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-900 text-base">Estrella Loyalty</h4>
+                  <p className="text-sm text-gray-500 mt-0.5">Acumula puntos y gana envíos gratis.</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-300" />
+              </div>
+
             </div>
           </div>
         </div>

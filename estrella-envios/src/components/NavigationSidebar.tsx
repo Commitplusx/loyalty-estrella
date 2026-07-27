@@ -3,6 +3,8 @@ import {
   X, Star, Home, History, CreditCard, User, Settings, LogOut, ChevronRight
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '../lib/supabase';
 
 interface NavigationSidebarProps {
   isOpen: boolean;
@@ -17,9 +19,32 @@ export function NavigationSidebar({ isOpen, onClose, user, setCurrentView, handl
     { icon: Home, label: 'Inicio', action: () => { setCurrentView('home'); onClose(); } },
     { icon: History, label: 'Mis Envíos', action: () => { setCurrentView('history'); onClose(); } },
     { icon: CreditCard, label: 'Métodos de pago', action: () => { toast.remove(); toast('Próximamente'); } },
-    { icon: User, label: 'Mi Perfil', action: () => { toast.remove(); toast('Próximamente'); } },
+    { icon: User, label: 'Mi Perfil', action: () => { setCurrentView('loyalty'); onClose(); } },
     { icon: Settings, label: 'Configuración', action: () => { toast.remove(); toast('Próximamente'); } },
   ];
+
+  const { data: profile } = useQuery({
+    queryKey: ['cliente', user?.phone],
+    queryFn: async () => {
+      if (!user?.phone) return null;
+      const cleanPhone = user.phone.replace(/\D/g, '');
+      const { data, error } = await supabase
+        .from('clientes')
+        .select('nombre, puntos, rango')
+        .eq('telefono', cleanPhone)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.phone,
+  });
+
+  const getInitials = (name: string) => {
+    if (!name) return user?.phone ? user.phone.substring(user.phone.length - 2) : '🌟';
+    const parts = name.trim().split(' ');
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return name.substring(0, 2).toUpperCase();
+  };
 
   return (
     <>
@@ -51,11 +76,15 @@ export function NavigationSidebar({ isOpen, onClose, user, setCurrentView, handl
           {/* User Profile Card */}
           <div className="flex items-center gap-4 mb-10 p-4 bg-gradient-to-br from-gray-50 to-white border border-gray-100 rounded-3xl shadow-sm">
             <div className="w-14 h-14 bg-gray-900 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-md shrink-0">
-              {user?.phone ? user.phone.substring(user.phone.length - 2) : '🌟'}
+              {profile?.nombre ? getInitials(profile.nombre) : (user?.phone ? user.phone.substring(user.phone.length - 2) : '🌟')}
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-bold text-gray-900 text-lg truncate">{user?.phone || 'Invitado'}</h3>
-              <p className="text-yellow-600 text-xs font-bold uppercase tracking-wider mt-0.5">Cliente Estrella</p>
+              <h3 className="font-bold text-gray-900 text-lg truncate">
+                {profile?.nombre || user?.phone || 'Invitado'}
+              </h3>
+              <p className="text-yellow-600 text-xs font-bold uppercase tracking-wider mt-0.5">
+                {profile?.rango || 'Cliente Estrella'} • {profile?.puntos || 0} pts
+              </p>
             </div>
           </div>
 

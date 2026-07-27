@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Store, MapPin, Phone, Mail, Edit3, ShieldCheck, Key, Package } from 'lucide-react';
+import { ArrowLeft, Store, MapPin, Phone, Mail, Edit3, ShieldCheck, Key, Package, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { ConfirmSheet } from '../components/ui/ConfirmSheet';
+import { MenuAdmin } from '../components/restaurantes/MenuAdmin';
 
 export function AliadoDetail() {
   const { id } = useParams();
@@ -12,10 +13,51 @@ export function AliadoDetail() {
   const [loading, setLoading] = useState(true);
   const [showConfirmPin, setShowConfirmPin] = useState(false);
   
+  // Image Upload State
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  
   // Comision State
   const [editingComision, setEditingComision] = useState(false);
   const [newComision, setNewComision] = useState('0');
   const [savingComision, setSavingComision] = useState(false);
+
+  // Funciones para cargar imagen
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0 || !restaurante) return;
+    const file = e.target.files[0];
+    
+    setUploadingImage(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+      const filePath = `restaurantes/${restaurante.id}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('public-assets')
+        .upload(filePath, file, { cacheControl: '3600', upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('public-assets').getPublicUrl(filePath);
+      
+      const { error: dbError } = await supabase
+        .from('restaurantes')
+        .update({ foto_fachada_url: data.publicUrl })
+        .eq('id', restaurante.id);
+        
+      if (dbError) throw dbError;
+      
+      setRestaurante({ ...restaurante, foto_fachada_url: data.publicUrl });
+      alert('Foto de perfil actualizada con éxito');
+    } catch (error: any) {
+      console.error(error);
+      alert('Error al subir la imagen: ' + error.message);
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   useEffect(() => {
     const fetchRestaurante = async () => {
@@ -136,8 +178,14 @@ export function AliadoDetail() {
           </div>
           
           <div className="flex gap-3">
-             <button className="px-5 py-2.5 bg-white text-zinc-900 font-bold rounded-xl shadow-sm text-sm tracking-tight flex items-center gap-2 hover:bg-zinc-100 transition-colors">
-               <Edit3 size={16}/> Editar Perfil
+             <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
+             <button 
+               onClick={() => fileInputRef.current?.click()} 
+               disabled={uploadingImage}
+               className="px-5 py-2.5 bg-white text-zinc-900 font-bold rounded-xl shadow-sm text-sm tracking-tight flex items-center gap-2 hover:bg-zinc-100 transition-colors disabled:opacity-50"
+             >
+               {uploadingImage ? <Loader2 size={16} className="animate-spin" /> : <ImageIcon size={16}/>} 
+               {uploadingImage ? 'Subiendo...' : 'Cambiar Foto'}
              </button>
           </div>
         </div>
@@ -267,6 +315,11 @@ export function AliadoDetail() {
           </div>
           
         </div>
+      </div>
+      
+      {/* Menu Admin Section */}
+      <div className="mt-8 bg-zinc-50 rounded-3xl p-6 border border-zinc-200">
+        <MenuAdmin restauranteId={restaurante.id} />
       </div>
 
       <ConfirmSheet

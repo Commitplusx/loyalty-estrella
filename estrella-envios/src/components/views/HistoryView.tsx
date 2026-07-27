@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import { useQuery } from '@tanstack/react-query';
 import { useAppStore } from '../../store/useAppStore';
 import { ChevronLeft, Package, ShoppingCart, Loader2, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -10,31 +10,20 @@ interface HistoryViewProps {
 
 export function HistoryView({ setCurrentView }: HistoryViewProps) {
   const { user } = useAppStore();
-  const [pedidos, setPedidos] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: pedidos = [], isLoading: loading } = useQuery({
+    queryKey: ['historial', user?.phone],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pedidos')
+        .select('*')
+        .eq('cliente_tel', user!.phone)
+        .order('created_at', { ascending: false });
 
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchHistorial = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('pedidos')
-          .select('*')
-          .eq('cliente_tel', user.phone)
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        setPedidos(data || []);
-      } catch (err) {
-        console.error('Error fetching historial:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchHistorial();
-  }, [user]);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user?.phone,
+  });
 
   const getStatusColor = (estado: string) => {
     switch (estado) {

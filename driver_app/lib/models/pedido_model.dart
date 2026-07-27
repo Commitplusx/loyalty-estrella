@@ -8,10 +8,12 @@ class PedidoModel {
   final String? repartidorId;
   final String descripcion;
   final String? direccion;
-  final double? lat;                 // GPS — latitud cliente
-  final double? lng;                 // GPS — longitud cliente
+  final double? lat;                 // GPS — latitud cliente / Origen Mandadito
+  final double? lng;                 // GPS — longitud cliente / Origen Mandadito
   final double? restauranteLat;      // GPS — latitud restaurante
   final double? restauranteLng;      // GPS — longitud restaurante
+  final double? latEntrega;          // GPS - latitud de entrega (Mandadito)
+  final double? lngEntrega;          // GPS - longitud de entrega (Mandadito)
   final String? restauranteLogoUrl;  // Imagen del restaurante
   final String estado;
   final DateTime createdAt;
@@ -42,6 +44,8 @@ class PedidoModel {
     this.lng,
     this.restauranteLat,
     this.restauranteLng,
+    this.latEntrega,
+    this.lngEntrega,
     this.restauranteLogoUrl,
     required this.estado,
     required this.createdAt,
@@ -82,6 +86,8 @@ class PedidoModel {
           : (map['restaurantes'] != null 
               ? (map['restaurantes']['lng'] as num?)?.toDouble() 
               : (map['restaurante'] is Map ? (map['restaurante']['lng'] as num?)?.toDouble() : null)),
+      latEntrega: (map['lat_entrega'] as num?)?.toDouble(),
+      lngEntrega: (map['lng_entrega'] as num?)?.toDouble(),
       restauranteLogoUrl: map['restaurantes'] != null 
           ? map['restaurantes']['foto_fachada_url'] as String? 
           : (map['restaurante'] is Map ? map['restaurante']['foto_fachada_url'] as String? : null),
@@ -94,7 +100,7 @@ class PedidoModel {
       tipoPedido: map['tipo_pedido'] as String? ?? 'domicilio',
       metodoPago: map['metodo_pago'] as String? ?? 'efectivo',
       origen: map['origen'] as String?,
-      destino: map['destino'] as String?,
+      destino: map['destino'] as String? ?? map['referencias_entrega'] as String?,
       precioEntrega: (map['precio_entrega'] as num?)?.toDouble(),
       total: (map['total'] as num?)?.toDouble(),
       notas: map['notas'] as String?,
@@ -120,6 +126,8 @@ class PedidoModel {
       'direccion': direccion,
       'lat': lat,
       'lng': lng,
+      'lat_entrega': latEntrega,
+      'lng_entrega': lngEntrega,
       'estado': estado,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
@@ -226,6 +234,8 @@ class PedidoModel {
     double? lng,
     double? restauranteLat,
     double? restauranteLng,
+    double? latEntrega,
+    double? lngEntrega,
     String? restauranteLogoUrl,
     String? estado,
     DateTime? createdAt,
@@ -254,6 +264,8 @@ class PedidoModel {
       lng: lng ?? this.lng,
       restauranteLat: restauranteLat ?? this.restauranteLat,
       restauranteLng: restauranteLng ?? this.restauranteLng,
+      latEntrega: latEntrega ?? this.latEntrega,
+      lngEntrega: lngEntrega ?? this.lngEntrega,
       restauranteLogoUrl: restauranteLogoUrl ?? this.restauranteLogoUrl,
       estado: estado ?? this.estado,
       createdAt: createdAt ?? this.createdAt,

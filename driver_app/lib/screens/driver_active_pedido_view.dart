@@ -221,8 +221,11 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
           ),
 
           const SizedBox(height: 12),
-          // PANEL DE ACCIÓN (Estilo Uber/Rappi - Solo muestra la acción actual)
-          _buildCurrentActionPanel(context, pedido),
+          const SizedBox(height: 12),
+          // PANEL DE ACCIÓN (Aislamiento visual seguro para Mandaditos)
+          (pedido.tipoPedido == 'mandadito' || pedido.tipoPedido == 'compra')
+              ? _buildMandaditoActionPanel(context, pedido)
+              : _buildCurrentActionPanel(context, pedido),
           
           const SizedBox(height: 40),
         ],
@@ -770,5 +773,340 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
         }
       }
     }
+  }
+
+  // ============================================================================
+  // PANEL EXCLUSIVO PARA MANDADITOS Y COMPRAS (AISLAMIENTO TOTAL)
+  // ============================================================================
+  Widget _buildMandaditoActionPanel(BuildContext context, PedidoModel pedido) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final onSurface = isDark ? Colors.white : const Color(0xFF1E293B);
+
+    Widget content = const SizedBox.shrink();
+    String title = '';
+    IconData icon = Icons.info;
+    final isCompra = pedido.tipoPedido == 'compra';
+    final recoleccionTexto = isCompra ? 'Tienda / Supermercado' : 'Punto de Recolección';
+
+    if (pedido.estado == 'ofrecido' || pedido.estado == 'pendiente' || pedido.estado == 'pendiente_pago') {
+      title = '0. Aceptar Servicio';
+      icon = Icons.thumb_up_alt_rounded;
+      final double fee = pedido.precioEntrega ?? pedido.costoEnvioCalculado;
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Tienes un nuevo servicio asignado. ¡Acéptalo rápido!', style: TextStyle(fontSize: 14, color: onSurface)),
+          const SizedBox(height: 16),
+          Center(
+            child: Text(
+              '\$${fee.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w900, color: AppColors.brandRed, letterSpacing: -1),
+            ),
+          ),
+          const Center(
+            child: Text('GANANCIA ESTIMADA', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkSurface : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isDark ? AppColors.darkBorder : const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.my_location_rounded, color: Colors.orange, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('ORIGEN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
+                          Text(pedido.direccion ?? 'Punto de Origen', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: onSurface)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 9, top: 4, bottom: 4),
+                  child: Container(width: 2, height: 20, color: Colors.grey.withOpacity(0.3)),
+                ),
+                Row(
+                  children: [
+                    const Icon(Icons.location_on_rounded, color: AppColors.brandRed, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('DESTINO', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
+                          Text(pedido.destino ?? pedido.notas ?? 'Punto de Entrega', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: onSurface)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: AppGradients.brand,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: ElevatedButton(
+                onPressed: () => _avanzarEstado(context, 'asignado', '¡Servicio Aceptado!'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent, 
+                  shadowColor: Colors.transparent, 
+                  foregroundColor: Colors.white, 
+                  padding: const EdgeInsets.symmetric(vertical: 16)
+                ),
+                child: const Text('ACEPTAR SERVICIO', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (pedido.estado == 'asignado') {
+      title = 'Dirígete al $recoleccionTexto';
+      icon = Icons.my_location_rounded;
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(pedido.direccion ?? 'Punto de recolección', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: onSurface, letterSpacing: -0.5)),
+          const SizedBox(height: 16),
+          if (pedido.lat != null && pedido.lng != null)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _launchMaps(pedido.lat!, pedido.lng!),
+                icon: const Icon(Icons.directions, size: 20),
+                label: const Text('Navegar al Origen', style: TextStyle(fontWeight: FontWeight.bold)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: onSurface,
+                  side: BorderSide(color: isDark ? AppColors.darkBorder : Colors.black12, width: 1.5),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: AppGradients.brand,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: ElevatedButton(
+                onPressed: () => _avanzarEstado(context, 'recibido', 'Marcado en origen'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent, 
+                  shadowColor: Colors.transparent,
+                  foregroundColor: Colors.white, 
+                  padding: const EdgeInsets.symmetric(vertical: 16)
+                ),
+                child: const Text('LLEGUÉ AL PUNTO', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (pedido.estado == 'recibido') {
+      title = isCompra ? 'Realiza las Compras' : 'Recolecta el Paquete';
+      icon = isCompra ? Icons.shopping_cart_rounded : Icons.inventory_2_rounded;
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkBg : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isDark ? AppColors.darkBorder : Colors.black12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Instrucciones:'.toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.brandRed, letterSpacing: 0.5)),
+                const SizedBox(height: 8),
+                Text(pedido.descripcion, style: TextStyle(fontSize: 15, color: onSurface, fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: AppGradients.brand,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(color: AppColors.brandRed.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))
+                ]
+              ),
+              child: ElevatedButton(
+                onPressed: () {
+                  _avanzarEstado(context, 'en_camino', '¡Todo listo, ve con el cliente!');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent, 
+                  shadowColor: Colors.transparent, 
+                  foregroundColor: Colors.white, 
+                  padding: const EdgeInsets.symmetric(vertical: 16)
+                ),
+                child: const Text('YA TENGO TODO', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (pedido.estado == 'en_camino') {
+      title = 'Entrega al Cliente';
+      icon = Icons.home_rounded;
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(pedido.clienteNombre ?? 'Cliente', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: onSurface, letterSpacing: -0.5)),
+          const SizedBox(height: 4),
+          Text(pedido.destino ?? pedido.notas ?? 'Sin dirección de entrega', style: TextStyle(fontSize: 15, color: onSurface.withOpacity(0.8))),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _callPhone(pedido.clienteTel),
+                  icon: const Icon(Icons.phone, size: 18),
+                  label: const Text('Llamar'),
+                  style: OutlinedButton.styleFrom(foregroundColor: onSurface, side: BorderSide(color: isDark ? AppColors.darkBorder : Colors.black26), padding: const EdgeInsets.symmetric(vertical: 12)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _openWhatsApp(pedido.clienteTel, pedido.clienteNombre, pedido.estado),
+                  icon: const Icon(Icons.chat_bubble_rounded, size: 18, color: Color(0xFF25D366)),
+                  label: const Text('WhatsApp', style: TextStyle(color: Color(0xFF25D366))),
+                  style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF25D366)), padding: const EdgeInsets.symmetric(vertical: 12)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (pedido.latEntrega != null && pedido.lngEntrega != null)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _launchMaps(pedido.latEntrega!, pedido.lngEntrega!),
+                icon: const Icon(Icons.directions, size: 20),
+                label: const Text('Navegar al Destino', style: TextStyle(fontWeight: FontWeight.bold)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.brandRed,
+                  side: const BorderSide(color: AppColors.brandRed, width: 1.5),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+          const SizedBox(height: 20),
+          if (pedido.total != null && pedido.total! > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(color: AppColors.success.withOpacity(0.1), borderRadius: BorderRadius.circular(16)),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Cobrar en Efectivo:', style: TextStyle(fontWeight: FontWeight.bold, color: onSurface)),
+                  Text('\$${pedido.total?.toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: AppColors.success)),
+                ],
+              ),
+            ),
+          SizedBox(
+            width: double.infinity,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: AppGradients.brand,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(color: AppColors.brandRed.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))
+                ]
+              ),
+              child: ElevatedButton(
+                onPressed: () => _avanzarEstado(context, 'entregado', '¡Entrega finalizada con éxito!'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent, 
+                  shadowColor: Colors.transparent,
+                  foregroundColor: Colors.white, 
+                  padding: const EdgeInsets.symmetric(vertical: 16)
+                ),
+                child: const Text('MARCAR COMO ENTREGADO', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (pedido.estado == 'entregado') {
+      title = 'Servicio Completado';
+      icon = Icons.check_circle_rounded;
+      content = Center(
+        child: Column(
+          children: [
+            const Icon(Icons.verified_rounded, size: 48, color: AppColors.success),
+            const SizedBox(height: 16),
+            Text('¡Buen trabajo!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: onSurface)),
+            Text('Este servicio ya fue entregado.', style: TextStyle(color: onSurface.withOpacity(0.6))),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkCard : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
+            blurRadius: 24,
+            offset: const Offset(0, 8)
+          )
+        ],
+        border: Border.all(color: isDark ? AppColors.darkBorder : Colors.black12, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkSurface : const Color(0xFFF1F5F9),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              border: Border(bottom: BorderSide(color: isDark ? AppColors.darkBorder : Colors.black12)),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, color: AppColors.brandRed, size: 22),
+                const SizedBox(width: 12),
+                Text(title, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: onSurface, letterSpacing: -0.3)),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: content,
+          ),
+        ],
+      ),
+    );
   }
 }

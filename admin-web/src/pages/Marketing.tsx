@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
-import { Megaphone, Ticket, Zap, Info, Bell, AlertTriangle, Send } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Megaphone, Ticket, Zap, Info, Bell, AlertTriangle, Send, Image, Upload, Loader2, Wand2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ConfirmSheet } from '../components/ui/ConfirmSheet';
 
 export function Marketing() {
-  const [activeTab, setActiveTab] = useState<'cupones' | 'anuncios' | 'avisos'>('cupones');
+  const [activeTab, setActiveTab] = useState<'cupones' | 'anuncios' | 'avisos' | 'banners'>('cupones');
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -43,12 +43,21 @@ export function Marketing() {
         >
           <Bell size={16} /> Avisos / Control
         </button>
+        <button
+          onClick={() => setActiveTab('banners')}
+          className={`px-4 py-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${
+            activeTab === 'banners' ? 'border-zinc-900 text-zinc-900' : 'border-transparent text-zinc-500 hover:text-zinc-700'
+          }`}
+        >
+          <Image size={16} /> Banners Hero
+        </button>
       </div>
 
       {/* Content */}
       {activeTab === 'cupones' && <CuponesView />}
       {activeTab === 'anuncios' && <AnunciosView />}
       {activeTab === 'avisos' && <AvisosView />}
+      {activeTab === 'banners' && <BannersView />}
     </div>
   );
 }
@@ -617,6 +626,227 @@ function AvisosView() {
           : "La aplicación volverá a estar abierta para todo el público inmediatamente."}
         confirmText={targetKillState ? "SÍ, APAGAR TODO" : "SÍ, REACTIVAR"}
         isDestructive={targetKillState}
+      />
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
+// COMPONENTE: BANNERS HERO (app_banners)
+// ------------------------------------------------------------------
+function BannersView() {
+  const [banners, setBanners] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [titulo, setTitulo] = useState('');
+  const [subtitulo, setSubtitulo] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
+  const [bannerToDelete, setBannerToDelete] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isDynamic, setIsDynamic] = useState(false);
+
+  useEffect(() => {
+    fetchBanners();
+  }, []);
+
+  const fetchBanners = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('app_banners').select('*').order('creado_en', { ascending: false });
+    if (data) setBanners(data);
+    setLoading(false);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      setImageFile(file);
+      setIsDynamic(false);
+      const reader = new FileReader();
+      reader.onloadend = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!titulo) return;
+    setSaving(true);
+    try {
+      let finalImageUrl = 'dynamic-gradient';
+
+      if (!isDynamic && imageFile) {
+        const fileExt = imageFile.name.split('.').pop();
+        const fileName = `banner_${Date.now()}.${fileExt}`;
+        const filePath = `banners/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('publicidad')
+          .upload(filePath, imageFile, { cacheControl: '3600', upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage.from('publicidad').getPublicUrl(filePath);
+        finalImageUrl = data.publicUrl;
+      }
+
+      await supabase.from('app_banners').insert([{
+        titulo,
+        subtitulo,
+        imagen_url: finalImageUrl,
+        link_url: linkUrl || null,
+        activo: true
+      }]);
+      
+      setTitulo('');
+      setSubtitulo('');
+      setLinkUrl('');
+      setImageFile(null);
+      setImagePreview(null);
+      setIsDynamic(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      fetchBanners();
+    } catch (err) {
+      console.error(err);
+      alert('Error al guardar el banner.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleBanner = async (id: string, activo: boolean) => {
+    await supabase.from('app_banners').update({ activo: !activo }).eq('id', id);
+    fetchBanners();
+  };
+
+  const confirmDelete = async () => {
+    if (!bannerToDelete) return;
+    await supabase.from('app_banners').delete().eq('id', bannerToDelete);
+    setBannerToDelete(null);
+    fetchBanners();
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200">
+        <h3 className="text-lg font-bold text-zinc-900 mb-4 flex items-center gap-2">
+          <Image className="text-blue-500" /> Crear Hero Banner
+        </h3>
+        
+        <form onSubmit={handleSave} className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Título del Banner</label>
+              <input required type="text" placeholder="Ej. Pide tus favoritos al instante" value={titulo} onChange={e => setTitulo(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Subtítulo</label>
+              <input type="text" placeholder="Ej. Descubre los mejores restaurantes cerca de ti" value={subtitulo} onChange={e => setSubtitulo(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Diseño del Banner</label>
+            <div className="flex flex-col md:flex-row gap-4 items-start">
+               <div className="flex-1 w-full flex gap-2">
+                 <button 
+                   type="button" 
+                   onClick={() => setIsDynamic(true)} 
+                   className={`flex-1 py-3 rounded-xl border flex items-center justify-center gap-2 font-bold transition-all ${isDynamic ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50'}`}
+                 >
+                   <Wand2 size={18} /> Diseño Dinámico (Auto)
+                 </button>
+                 <button 
+                   type="button" 
+                   onClick={() => fileInputRef.current?.click()} 
+                   className={`flex-1 py-3 rounded-xl border flex items-center justify-center gap-2 font-bold transition-all ${!isDynamic && imagePreview ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50'}`}
+                 >
+                   <Upload size={18} /> Subir Imagen Propia
+                 </button>
+                 <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" className="hidden" />
+               </div>
+               
+               {/* Vista Previa */}
+               <div className="w-full md:w-64 h-24 rounded-xl overflow-hidden border border-zinc-200 relative flex items-center justify-center bg-zinc-50">
+                 {isDynamic ? (
+                   <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 via-purple-500 to-blue-500 flex items-center justify-center">
+                     <span className="text-white font-black text-sm drop-shadow-md px-4 text-center">{titulo || 'Título aquí'}</span>
+                   </div>
+                 ) : imagePreview ? (
+                   <img src={imagePreview} className="absolute inset-0 w-full h-full object-cover" />
+                 ) : (
+                   <span className="text-zinc-400 text-xs font-bold uppercase">Sin imagen</span>
+                 )}
+               </div>
+            </div>
+            <p className="text-xs text-zinc-500 mt-2">Puedes subir una imagen desde tu galería o computadora, o elegir diseño automático si solo tienes texto.</p>
+          </div>
+          
+          <div>
+            <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1.5">URL de Destino (Link opcional al hacer clic)</label>
+            <input type="text" placeholder="Ej. /menu/mi-restaurante" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button type="submit" disabled={saving || (!isDynamic && !imageFile)} className="bg-zinc-900 hover:bg-zinc-800 text-white font-bold px-8 py-2.5 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2">
+              {saving && <Loader2 size={16} className="animate-spin" />}
+              {saving ? 'Guardando...' : 'Crear Banner'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-zinc-500 animate-pulse">Cargando banners...</div>
+        ) : banners.length === 0 ? (
+          <div className="p-8 text-center text-zinc-500">No hay banners registrados.</div>
+        ) : (
+          <div className="divide-y divide-zinc-100">
+            {banners.map(b => {
+              const isDyn = b.imagen_url === 'dynamic-gradient';
+              return (
+                <div key={b.id} className="p-6 flex flex-col md:flex-row gap-6 items-center hover:bg-zinc-50 transition-colors">
+                  <div className={`w-full md:w-64 h-32 rounded-xl relative overflow-hidden flex items-center justify-center shadow-inner ${isDyn ? 'bg-gradient-to-br from-indigo-500 via-purple-500 to-blue-500' : 'bg-cover bg-center bg-zinc-200'}`} style={!isDyn ? { backgroundImage: `url(${b.imagen_url})` } : {}}>
+                     {isDyn && (
+                       <div className="absolute inset-0 p-4 flex flex-col justify-center text-center">
+                         <h4 className="text-white font-black text-sm leading-tight drop-shadow-md">{b.titulo}</h4>
+                         {b.subtitulo && <p className="text-blue-100 text-[10px] mt-1 drop-shadow-md">{b.subtitulo}</p>}
+                       </div>
+                     )}
+                  </div>
+                  
+                  <div className="flex-1 w-full text-sm">
+                     <p className="text-zinc-900 font-black text-base mb-1">{b.titulo}</p>
+                     <p className="text-zinc-500 mb-1"><span className="font-bold text-zinc-700">Link:</span> {b.link_url || 'Ninguno'}</p>
+                     <p className="text-zinc-500 mb-3"><span className="font-bold text-zinc-700">Estado:</span> {b.activo ? <span className="text-emerald-600 font-bold">Activo</span> : <span className="text-zinc-400 font-bold">Inactivo</span>}</p>
+                     
+                     <div className="flex gap-2">
+                       <button onClick={() => toggleBanner(b.id, b.activo)} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${b.activo ? 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
+                         {b.activo ? 'Desactivar' : 'Activar'}
+                       </button>
+                       <button onClick={() => setBannerToDelete(b.id)} className="px-4 py-1.5 rounded-lg text-xs font-bold text-rose-500 hover:bg-rose-50 transition-colors">
+                         Eliminar
+                       </button>
+                     </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <ConfirmSheet
+        isOpen={!!bannerToDelete}
+        onClose={() => setBannerToDelete(null)}
+        onConfirm={confirmDelete}
+        title="¿Borrar Banner?"
+        description="Este banner será eliminado de forma permanente."
+        confirmText="Sí, Borrar"
+        isDestructive={true}
       />
     </div>
   );

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAppStore } from '../store/useAppStore';
 import { useJsApiLoader } from '@react-google-maps/api';
 import { NavigationSidebar } from '../components/NavigationSidebar';
@@ -11,6 +12,8 @@ import { HomeView } from '../components/views/HomeView';
 import { NewDeliveryFlow } from '../components/views/NewDeliveryFlow';
 import { ActiveTrackingView } from '../components/views/ActiveTrackingView';
 import { HistoryView } from '../components/views/HistoryView';
+import { LoyaltyView } from '../components/views/LoyaltyView';
+import { EatsInfoView } from '../components/views/EatsInfoView';
 
 const MAPS_LIBRARIES: ("places")[] = ["places"];
 
@@ -30,38 +33,41 @@ export function MainShell() {
     libraries: MAPS_LIBRARIES
   });
 
+  const queryClient = useQueryClient();
+
+  useQuery({
+    queryKey: ['pedidoActivo', user?.phone],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pedidos')
+        .select('*, repartidores(nombre, telefono, foto_url)')
+        .eq('cliente_tel', user!.phone)
+        .eq('tipo_pedido', 'mandadito')
+        .not('estado', 'in', '("entregado","cancelado")')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      
+      if (data) {
+        setPedidoActivo(data);
+        if (currentView !== 'activeTracking') {
+          setCurrentView('activeTracking');
+        }
+      } else {
+        setPedidoActivo(null);
+        if (currentView === 'activeTracking') {
+          setCurrentView('home');
+        }
+      }
+      return data;
+    },
+    enabled: !!user?.phone,
+  });
+
   useEffect(() => {
     if (!user) return;
-
-    const fetchPedido = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('pedidos')
-          .select('*, repartidores(nombre, telefono, foto_url)')
-          .eq('cliente_tel', user.phone)
-          .eq('tipo_pedido', 'mandadito')
-          .not('estado', 'in', '("entregado","cancelado")')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (error && error.code !== 'PGRST116') throw error;
-        
-        if (data) {
-          setPedidoActivo(data);
-          setCurrentView('activeTracking');
-        } else {
-          setPedidoActivo(null);
-          if (currentView === 'activeTracking') {
-            setCurrentView('home');
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching pedido:', err);
-      }
-    };
-
-    fetchPedido();
 
     const channel = supabase.channel('mandadito_updates')
       .on('postgres_changes', {
@@ -70,18 +76,20 @@ export function MainShell() {
         table: 'pedidos',
         filter: `cliente_tel=eq.${user.phone}`,
       }, (payload) => {
+        // En lugar de fetchear a mano, invalidamos la caché
+        queryClient.invalidateQueries({ queryKey: ['pedidoActivo'] });
+        queryClient.invalidateQueries({ queryKey: ['historial'] });
+
         if (payload.new.estado === 'entregado' || payload.new.estado === 'cancelado') {
           setPedidoActivo(null);
           setCurrentView('home');
-        } else {
-          fetchPedido();
         }
       }).subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, setPedidoActivo]);
+  }, [user, queryClient, setPedidoActivo]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -105,41 +113,47 @@ export function MainShell() {
         <AnimatePresence mode="wait">
           <motion.div
             key={currentView}
-            initial={{ opacity: 0, x: 15 }}
+            initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -15 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ duration: 0.15 }}
             className="w-full h-full flex flex-col absolute inset-0"
           >
             <ErrorBoundary>
-              {currentView === 'home' && (
-                <HomeView 
-                  setIsMenuOpen={setIsMenuOpen} 
-                  setCurrentView={setCurrentView} 
-                  setOrderType={setOrderType}
-                  setActiveStep={setActiveStep}
-                  isLoaded={isLoaded}
-                />
-              )}
-              
-              {currentView === 'newDelivery' && (
-                <NewDeliveryFlow 
-                  setCurrentView={setCurrentView} 
-                  isLoaded={isLoaded}
-                />
-              )}
-
-              {currentView === 'activeTracking' && (
-                <ActiveTrackingView 
-                  setCurrentView={setCurrentView}
-                />
-              )}
-
-              {currentView === 'history' && (
-                <HistoryView 
-                  setCurrentView={setCurrentView}
-                />
-              )}
+              {(() => {
+                switch (currentView) {
+                  case 'home':
+                    return (
+                      <HomeView 
+                        setIsMenuOpen={setIsMenuOpen} 
+                        setCurrentView={setCurrentView} 
+                        setOrderType={setOrderType}
+                        setActiveStep={setActiveStep}
+                        isLoaded={isLoaded}
+                      />
+                    );
+                  case 'newDelivery':
+                    return <NewDeliveryFlow setCurrentView={setCurrentView} isLoaded={isLoaded} />;
+                  case 'activeTracking':
+                    return <ActiveTrackingView setCurrentView={setCurrentView} />;
+                  case 'history':
+                    return <HistoryView setCurrentView={setCurrentView} />;
+                  case 'loyalty':
+                    return <LoyaltyView setCurrentView={setCurrentView} />;
+                  case 'eatsInfo':
+                    return <EatsInfoView setCurrentView={setCurrentView} />;
+                  default:
+                    return (
+                      <HomeView 
+                        setIsMenuOpen={setIsMenuOpen} 
+                        setCurrentView={setCurrentView} 
+                        setOrderType={setOrderType}
+                        setActiveStep={setActiveStep}
+                        isLoaded={isLoaded}
+                      />
+                    );
+                }
+              })()}
             </ErrorBoundary>
           </motion.div>
         </AnimatePresence>

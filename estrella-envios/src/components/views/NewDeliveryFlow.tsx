@@ -1,13 +1,91 @@
-import { useState } from 'react';
-import { Package, MapPin, ChevronRight, CheckCircle2, ChevronLeft, ShoppingCart, Info, ArrowRight, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { Package, MapPin, ChevronRight, CheckCircle2, ChevronLeft, ShoppingCart, Info, ArrowRight, X, Utensils } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleMap, Marker } from '@react-google-maps/api';
 import { toast } from 'react-hot-toast';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store/useAppStore';
 import { useH3Pricing } from '../../hooks/useH3Pricing';
 import { COMPRA_CATEGORIES, ENVIO_TYPES, ENVIO_SIZES } from '../../config/services.config';
 import { MapLocationPicker } from '../MapLocationPicker';
+
+interface QuickChip {
+  label: string;
+  append: string;
+  askDetails?: string;
+  placeholder?: string;
+}
+
+const QUICK_CHIPS: Record<string, QuickChip[]> = {
+  comida: [
+    { label: 'Tacos', append: '1x Orden de Tacos', askDetails: '¿De qué carne o guisado?', placeholder: 'Ej. Al pastor, suadero...' },
+    { label: 'Pizza', append: '1x Pizza', askDetails: '¿De qué ingredientes y tamaño?', placeholder: 'Ej. Pepperoni grande...' },
+    { label: 'Burger', append: '1x Hamburguesa', askDetails: '¿Sencilla o con papas?', placeholder: 'Ej. Sencilla sin cebolla...' },
+    { label: 'Sushi', append: '1x Rollo Sushi', askDetails: '¿De qué tipo/ingrediente?', placeholder: 'Ej. California, Empanizado...' },
+    { label: 'Postre', append: '1x Postre', askDetails: '¿Qué postre y de dónde?', placeholder: 'Ej. Rebanada de pastel de chocolate...' },
+  ],
+  super: [
+    { label: 'Leche', append: '1x Leche (1L)', askDetails: '¿Entera, light o deslactosada?', placeholder: 'Ej. Deslactosada Lala...' },
+    { label: 'Huevos', append: '1x Huevo (12 pz)' },
+    { label: 'Pan', append: '1x Pan de caja', askDetails: '¿Blanco o integral?', placeholder: 'Ej. Integral grande...' },
+    { label: 'Papel', append: '1x Papel higiénico' },
+    { label: 'Garrafón', append: '1x Garrafón', askDetails: '¿De qué marca (Ciel, Bonafont, etc)?', placeholder: 'Ej. Ciel...' },
+  ],
+  farmacia: [
+    { label: 'Paracetamol', append: '1x Paracetamol' },
+    { label: 'Suero', append: '1x Suero', askDetails: '¿De qué sabor y marca?', placeholder: 'Ej. Electrolit de fresa...' },
+    { label: 'Antigripal', append: '1x Antigripal', askDetails: '¿Qué marca (Next, Agrifen...)?', placeholder: 'Ej. Agrifen...' },
+    { label: 'Aspirina', append: '1x Aspirina' },
+    { label: 'Jeringas', append: '1x Jeringas' },
+  ],
+  conveniencia: [
+    { label: 'Cerveza', append: '1x Six de Cerveza', askDetails: '¿Qué marca (Tecate, Modelo...)?', placeholder: 'Ej. Tecate Light...' },
+    { label: 'Refresco', append: '1x Refresco', askDetails: '¿De qué sabor y tamaño (Ej. Coca 600ml)?', placeholder: 'Ej. Coca-Cola 600ml...' },
+    { label: 'Botana', append: '1x Botana', askDetails: '¿Qué tipo (Sabritas, Doritos...)?', placeholder: 'Ej. Doritos Nacho...' },
+    { label: 'Hielos', append: '1x Bolsa de Hielos' },
+    { label: 'Cigarros', append: '1x Cajetilla', askDetails: '¿Qué marca y sabor?', placeholder: 'Ej. Marlboro Rojos...' },
+  ],
+  licores: [
+    { label: 'Cerveza', append: '1x Six de Cerveza', askDetails: '¿Qué marca?', placeholder: 'Ej. Modelo Especial...' },
+    { label: 'Tequila', append: '1x Botella Tequila', askDetails: '¿Qué marca (Tradicional, Don Julio...)?', placeholder: 'Ej. Maestro Dobel Diamante...' },
+    { label: 'Vino', append: '1x Botella de Vino', askDetails: '¿Tinto o Blanco? ¿Alguna marca?', placeholder: 'Ej. Vino tinto dulce...' },
+    { label: 'Hielos', append: '1x Bolsa de Hielos' },
+    { label: 'Mineral', append: '1x Agua mineral' },
+  ],
+  mercado: [
+    { label: 'Jitomate', append: '1kg Jitomate' },
+    { label: 'Limón', append: '1kg Limón' },
+    { label: 'Pollo', append: '1kg Pollo', askDetails: '¿Pechuga, pierna, muslo?', placeholder: 'Ej. Pechuga sin hueso...' },
+    { label: 'Cebolla', append: '1kg Cebolla' },
+    { label: 'Tortillas', append: '1kg Tortillas' },
+  ],
+  mascotas: [
+    { label: 'Croq. Perro', append: '1x Croquetas Perro', askDetails: '¿Qué marca y cuántos kilos?', placeholder: 'Ej. Pedigree 2kg...' },
+    { label: 'Croq. Gato', append: '1x Croquetas Gato', askDetails: '¿Qué marca y cuántos kilos?', placeholder: 'Ej. Whiskas 1.5kg...' },
+    { label: 'Sobres', append: '1x Sobrecitos', askDetails: '¿De qué sabor (Pollo, Res)?', placeholder: 'Ej. De res y pollo...' },
+    { label: 'Arena', append: '1x Arena Gato' },
+  ],
+  regalos: [
+    { label: 'Flores', append: '1x Ramo de Flores', askDetails: '¿Qué flores y colores?', placeholder: 'Ej. Rosas rojas...' },
+    { label: 'Chocolates', append: '1x Caja Chocolates', askDetails: '¿Qué marca (Ferrero, Kisses...)?', placeholder: 'Ej. Ferrero Rocher de 16...' },
+    { label: 'Globo', append: '1x Globo helio', askDetails: '¿Con qué mensaje?', placeholder: 'Ej. De feliz cumpleaños...' },
+    { label: 'Pastel', append: '1x Pastel', askDetails: '¿De qué sabor y cuántas personas?', placeholder: 'Ej. Chocolate para 10...' },
+  ],
+  ferreteria: [
+    { label: 'Foco', append: '1x Foco LED', askDetails: '¿Luz blanca o cálida?', placeholder: 'Ej. Luz blanca...' },
+    { label: 'Pilas', append: '1x Pilas', askDetails: '¿Tamaño AA o AAA?', placeholder: 'Ej. Alcalinas AA...' },
+    { label: 'Cinta', append: '1x Cinta' },
+    { label: 'Pegamento', append: '1x KolaLoka' },
+  ],
+  papeleria: [
+    { label: 'Hojas', append: '100x Hojas Blancas' },
+    { label: 'Pluma', append: '1x Pluma', askDetails: '¿Tinta negra, azul o roja?', placeholder: 'Ej. Tinta negra bic...' },
+    { label: 'Pritt', append: '1x Lápiz Adhesivo' },
+    { label: 'Cuaderno', append: '1x Cuaderno', askDetails: '¿Raya o Cuadro?', placeholder: 'Ej. Profesional de raya...' },
+  ]
+};
 
 interface NewDeliveryFlowProps {
   setCurrentView: (view: string) => void;
@@ -29,6 +107,38 @@ export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowPro
   const [otpPhone, setOtpPhone] = useState(user?.phone !== '525555555555' ? user?.phone || '' : '');
   const [otpCode, setOtpCode] = useState('');
   const [isOtpLoading, setIsOtpLoading] = useState(false);
+  
+  // Chip Prompt States
+  const [chipPrompt, setChipPrompt] = useState<{ chipBase: string; question: string; placeholder?: string } | null>(null);
+  const [chipAnswer, setChipAnswer] = useState('');
+
+  const queryClient = useQueryClient();
+
+  const createOrderMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const { data, error } = await supabase.functions.invoke('auth-otp', {
+        body: { 
+          action: 'verify-and-order-mandadito', 
+          telefono: otpPhone, 
+          codigo: otpCode,
+          payload: payload
+        }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('¡Mandadito solicitado con éxito!');
+      setShowOtpModal(false);
+      queryClient.invalidateQueries({ queryKey: ['pedidoActivo'] });
+      queryClient.invalidateQueries({ queryKey: ['historial'] });
+    },
+    onError: (err: any) => {
+      console.error(err);
+      toast.error(err.message || 'Error al procesar pedido');
+    }
+  });
   
   const [deliveryData, setDeliveryData] = useState({
     origin: currentAddress !== 'Buscando tu ubicación...' && currentAddress !== 'Ubicación desconocida' && currentAddress !== 'Toca para agregar ubicación' ? currentAddress : '',
@@ -58,7 +168,7 @@ export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowPro
     ? ['Categoría', 'Tu pedido', '¿Dónde?', 'Destino', 'Confirmación']
     : ['Origen', 'Destino', 'Detalles', 'Confirmación'];
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: any) => {
     setDeliveryData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -113,7 +223,7 @@ export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowPro
     setIsOtpLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('auth-otp', {
-        body: { action: 'request-client-otp', phone: otpPhone }
+        body: { action: 'request-client-otp', telefono: otpPhone }
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -171,27 +281,10 @@ export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowPro
         extra_paquete: extraPaquete
       };
 
-      // Llamada única al backend para validar el código E insertar el pedido atómicamente
-      const { data, error } = await supabase.functions.invoke('auth-otp', {
-        body: { 
-          action: 'verify-and-order-mandadito', 
-          phone: otpPhone, 
-          codigo: otpCode,
-          payload: payload
-        }
-      });
-      
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      toast.success('¡Mandadito solicitado con éxito!');
-      setShowOtpModal(false);
-      // MainShell will switch to activeTracking because of its Supabase Realtime listener
+      createOrderMutation.mutate(payload);
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || 'Error al procesar pedido');
-    } finally {
-      setIsOtpLoading(false);
+      toast.error(err.message || 'Error al preparar pedido');
     }
   };
 
@@ -200,6 +293,8 @@ export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowPro
     setOtpStep('phone');
     setOtpCode('');
   };
+
+  const [isScrolled, setIsScrolled] = useState(false);
 
   const isStepCategoriaCompra = (orderType === 'compra' && activeStep === 0);
   const isStepListaCompra = (orderType === 'compra' && activeStep === 1);
@@ -211,60 +306,106 @@ export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowPro
   return (
     <div className="flex flex-col h-full bg-white relative w-full">
       {orderType === null ? (
-        <div className="flex-1 overflow-y-auto px-6 py-8 custom-scrollbar">
-          <header className="flex items-center gap-4 mb-8">
-            <button onClick={() => setCurrentView('home')} className="p-2 -ml-2 rounded-full hover:bg-gray-50 transition-colors">
-              <ChevronLeft className="w-6 h-6 text-gray-800" />
+        <div 
+          className="flex-1 overflow-y-auto custom-scrollbar"
+          onScroll={(e) => setIsScrolled(e.currentTarget.scrollTop > 10)}
+        >
+          <header className={`px-5 flex items-center gap-4 sticky top-0 z-20 transition-all duration-300 ${
+            isScrolled ? 'pt-4 pb-3 bg-white/90 backdrop-blur-xl shadow-sm border-b border-gray-100' : 'pt-6 pb-2 bg-transparent border-b border-transparent'
+          }`}>
+            <button 
+              onClick={() => setCurrentView('home')} 
+              className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors border ${
+                isScrolled ? 'bg-gray-50 border-gray-200 hover:bg-gray-100' : 'bg-white/50 border-gray-200/50 hover:bg-white shadow-sm'
+              }`}
+            >
+              <ChevronLeft className="w-6 h-6 text-gray-900" />
             </button>
-            <h1 className="text-2xl font-bold text-gray-900">¿Qué necesitas hoy?</h1>
+            <h1 className={`text-xl font-black text-gray-900 transition-all duration-300 ${isScrolled ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+              ¿Qué necesitas hoy?
+            </h1>
           </header>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-0 md:gap-4 bg-white md:bg-transparent rounded-3xl md:rounded-none overflow-hidden md:overflow-visible border border-gray-200 md:border-none shadow-sm md:shadow-none max-w-3xl mx-auto">
-            <div className="md:bg-white md:rounded-3xl md:border md:border-gray-200 md:shadow-sm md:hover:shadow-md md:hover:border-yellow-400 transition-all group/card">
+
+          <div className="px-6 py-2">
+            <h1 className="text-3xl font-black text-gray-900 mb-6 mt-1">¿Qué necesitas hoy?</h1>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto mt-4">
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-yellow-400 transition-all group/card overflow-hidden">
               <button 
                 onClick={() => { setOrderType('envio'); setActiveStep(0); }}
-                className="w-full relative flex items-center p-4 bg-white md:bg-transparent hover:bg-gray-50 md:hover:bg-transparent transition-colors text-left group"
+                className="w-full relative flex items-center p-5 hover:bg-gray-50 transition-colors text-left group"
               >
-                <div className="w-12 h-12 bg-yellow-50 group-hover:bg-yellow-100 group-hover/card:bg-yellow-100 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200">
-                  <Package className="w-6 h-6 text-yellow-600" />
+                <div className="w-14 h-14 bg-yellow-50 group-hover:bg-yellow-100 group-hover/card:bg-yellow-100 rounded-2xl flex items-center justify-center shrink-0 transition-colors duration-200">
+                  <Package className="w-7 h-7 text-yellow-600" />
                 </div>
-                <div className="flex-1 min-w-0 ml-4">
-                  <h2 className="text-[17px] font-semibold text-gray-900 tracking-tight leading-none mb-1">Enviar un paquete</h2>
-                  <p className="text-[13px] text-gray-500 leading-tight pr-2">Llevamos documentos o llaves de un punto a otro.</p>
+                <div className="flex-1 min-w-0 ml-5">
+                  <h2 className="text-lg font-bold text-gray-900 tracking-tight leading-none mb-1.5">Enviar un paquete</h2>
+                  <p className="text-sm text-gray-500 leading-snug pr-2">Llevamos documentos o llaves de un punto a otro.</p>
                 </div>
                 <ChevronRight className="w-5 h-5 text-gray-300 md:hidden" />
               </button>
             </div>
-            
-            <div className="ml-[76px] border-b border-gray-100 md:hidden"></div>
 
-            <div className="md:bg-white md:rounded-3xl md:border md:border-gray-200 md:shadow-sm md:hover:shadow-md md:hover:border-blue-400 transition-all group/card">
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-400 transition-all group/card overflow-hidden">
               <button 
                 onClick={() => { setOrderType('compra'); setActiveStep(0); }}
-                className="w-full relative flex items-center p-4 bg-white md:bg-transparent hover:bg-gray-50 md:hover:bg-transparent transition-colors text-left group"
+                className="w-full relative flex items-center p-5 hover:bg-gray-50 transition-colors text-left group"
               >
-                <div className="w-12 h-12 bg-blue-50 group-hover:bg-blue-100 group-hover/card:bg-blue-100 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200">
-                  <ShoppingCart className="w-6 h-6 text-blue-600" />
+                <div className="w-14 h-14 bg-blue-50 group-hover:bg-blue-100 group-hover/card:bg-blue-100 rounded-2xl flex items-center justify-center shrink-0 transition-colors duration-200">
+                  <ShoppingCart className="w-7 h-7 text-blue-600" />
                 </div>
-                <div className="flex-1 min-w-0 ml-4">
-                  <h2 className="text-[17px] font-semibold text-gray-900 tracking-tight leading-none mb-1">Ir de compras</h2>
-                  <p className="text-[13px] text-gray-500 leading-tight pr-2">Farmacia, súper, comida. Te lo llevamos a donde estés.</p>
+                <div className="flex-1 min-w-0 ml-5">
+                  <h2 className="text-lg font-bold text-gray-900 tracking-tight leading-none mb-1.5">Ir de compras</h2>
+                  <p className="text-sm text-gray-500 leading-snug pr-2">Farmacia, súper, comida. Te lo llevamos a donde estés.</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-300 md:hidden" />
+              </button>
+            </div>
+
+            <div className="md:col-span-2 bg-gradient-to-br from-white to-orange-50/30 rounded-3xl border border-orange-100 shadow-sm hover:shadow-md hover:border-orange-400 transition-all group/card overflow-hidden">
+              <button 
+                onClick={() => setCurrentView('eatsInfo')}
+                className="w-full relative flex items-center p-5 hover:bg-orange-50/50 transition-colors text-left group"
+              >
+                <div className="w-16 h-16 bg-white shadow-sm rounded-2xl flex items-center justify-center shrink-0 transition-transform duration-300 group-hover:scale-105 border border-orange-100 overflow-hidden p-1">
+                  <img src="/estrella-circle.png" alt="Estrella Eats" className="w-full h-full object-contain" />
+                </div>
+                <div className="flex-1 min-w-0 ml-5">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <h2 className="text-lg font-bold text-gray-900 tracking-tight leading-none">Estrella Eats</h2>
+                    <span className="px-2 py-0.5 bg-gradient-to-r from-orange-500 to-red-500 text-white text-[10px] font-bold rounded-full uppercase tracking-wider shadow-sm">
+                      ¡Antojo!
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600 leading-snug pr-2 font-medium">
+                    Pide de tus restaurantes favoritos calientito hasta tu puerta.
+                  </p>
                 </div>
                 <ChevronRight className="w-5 h-5 text-gray-300 md:hidden" />
               </button>
             </div>
           </div>
         </div>
+        </div>
       ) : (
         <>
-          <header className="px-4 pt-6 sm:pt-8 pb-4 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-20 border-b border-gray-100">
-            <button onClick={prevStep} className="p-2 -ml-2 rounded-full hover:bg-gray-50 transition-colors">
-              <ChevronLeft className="w-6 h-6 text-gray-800" />
+          <header className={`px-5 flex items-center justify-between sticky top-0 z-20 transition-all duration-300 ${
+            isScrolled ? 'pt-4 pb-3 bg-white/90 backdrop-blur-xl shadow-sm border-b border-gray-100' : 'pt-6 pb-2 bg-transparent border-b border-transparent'
+          }`}>
+            <button 
+              onClick={prevStep} 
+              className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors border ${
+                isScrolled ? 'bg-gray-50 border-gray-200 hover:bg-gray-100' : 'bg-white/50 border-gray-200/50 hover:bg-white shadow-sm'
+              }`}
+            >
+              <ChevronLeft className="w-6 h-6 text-gray-900" />
             </button>
-            <span className="font-semibold text-gray-900">{STEPS[activeStep]}</span>
+            <span className={`font-black text-gray-900 transition-all duration-300 ${isScrolled ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+              {STEPS[activeStep]}
+            </span>
             <div className="w-10"></div>
           </header>
 
-          <div className="px-6 py-4 bg-white z-10 border-b border-gray-100 hidden md:block">
+          <div className={`px-6 py-4 bg-white z-10 hidden md:block transition-all duration-300 ${isScrolled ? 'border-b border-gray-100' : ''}`}>
             <div className="max-w-3xl mx-auto flex items-center justify-between relative">
                <div className="absolute left-0 right-0 top-1/2 h-0.5 bg-gray-100 -z-10 -translate-y-1/2"></div>
                {STEPS.map((step, idx) => (
@@ -282,8 +423,14 @@ export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowPro
             </div>
           </div>
 
-          <main className="flex-1 overflow-y-auto px-6 py-8 pb-32 custom-scrollbar">
+          <main 
+            className="flex-1 overflow-y-auto px-6 py-4 pb-32 custom-scrollbar"
+            onScroll={(e) => setIsScrolled(e.currentTarget.scrollTop > 10)}
+          >
             <div className="max-w-2xl mx-auto w-full">
+              <h2 className="text-2xl font-black text-gray-900 mb-6 md:hidden">
+                {STEPS[activeStep]}
+              </h2>
               <AnimatePresence mode="wait">
         {isStepCategoriaCompra && (
           <motion.div key="stepCategoria" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-8">
@@ -322,7 +469,8 @@ export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowPro
         {isStepListaCompra && (
           <motion.div key="stepLista" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-8">
             <div>
-              <h3 className="text-lg font-bold text-gray-900 mb-4">¿Qué necesitas que compremos?</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-1">¿Qué necesitas que compremos?</h3>
+              <p className="text-sm text-gray-500 mb-4 leading-snug">Puedes escribir tu lista libremente o apoyarte de las sugerencias abajo.</p>
               <textarea 
                 value={compraData.lista}
                 onChange={(e) => setCompraData(prev => ({...prev, lista: e.target.value}))}
@@ -334,6 +482,25 @@ export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowPro
                 }
                 className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-base font-medium focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-all min-h-[120px] resize-none shadow-inner"
               />
+              {QUICK_CHIPS[compraData.categoria] && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {QUICK_CHIPS[compraData.categoria].map(chip => (
+                    <button
+                      key={chip.label}
+                      onClick={() => {
+                        if (chip.askDetails) {
+                          setChipPrompt({ chipBase: chip.append, question: chip.askDetails, placeholder: chip.placeholder });
+                        } else {
+                          setCompraData(prev => ({...prev, lista: prev.lista ? `${prev.lista}, ${chip.append}` : chip.append}));
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-bold rounded-full hover:bg-gray-200 hover:text-gray-900 transition-colors shadow-sm"
+                    >
+                      + {chip.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div>
               <h3 className="text-lg font-bold text-gray-900 mb-2">Presupuesto aproximado</h3>
@@ -431,7 +598,7 @@ export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowPro
              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                Datos de quien recibe <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded uppercase tracking-wider">Obligatorio</span>
              </h3>
-             <p className="text-xs text-gray-500">Requeridos para entregar el código de seguridad (OTP).</p>
+             <p className="text-xs text-gray-500">Necesarios para enviarle un PIN por WhatsApp y garantizar una entrega segura.</p>
              <input 
                type="text" 
                value={deliveryData.recipientName}
@@ -722,13 +889,14 @@ export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowPro
         </>
       )}
       {/* OTP Modal Overlay */}
-      <AnimatePresence>
-        {showOtpModal && (
+      {createPortal(
+        <AnimatePresence>
+          {showOtpModal && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[120] bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-[120] bg-gray-900/60 flex items-center justify-center p-4"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -773,10 +941,10 @@ export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowPro
                   />
                   <button
                     onClick={verifyAndCreateOrder}
-                    disabled={otpCode.length < 4 || isOtpLoading}
+                    disabled={otpCode.length < 4 || createOrderMutation.isPending}
                     className="w-full bg-yellow-400 text-gray-900 font-bold py-4 rounded-2xl flex justify-center disabled:opacity-50"
                   >
-                    {isOtpLoading ? <div className="w-5 h-5 border-2 border-gray-900/30 border-t-gray-900 rounded-full animate-spin"></div> : 'Confirmar Pedido'}
+                    {createOrderMutation.isPending ? <div className="w-5 h-5 border-2 border-gray-900/30 border-t-gray-900 rounded-full animate-spin"></div> : 'Confirmar Pedido'}
                   </button>
                   <button onClick={() => setOtpStep('phone')} className="w-full text-center text-sm text-gray-500 font-medium py-2">
                     Cambiar número
@@ -786,7 +954,75 @@ export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowPro
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* Dynamic Chip Prompt Modal */}
+      {createPortal(
+        <AnimatePresence>
+          {chipPrompt && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[130] bg-gray-900/60 flex items-end md:items-center justify-center p-0 md:p-4"
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="bg-white w-full max-w-md rounded-t-[2rem] md:rounded-[2rem] p-6 shadow-2xl pb-10 md:pb-6 relative"
+            >
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-gray-200 rounded-full md:hidden"></div>
+              
+              <div className="flex justify-between items-center mb-6 mt-4 md:mt-0">
+                <div>
+                   <h3 className="text-xl font-bold text-gray-900 mb-1">{chipPrompt.chipBase}</h3>
+                   <p className="text-sm font-medium text-gray-500">{chipPrompt.question}</p>
+                </div>
+                <button onClick={() => { setChipPrompt(null); setChipAnswer(''); }} className="p-2 bg-gray-100 rounded-full text-gray-500 hover:text-gray-900 shrink-0">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder={chipPrompt.placeholder || "Escribe aquí..."}
+                  value={chipAnswer}
+                  onChange={(e) => setChipAnswer(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && chipAnswer.trim()) {
+                      const textToAppend = `${chipPrompt.chipBase} de ${chipAnswer.trim()}`;
+                      setCompraData(prev => ({...prev, lista: prev.lista ? `${prev.lista}\n- ${textToAppend}` : `- ${textToAppend}`}));
+                      setChipPrompt(null);
+                      setChipAnswer('');
+                    }
+                  }}
+                  className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-base font-medium focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-all shadow-inner"
+                />
+                <button
+                  onClick={() => {
+                    const textToAppend = `${chipPrompt.chipBase} (${chipAnswer.trim()})`;
+                    setCompraData(prev => ({...prev, lista: prev.lista ? `${prev.lista}\n- ${textToAppend}` : `- ${textToAppend}`}));
+                    setChipPrompt(null);
+                    setChipAnswer('');
+                  }}
+                  disabled={!chipAnswer.trim()}
+                  className="w-full bg-gray-900 text-white font-bold py-4 rounded-2xl flex justify-center disabled:opacity-50 hover:bg-gray-800 transition-colors shadow-lg"
+                >
+                  Agregar a la lista
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

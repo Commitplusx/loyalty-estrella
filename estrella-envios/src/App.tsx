@@ -12,8 +12,6 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // DEV BYPASS: Force auto-login instantly
-    setUser({ id: 'dev-user-id', phone: '525555555555' });
     setLoading(false);
   }, [setUser]);
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Settings, Bike, Map, ChevronRight, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ConfirmSheet } from '../components/ui/ConfirmSheet';
+import { SystemLogsView } from '../components/views/SystemLogsView';
 
 export function Ajustes() {
   const [activeView, setActiveView] = useState<'menu' | 'motos' | 'excepciones' | 'promociones' | 'logs'>('menu');
@@ -407,11 +408,4 @@ function ExcepcionesView() {
       />
     </div>
   );
-}
-
-function SystemLogsView() {
-  return <div className="p-4 bg-white rounded-2xl border border-zinc-200">
-    <h3 className="font-bold mb-4">Logs del Sistema</h3>
-    <p className="text-sm text-zinc-500">Módulo en construcción...</p>
-  </div>;
 }
