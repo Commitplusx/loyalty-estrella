@@ -52,6 +52,8 @@ const getBikePin = (color: string) => {
   `)}`;
 };
 
+const LIBRARIES: ("visualization" | "places" | "drawing" | "geometry")[] = ['visualization'];
+
 export function RadarMap({ pedidos, repartidores }: { pedidos: any[], repartidores: any[] }) {
   const [selectedRepartidorId, setSelectedRepartidorId] = useState<string | null>(null);
   const [selectedPedidoId, setSelectedPedidoId] = useState<string | null>(null);
@@ -62,7 +64,9 @@ export function RadarMap({ pedidos, repartidores }: { pedidos: any[], repartidor
 
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
+    libraries: LIBRARIES,
+    version: '3.64'
   });
 
   const onLoad = useCallback(function callback(map: google.maps.Map) {

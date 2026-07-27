@@ -585,7 +585,9 @@ REGLAS ESTRICTAS:
 Responde ÚNICAMENTE con un JSON válido en este formato exacto:
 {
   "titulo": "Tu título aquí",
-  "mensaje": "Tu mensaje aquí"
+  "mensaje": "Tu mensaje aquí",
+  "cupon_codigo": "ANTOJO20",
+  "cupon_porcentaje": 20
 }`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
@@ -604,11 +606,38 @@ Responde ÚNICAMENTE con un JSON válido en este formato exacto:
       
       const data = await res.json();
       const textResponse = data.candidates[0].content.parts[0].text;
-      const result = JSON.parse(textResponse);
+      
+      // Limpiar texto basura (Markdown, etc) antes de parsear
+      const cleanedResponse = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+      const result = JSON.parse(cleanedResponse);
 
       setTitulo(result.titulo);
       setMensaje(result.mensaje);
-      toast.success('¡Texto generado con éxito!', { id: 'ai-toast' });
+      
+      if (result.cupon_codigo && result.cupon_porcentaje) {
+         // Asegurar que el porcentaje sea número incluso si la IA manda "20%" o texto
+         const valorNumerico = parseFloat(String(result.cupon_porcentaje).replace(/[^0-9.]/g, '')) || 0;
+         
+         // Crear el cupón mágicamente
+         const { error: dbError } = await supabase.from('cupones_plataforma').insert([{
+            descripcion: `Promo Push IA (${valorNumerico}%)`,
+            tipo: 'porcentaje',
+            valor: valorNumerico,
+            uso_maximo: null,
+            codigo: String(result.cupon_codigo).toUpperCase().replace(/\s/g, ''),
+            usos_actuales: 0,
+            activa: true
+         }]);
+         
+         if (dbError) {
+            console.error('DB Error al crear cupón:', dbError);
+            toast.error(`La IA generó el texto, pero falló al crear el cupón: ${dbError.message}`, { id: 'ai-toast', duration: 8000 });
+         } else {
+            toast.success(`¡Cupón ${result.cupon_codigo} creado mágicamente en el sistema!`, { id: 'ai-toast', duration: 5000 });
+         }
+      } else {
+         toast.success('¡Texto generado con éxito!', { id: 'ai-toast' });
+      }
     } catch (e: any) {
       console.error('Error IA:', e);
       toast.error('Hubo un error al generar el texto con IA.', { id: 'ai-toast' });

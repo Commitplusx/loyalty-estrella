@@ -45,6 +45,8 @@ const uberMapStyle = [
   { "featureType": "water", "elementType": "labels.text.fill", "stylers": [{ "color": "#9e9e9e" }] }
 ];
 
+const LIBRARIES: ("visualization" | "places" | "drawing" | "geometry")[] = ['visualization'];
+
 export function Dashboard() {
   const navigate = useNavigate();
   const [pedidosActivos, setPedidosActivos] = useState(0);
@@ -61,7 +63,9 @@ export function Dashboard() {
 
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
+    libraries: LIBRARIES,
+    version: '3.64'
   });
 
   const onLoad = useCallback(function callback(map: google.maps.Map) {
