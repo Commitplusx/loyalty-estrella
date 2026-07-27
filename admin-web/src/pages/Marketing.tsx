@@ -479,13 +479,25 @@ function AnunciosView() {
 
 // ─── AVISOS / CONTROL VIEW ──────────────────────────────────────────────────
 function AvisosView() {
-  const [servicioPausado, setServicioPausado] = useState(false);
-  const [loadingConfig, setLoadingConfig] = useState(true);
+  const [activeTab, setActiveTab] = useState<'cupones' | 'anuncios' | 'avisos' | 'banners'>('cupones');
+  
+  // Estados para Cupones
+  const [cupones, setCupones] = useState<any[]>([]);
+  const [loadingCupones, setLoadingCupones] = useState(true);
+  
+  // Estados para Banners
+  const [heroBanners, setHeroBanners] = useState<any[]>([]);
+  const [loadingBanners, setLoadingBanners] = useState(true);
 
-  // Push Notifications State
+  // Estados para Push Global
   const [titulo, setTitulo] = useState('');
   const [mensaje, setMensaje] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [generandoIA, setGenerandoIA] = useState(false);
+
+  // Estado del botón de pánico
+  const [servicioPausado, setServicioPausado] = useState(false);
+  const [loadingConfig, setLoadingConfig] = useState(true);
 
   // Kill Switch Sheet
   const [showKillConfirm, setShowKillConfirm] = useState(false);
@@ -550,23 +562,59 @@ function AvisosView() {
     }
   };
 
-  const generarTextoIA = () => {
-    const templates = [
-      { t: "¡Cena como rey a mitad de precio! 👑", m: "Usa el código REY50 y obtén 50% de descuento en tu cena de hoy. Solo válido hasta medianoche." },
-      { t: "Antojo de postre gratis 🍰", m: "En la compra de cualquier combo familiar, te regalamos el postre. ¡Pídelo ya!" },
-      { t: "🔥 Promo Flash: 30% OFF", m: "Solo por las próximas 2 horas: 30% de descuento en tus tacos favoritos. ¡Corre que se acaban!" },
-      { t: "Pizza + Película = Noche perfecta 🍕", m: "Aprovecha nuestro descuento en todas las pizzerías esta noche. Pide rápido y disfruta." },
-      { t: "¡Almuerzo Godín al rescate! 💼", m: "Pide tu comida de oficina con 20% de descuento hoy usando el cupón OFICINA20." },
-      { t: "Despierta con un buen café ☕", m: "Compra un desayuno y el café va por nuestra cuenta. Para empezar el día con toda la energía." },
-      { t: "¡Fin de semana de hamburguesas! 🍔", m: "Disfruta un 15% de descuento en todas las hamburguesas artesanales de la app este sábado y domingo." },
-      { t: "Martes de antojo dulce 🍩", m: "Porque el martes también se vale. Obtén 20% OFF en postres seleccionados." },
-      { t: "Alitas para compartir 🍗", m: "Pide 1 kilo de alitas y nosotros ponemos las papas fritas. ¡No te quedes con hambre!" },
-      { t: "Día de Sushi 🍣", m: "Hoy los rollos tienen precio especial. ¡Pide 3 y paga 2 en todos nuestros restaurantes orientales!" }
-    ];
-    const random = templates[Math.floor(Math.random() * templates.length)];
-    setTitulo(random.t);
-    setMensaje(random.m);
-    toast.success('¡Textos mágicos generados!', { duration: 2000 });
+  const generarTextoIA = async () => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      toast.error('Falta configurar VITE_GEMINI_API_KEY en tu archivo .env', { duration: 5000 });
+      return;
+    }
+
+    setGenerandoIA(true);
+    toast.loading('Generando magia con IA...', { id: 'ai-toast' });
+
+    try {
+      const prompt = `Eres un experto en marketing persuasivo para una app de comida a domicilio (Estrella Eats).
+Genera una notificación push muy atractiva para enviar a todos los usuarios.
+REGLAS ESTRICTAS:
+1. Usa emojis para llamar la atención.
+2. NUNCA inventes ni menciones códigos de descuento específicos (ej. REY50) porque no existen.
+3. Puedes hablar de comida deliciosa, antojos de fin de semana, hambre, promociones automáticas en restaurantes o postres.
+4. El mensaje (body) debe tener MÁXIMO 130 caracteres.
+5. El título debe ser corto y llamativo (max 40 caracteres).
+
+Responde ÚNICAMENTE con un JSON válido en este formato exacto:
+{
+  "titulo": "Tu título aquí",
+  "mensaje": "Tu mensaje aquí"
+}`;
+
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.9,
+            responseMimeType: "application/json"
+          }
+        })
+      });
+
+      if (!res.ok) throw new Error('Error al contactar a Gemini API');
+      
+      const data = await res.json();
+      const textResponse = data.candidates[0].content.parts[0].text;
+      const result = JSON.parse(textResponse);
+
+      setTitulo(result.titulo);
+      setMensaje(result.mensaje);
+      toast.success('¡Texto generado con éxito!', { id: 'ai-toast' });
+    } catch (e: any) {
+      console.error('Error IA:', e);
+      toast.error('Hubo un error al generar el texto con IA.', { id: 'ai-toast' });
+    } finally {
+      setGenerandoIA(false);
+    }
   };
 
   return (
@@ -613,9 +661,11 @@ function AvisosView() {
              <button 
                type="button" 
                onClick={generarTextoIA}
-               className="bg-purple-100 hover:bg-purple-200 text-purple-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+               disabled={generandoIA}
+               className="bg-purple-100 hover:bg-purple-200 text-purple-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50"
              >
-               <Sparkles size={14} /> IA
+               {generandoIA ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} 
+               {generandoIA ? 'Pensando...' : 'IA'}
              </button>
            </div>
            
