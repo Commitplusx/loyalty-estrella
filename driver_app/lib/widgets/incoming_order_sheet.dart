@@ -11,8 +11,10 @@ import '../core/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../screens/driver_pedidos_screen.dart' show rejectedPedidosProvider;
 import '../screens/pedido_detail_screen.dart' show pedidoDetailProvider;
+import '../core/theme_provider.dart';
+import 'package:action_slider/action_slider.dart';
 
-class IncomingOrderSheet extends StatelessWidget {
+class IncomingOrderSheet extends ConsumerWidget {
   final Map<String, dynamic> payload;
 
   const IncomingOrderSheet({super.key, required this.payload});
@@ -24,61 +26,38 @@ class IncomingOrderSheet extends StatelessWidget {
       isDismissible: false,
       enableDrag: false,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white, // ⚪ Fondo blanco limpio
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              )
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header Rojo Estrella
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  gradient: AppGradients.brand,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                child: const Text(
-                  '🚨 ¡NUEVO VIAJE ASIGNADO!',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: _IncomingOrderSheetContent(payload: payload),
-              ),
-            ],
-          ),
-        ),
-      ),
+      builder: (ctx) => IncomingOrderSheet(payload: payload),
     );
   }
 
   @override
-  Widget build(BuildContext context) {
-    return _IncomingOrderSheetContent(payload: payload);
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(32), // Bordes más redondeados
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 30,
+              offset: const Offset(0, 15),
+            )
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: _IncomingOrderSheetContent(payload: payload, isDark: false),
+        ),
+      ),
+    );
   }
 }
 class _IncomingOrderSheetContent extends ConsumerStatefulWidget {
   final Map<String, dynamic> payload;
-  const _IncomingOrderSheetContent({required this.payload});
+  final bool isDark;
+  const _IncomingOrderSheetContent({required this.payload, required this.isDark});
 
   @override
   ConsumerState<_IncomingOrderSheetContent> createState() => _IncomingOrderSheetContentState();
@@ -143,10 +122,10 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
   }
 
   Future<void> _loadPedido() async {
-    debugPrint('🚀 [IncomingOrderSheet] Iniciando carga de detalles del pedido. Payload: ${widget.payload}');
+//     debugPrint('🚀 [IncomingOrderSheet] Iniciando carga de detalles del pedido. Payload: ${widget.payload}');
     try {
       final pedidoId = widget.payload['pedido_id'] as String;
-      debugPrint('🔍 [IncomingOrderSheet] Consultando BD para pedido ID: $pedidoId');
+//       debugPrint('🔍 [IncomingOrderSheet] Consultando BD para pedido ID: $pedidoId');
       final pedido = await PedidoService().getPedido(pedidoId);
       
       if (mounted) {
@@ -154,7 +133,7 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
           _pedido = pedido;
           _isLoading = false;
         });
-        debugPrint('✅ [IncomingOrderSheet] Pedido cargado con éxito. Restaurante: ${pedido?.restaurante}, Ganancia: \$${pedido?.precioEntrega}');
+//         debugPrint('✅ [IncomingOrderSheet] Pedido cargado con éxito. Restaurante: ${pedido?.restaurante}, Ganancia: \$${pedido?.precioEntrega}');
       }
     } catch (e) {
       debugPrint('❌ [IncomingOrderSheet] Error crítico cargando detalles del pedido: $e');
@@ -168,7 +147,7 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
   }
 
   Future<void> _aceptarPedido() async {
-    debugPrint('🟢 [IncomingOrderSheet] Usuario presionó ACEPTAR pedido. ID: ${_pedido?.id}');
+//     debugPrint('🟢 [IncomingOrderSheet] Usuario presionó ACEPTAR pedido. ID: ${_pedido?.id}');
     if (_pedido == null) return;
     
     // Control de estado de carga para evitar múltiple clic
@@ -194,11 +173,11 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
       Navigator.of(context).pop(); // Cerramos el modal primero de forma limpia
       
       if (exito) {
-        debugPrint('================================================================');
-        debugPrint('✅ [IncomingOrderSheet] 🚀 VIAJE ACEPTADO (ATÓMICAMENTE)');
-        debugPrint('ID Pedido: ${_pedido!.id}');
-        debugPrint('¿Era Viaje Apilado?: ${widget.payload['viaje_apilado']}');
-        debugPrint('================================================================');
+//         debugPrint('================================================================');
+//         debugPrint('✅ [IncomingOrderSheet] 🚀 VIAJE ACEPTADO (ATÓMICAMENTE)');
+//         debugPrint('ID Pedido: ${_pedido!.id}');
+//         debugPrint('¿Era Viaje Apilado?: ${widget.payload['viaje_apilado']}');
+//         debugPrint('================================================================');
         
         // Refrescar explícitamente el provider por si la pantalla ya estaba montada de fondo
         ref.invalidate(pedidoDetailProvider(_pedido!.id));
@@ -258,7 +237,7 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
   }
 
   Future<void> _rechazarPedido() async {
-    debugPrint('🔴 [IncomingOrderSheet] Usuario presionó RECHAZAR pedido. ID: ${_pedido?.id}');
+//     debugPrint('🔴 [IncomingOrderSheet] Usuario presionó RECHAZAR pedido. ID: ${_pedido?.id}');
     if (_pedido == null) {
       debugPrint('⚠️ [IncomingOrderSheet] Intento de rechazar pero el pedido es null.');
       return;
@@ -281,7 +260,7 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
           ).timeout(const Duration(seconds: 10));
           
           if (response == true) {
-             debugPrint('✅ [IncomingOrderSheet] Rechazo atómico exitoso.');
+//              debugPrint('✅ [IncomingOrderSheet] Rechazo atómico exitoso.');
           } else {
              debugPrint('⚠️ [IncomingOrderSheet] El rechazo atómico devolvió false (quizás ya expiró).');
           }
@@ -293,11 +272,11 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
       // Update local rejected state to hide it instantly from the pool
       ref.read(rejectedPedidosProvider.notifier).update((state) => {...state, _pedido!.id});
           
-      debugPrint('✅ [IncomingOrderSheet] Pedido liberado en BD. Apagando alarma...');
+//       debugPrint('✅ [IncomingOrderSheet] Pedido liberado en BD. Apagando alarma...');
       stopAlarm();
       
       if (mounted) {
-        debugPrint('➡️ [IncomingOrderSheet] Cerrando el BottomSheet de rechazo.');
+//         debugPrint('➡️ [IncomingOrderSheet] Cerrando el BottomSheet de rechazo.');
         Navigator.of(context).pop(); // Cerrar BottomSheet
         PremiumToast.show(
           context,
@@ -346,6 +325,13 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
       );
     }
 
+    final isDark = false; // El usuario pidió mantenerlo siempre en modo claro
+    final textColor = Colors.black87;
+    final subtitleColor = Colors.black54;
+    final cardBgColor = Colors.white;
+    final routeCardColor = const Color(0xFFF8FAFC);
+    final borderColor = const Color(0xFFE2E8F0);
+
     final esApilado = widget.payload['viaje_apilado'] == true || widget.payload['viaje_apilado'] == 'true';
     final p = _pedido!;
     final double fee = p.precioEntrega ?? p.costoEnvioCalculado;
@@ -375,53 +361,70 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
           const SizedBox(height: 20),
         ],
         
-        // Bloque Principal: Ganancia y Preparación
+        // Header Icono Premium
+        Center(
+          child: Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF7ED), // Fondo naranja claro
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: const Icon(Icons.notifications_active_rounded, color: Color(0xFFF97316), size: 36),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'NUEVO VIAJE',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.black, letterSpacing: -0.5),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Tienes un viaje disponible para ti',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 15, color: Colors.black54, fontWeight: FontWeight.w500),
+        ),
+        const SizedBox(height: 24),
+
+        // Bloque Principal: Ganancia
         Container(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.brandRed.withOpacity(0.08),
-                blurRadius: 24,
-                spreadRadius: 4,
-                offset: const Offset(0, 8),
-              )
-            ],
-            border: Border.all(color: AppColors.brandRed.withOpacity(0.2)),
+            color: const Color(0xFFECFDF5), // Fondo verde suave
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.2)),
           ),
           child: Column(
             children: [
               const Text(
                 'GANANCIA ESTIMADA',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: Colors.black54, fontWeight: FontWeight.w800, letterSpacing: 1.1),
+                style: TextStyle(fontSize: 13, color: Color(0xFF047857), fontWeight: FontWeight.w900, letterSpacing: 1.1),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
               Text(
                 '\$${fee.toStringAsFixed(2)}',
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 54, fontWeight: FontWeight.w900, color: AppColors.brandRed, height: 1.1, letterSpacing: -1),
+                style: const TextStyle(fontSize: 54, fontWeight: FontWeight.w900, color: Color(0xFF047857), height: 1.0, letterSpacing: -1.5),
               ),
               
               if (p.tiempoPreparacion != null && p.tiempoPreparacion! > 0) ...[
                 const SizedBox(height: 16),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: AppColors.brandRed.withOpacity(0.05),
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.brandRed.withOpacity(0.2)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.local_fire_department_rounded, color: AppColors.brandRed, size: 16),
-                      const SizedBox(width: 6),
+                      const Icon(Icons.local_fire_department_rounded, color: Color(0xFFF97316), size: 18),
+                      const SizedBox(width: 8),
                       Text(
                         'Lista en ${p.tiempoPreparacion} min',
-                        style: const TextStyle(color: AppColors.brandRed, fontWeight: FontWeight.w800, fontSize: 13),
+                        style: const TextStyle(color: Color(0xFFF97316), fontWeight: FontWeight.w800, fontSize: 14),
                       ),
                     ],
                   ),
@@ -438,7 +441,7 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(24),
             border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: Column(
@@ -448,17 +451,17 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]),
-                    child: const Icon(Icons.storefront_rounded, color: Colors.black87, size: 20),
+                    padding: const EdgeInsets.all(10),
+                    decoration: const BoxDecoration(color: Color(0xFFFFF7ED), shape: BoxShape.circle),
+                    child: const Icon(Icons.storefront_rounded, color: Color(0xFFF97316), size: 22),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('RECOGER EN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.black45, letterSpacing: 0.5)),
-                        const SizedBox(height: 2),
+                        const Text('RECOGER EN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Color(0xFFF97316), letterSpacing: 0.5)),
+                        const SizedBox(height: 4),
                         Text(p.restaurante ?? 'Restaurante Estrella', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.black87)),
                       ],
                     ),
@@ -466,27 +469,27 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
                 ],
               ),
               Padding(
-                padding: const EdgeInsets.only(left: 17, top: 4, bottom: 4),
+                padding: const EdgeInsets.only(left: 20, top: 4, bottom: 4),
                 child: SizedBox(
                   height: 24, 
-                  child: CustomPaint(painter: DottedLinePainter()), // Un toque premium con línea punteada
+                  child: CustomPaint(painter: DottedLinePainter(color: Colors.black26)), 
                 ),
               ),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: AppColors.brandRed.withOpacity(0.1), shape: BoxShape.circle),
-                    child: const Icon(Icons.location_on_rounded, color: AppColors.brandRed, size: 20),
+                    padding: const EdgeInsets.all(10),
+                    decoration: const BoxDecoration(color: Color(0xFFF3E8FF), shape: BoxShape.circle), // Morado suave
+                    child: const Icon(Icons.location_on_rounded, color: Color(0xFF9333EA), size: 22),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('ENTREGAR EN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.black45, letterSpacing: 0.5)),
-                        const SizedBox(height: 2),
+                        const Text('ENTREGAR EN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Color(0xFF9333EA), letterSpacing: 0.5)),
+                        const SizedBox(height: 4),
                         Text(p.direccion ?? 'Dirección del cliente', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Colors.black87, height: 1.2)),
                       ],
                     ),
@@ -499,48 +502,40 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
         
         const SizedBox(height: 24),
         
-        // Botones de acción
-        Row(
+        // Botones de acción rediseñados
+        Column(
           children: [
-            Expanded(
-              flex: 2,
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: AppGradients.brand,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(color: AppColors.brandRed.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))
-                  ]
-                ),
-                child: ElevatedButton(
-                  onPressed: _isProcessing ? null : _aceptarPedido,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                  ),
-                  child: _isProcessing 
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-                    : const Text('ACEPTAR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
-                ),
-              ),
+            ActionSlider.standard(
+              rolling: true,
+              height: 60,
+              backgroundColor: const Color(0xFF10B981), // Verde Esmeralda Premium
+              toggleColor: Colors.white,
+              icon: const Icon(Icons.chevron_right_rounded, color: Color(0xFF10B981), size: 30),
+              successIcon: const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 30),
+              action: (controller) async {
+                controller.loading();
+                await _aceptarPedido();
+                // Si la pantalla se cierra antes (porque _aceptarPedido hace pop), el controller.success no importará mucho,
+                // pero si da tiempo, se verá bien.
+                if (mounted) controller.success();
+              },
+              child: const Text('Desliza para ACEPTAR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 1,
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
               child: TextButton(
                 onPressed: _isProcessing ? null : _rechazarPedido,
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  backgroundColor: Colors.red.withOpacity(0.08),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  backgroundColor: isDark ? Colors.red.withValues(alpha: 0.15) : Colors.red.withValues(alpha: 0.08),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
                 child: _isProcessing 
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.red))
-                  : const Text('RECHAZAR', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                  : const Text('Rechazar viaje', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 15)),
               ),
             ),
-
           ],
         ),
       ],
@@ -550,10 +545,13 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
 
 // Painter para la línea punteada vertical
 class DottedLinePainter extends CustomPainter {
+  final Color color;
+  DottedLinePainter({this.color = Colors.black26});
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.black26
+      ..color = color
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round;
     const dashHeight = 4.0;

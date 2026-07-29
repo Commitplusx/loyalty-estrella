@@ -3,7 +3,7 @@ import { handleAdminInteractive } from './slash-commands-handler.ts'
 import { handleRepButtons } from './rep-handler.ts'
 import { handleCalificacion, handleTerminos, handleAdminCommands } from './admin-handler.ts'
 import { startRestaurantOnboarding } from './restaurant-onboarding.ts'
-import { iniciarFlujoMandadito, avanzarFlujoMandadito } from './mandadito-handler.ts'
+
 
 export async function handleButtonEvent(
   supabase: any,
@@ -175,6 +175,83 @@ export async function handleButtonEvent(
     return new Response('OK', { status: 200 })
   }
 
+  // ── CONFIRMACIÓN DE PEDIDO ESTRELLA EATS (B2C) ──
+  if (buttonId === 'CONFIRM_EATS_EFECTIVO' || buttonId === 'CONFIRM_EATS_TRANSF' || buttonId === 'CANCELAR_EATS') {
+    const { data } = await supabase.from('bot_memory').select('history').eq('phone', `estrella_eats_draft_${from10}`).maybeSingle();
+    const draft = data?.history?.[0];
+
+    if (!draft) {
+      await sendWA(fromPhone, `❌ Tu sesión expiró o el pedido ya fue procesado. Inicia de nuevo por favor.`);
+      return new Response('OK', { status: 200 });
+    }
+
+    if (buttonId === 'CANCELAR_EATS') {
+      await supabase.from('bot_memory').delete().eq('phone', `estrella_eats_draft_${from10}`);
+      await sendWA(fromPhone, `✅ Tu orden ha sido cancelada exitosamente.`);
+      return new Response('OK', { status: 200 });
+    }
+
+    const metodoPago = buttonId === 'CONFIRM_EATS_EFECTIVO' ? 'efectivo' : 'transferencia';
+    
+    // Obtener información del cliente
+    const { data: cliente } = await supabase.from('clientes').select('nombre').eq('telefono', from10).maybeSingle();
+    const clienteNombre = cliente?.nombre || 'Cliente Express';
+
+    // Obtener coordenadas reales del restaurante para el origen
+    const { data: restData } = await supabase.from('restaurantes').select('lat, lng').eq('id', draft.restaurante_id).maybeSingle();
+
+    // Insertar en tabla pedidos
+    const { error: errPedido } = await supabase.from('pedidos').insert({
+      cliente_tel: from10,
+      cliente_nombre: clienteNombre,
+      restaurante: draft.restaurante_nombre,
+      restaurante_id: draft.restaurante_id, // Agregado para que el webhook encuentre el teléfono exacto
+      descripcion: draft.resumen_pedido,
+      direccion: draft.colonia || 'GPS',
+      lat: restData?.lat || draft.lat, // Origen: Restaurante
+      lng: restData?.lng || draft.lng,
+      lat_entrega: draft.lat,          // Destino: Cliente
+      lng_entrega: draft.lng,
+      total: draft.gran_total,
+      precio_entrega: draft.costo_envio, // Agregado para que la app no ponga el default de 25
+      metodo_pago: metodoPago,
+      estado: 'pendiente', // Volvemos a pendiente para que el restaurante asigne tiempo
+      origen: 'b2c_flow',
+      tipo_pedido: 'domicilio'
+    });
+
+    if (errPedido) {
+      console.error('Error insertando pedido B2C:', errPedido);
+      await sendWA(fromPhone, `❌ Ocurrió un error al registrar tu orden. Intenta de nuevo.`);
+      return new Response('OK', { status: 200 });
+    }
+
+    await supabase.from('bot_memory').delete().eq('phone', `estrella_eats_draft_${from10}`);
+
+    const metodoTexto = metodoPago === 'efectivo' ? '💵 Efectivo (prepara tu cambio)' : '🏦 Transferencia (te enviaremos los datos en breve)';
+    
+    await sendWA(fromPhone,
+      `🎉 *¡Orden Confirmada!*\n\n` +
+      `Tu pedido en *${draft.restaurante_nombre}* está siendo procesado.\n\n` +
+      `🛵 Total a pagar: *$${draft.gran_total.toFixed(2)}*\n` +
+      `💳 Método: ${metodoTexto}\n\n` +
+      `Te avisaremos en cuanto el repartidor vaya en camino. ¡Gracias por usar Estrella Delivery! 🌟`
+    );
+
+    // Notificar al admin
+    const ADMIN_PHONE = Deno.env.get('ADMIN_PHONE') || '9631539156';
+    await sendWA(`52${ADMIN_PHONE}`,
+      `🚨 *NUEVO PEDIDO B2C (FLOW)* 🚨\n\n` +
+      `👤 Cliente: ${clienteNombre} (${from10})\n` +
+      `🏪 Rest: ${draft.restaurante_nombre}\n` +
+      `📍 Destino: ${draft.colonia}\n` +
+      `💰 Total: $${draft.gran_total.toFixed(2)} (${metodoPago})\n\n` +
+      `👉 Revisa el portal de admin para procesarlo.`
+    );
+
+    return new Response('OK', { status: 200 });
+  }
+
   // 🧑‍🍳 Restaurante: Empezar a Preparar (Paso 1: Pedir Tiempo) 🧑‍🍳
   if (buttonId.startsWith('REST_ORDER_PREPARE_')) {
     const ticket_id = buttonId.replace('REST_ORDER_PREPARE_', '');
@@ -240,7 +317,7 @@ export async function handleButtonEvent(
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${SUPABASE_KEY}`
         },
-        body: JSON.stringify({ pedido_id: p.id })
+        body: JSON.stringify({ id: p.id })
       }).catch(e => console.error("Error disparando asignar-repartidor desde WA:", e));
 
       // Primer burbuja: Mensaje con detalles y botón URL para abrir el monitor
@@ -296,401 +373,7 @@ export async function handleButtonEvent(
 
   // ── Botones del Menú Principal del Cliente ──
   if (buttonId === 'MENU_PEDIR_SERVICIO') {
-    // DESACTIVADO POR AHORA A PETICIÓN DEL ADMIN
-    // await iniciarFlujoMandadito(supabase, fromPhone, from10)
-    await sendWA(fromPhone, `🚧 *Servicio en mantenimiento*\nPor el momento los mandaditos automáticos están desactivados mientras aplicamos unas mejoras. Si necesitas un servicio urgente, por favor comunícate con un asesor. 🙏`)
-    return new Response('OK', { status: 200 })
-  }
-
-  // ── Mandadito: cliente elige "Continuar" desde el guardián de sesión ──
-  if (buttonId === 'MAND_CONTINUAR_SESION') {
-    const { data: memData } = await supabase.from('bot_memory')
-      .select('history').eq('phone', `mandadito_state_${from10}`).maybeSingle()
-    const currentState = memData?.history?.[0]
-    if (currentState?.step === 1) {
-      await sendWA(fromPhone, `📍 ¿Desde dónde recogemos?\n_Escribe la colonia, el nombre del negocio o manda tu pin GPS._`)
-    } else if (currentState?.step === 2) {
-      await sendWA(fromPhone, `🏁 ¿Y a dónde lo llevamos?\n_Escribe la colonia, el nombre del lugar o manda tu pin GPS._`)
-    } else {
-      await iniciarFlujoMandadito(supabase, fromPhone, from10)
-    }
-    return new Response('OK', { status: 200 })
-  }
-
-  // ── Mandadito: cliente elige su rol (Envío o Recibo) ──
-  if (buttonId === 'MAND_ROLE_ENVIO') {
-    await supabase.from('bot_memory').upsert({
-      phone: `mandadito_state_${from10}`,
-      history: [{ step: 1, role: 'envio' }],
-      updated_at: new Date().toISOString()
-    })
-    const { enviarSelectorUbicacion } = await import('./mandadito-handler.ts')
-    await enviarSelectorUbicacion(
-      supabase, fromPhone, from10,
-      `📍 ¡Perfecto! Por favor dime desde dónde enviamos el paquete:`,
-      1,
-      'envio'
-    )
-    return new Response('OK', { status: 200 })
-  }
-
-  if (buttonId === 'MAND_ROLE_RECIBO') {
-    await supabase.from('bot_memory').upsert({
-      phone: `mandadito_state_${from10}`,
-      history: [{ step: 1, role: 'recibo' }],
-      updated_at: new Date().toISOString()
-    })
-    const { enviarSelectorUbicacion } = await import('./mandadito-handler.ts')
-    await enviarSelectorUbicacion(
-      supabase, fromPhone, from10,
-      `📍 Entendido. ¿*En dónde recogemos* el paquete? (Especifica la colonia y calle, o el nombre del negocio)`,
-      1,
-      'recibo'
-    )
-    return new Response('OK', { status: 200 })
-  }
-
-  // ── Mandadito: cliente elige dirección guardada de la lista ──
-  if (buttonId.startsWith('MAND_USAR_DIR_')) {
-    // Formato corregido: MAND_USAR_DIR_{paso}_{tipo}
-    // Bug 2 fix: Ya no embedemos la colonia en el ID. Buscamos por tipo en la BD.
-    const sinPrefijo = buttonId.replace('MAND_USAR_DIR_', '')
-    const parts = sinPrefijo.split('_')
-    const paso = parseInt(parts[0])
-    const tipo = parts.slice(1).join('_')  // soporte para tipos compuestos
-
-    // Bug 5 fix: validar paso para evitar comportamiento indefinido si el ID viene malformado
-    if (isNaN(paso) || (paso !== 1 && paso !== 2) || !tipo) {
-      console.warn(`[MAND_USAR_DIR] ID malformado: ${buttonId}`)
-      await sendWA(fromPhone, `⚠️ Ocurrió un error al leer la dirección. Por favor escribe el nombre de la colonia manualmente.`)
-      return new Response('OK', { status: 200 })
-    }
-
-    // Buscar la dirección más reciente de ese tipo en BD
-    const { data: ubiFav } = await supabase.from('cliente_ubicaciones')
-      .select('lat, lng, colonia_nombre')
-      .eq('cliente_telefono', from10)
-      .eq('tipo', tipo)
-      .order('ultima_vez', { ascending: false })
-      .maybeSingle()
-
-    if (!ubiFav) {
-      await sendWA(fromPhone, `⚠️ No encontré esa dirección guardada. Escribe el nombre de la colonia manualmente.`)
-      return new Response('OK', { status: 200 })
-    }
-
-    const ubicacion: any = ubiFav.lat && ubiFav.lng
-      ? { texto: ubiFav.colonia_nombre, lat: ubiFav.lat, lng: ubiFav.lng }
-      : { texto: ubiFav.colonia_nombre }
-
-    const { data: memData } = await supabase.from('bot_memory')
-      .select('history').eq('phone', `mandadito_state_${from10}`).maybeSingle()
-    const currentState = memData?.history?.[0]
-
-    if (paso === 1 && (!currentState || currentState.step === 1)) {
-      await avanzarFlujoMandadito(supabase, fromPhone, from10, { step: 1 }, ubicacion)
-    } else if (paso === 2 && currentState?.step === 2) {
-      await avanzarFlujoMandadito(supabase, fromPhone, from10, currentState, ubicacion)
-    } else {
-      // Estado desfasado, reiniciar
-      await iniciarFlujoMandadito(supabase, fromPhone, from10)
-    }
-    return new Response('OK', { status: 200 })
-  }
-
-  // ── Mandadito: cliente quiere escribir manualmente ──
-  if (buttonId.startsWith('MAND_ESCRIBIR_')) {
-    const paso = parseInt(buttonId.replace('MAND_ESCRIBIR_', ''))
-    const txt = paso === 1
-      ? '✏️ Escribe el nombre de la colonia o barrio de *origen*, o manda tu *Ubicación GPS* 📍:'
-      : '✏️ Escribe el nombre de la colonia o barrio de *destino*, o manda tu *Ubicación GPS* 📍:'
-    await sendWA(fromPhone, txt)
-    return new Response('OK', { status: 200 })
-  }
-
-  // ── Mandadito: confirmar cotización ──
-  if (buttonId.startsWith('CONFIR_MAND_EFECTIVO_') || buttonId.startsWith('CONFIR_MAND_TRANSF_')) {
-    const isEfectivo = buttonId.startsWith('CONFIR_MAND_EFECTIVO_')
-    const cotizTel = buttonId.replace(isEfectivo ? 'CONFIR_MAND_EFECTIVO_' : 'CONFIR_MAND_TRANSF_', '')
-    const { data: cotizMem } = await supabase.from('bot_memory')
-      .select('history').eq('phone', `mandadito_cotiz_${cotizTel}`).maybeSingle()
-    const cotiz = cotizMem?.history?.[0]
-
-    if (!cotiz) {
-      await sendWA(fromPhone, `⚠️ No encontré tu cotización. Por favor vuelve a solicitar el mandadito.`)
-      return new Response('OK', { status: 200 })
-    }
-
-    // Limpiar cotización guardada
-    await supabase.from('bot_memory').delete().eq('phone', `mandadito_cotiz_${cotizTel}`)
-
-    const metodoPagoStr = isEfectivo ? 'Efectivo 💵' : 'Transferencia 💳'
-
-    // Mensaje de confirmación al cliente
-    await sendWA(fromPhone,
-      `🎉 *¡Pedido confirmado!*\n\n` +
-      `🛵 Estamos asignando un repartidor cerca de ti…\n` +
-      `Te avisaremos en cuanto uno lo acepte. 📲\n\n` +
-      `📋 *Resumen de tu mandadito:*\n` +
-      `• Origen: ${cotiz.lblOrigen}\n` +
-      `• Destino: ${cotiz.lblDestino}\n` +
-      (cotiz.referencias ? `• Notas: _${cotiz.referencias}_\n` : '') +
-      `• Pago: ${metodoPagoStr}\n` +
-      `• Total: *$${cotiz.precio}*\n\n` +
-      (!isEfectivo ? `💳 _Al asignarse el repartidor, podrás enviarle el comprobante de transferencia a él directamente._\n\n` : '') +
-      `_¡Gracias por confiar en Estrella Delivery! ⭐_`
-    )
-
-    // ── Insertar pedido en la base de datos ──
-    // Obtenemos el nombre del cliente si está registrado
-    const { data: cliente } = await supabase.from('clientes')
-      .select('nombre, lat_frecuente, lng_frecuente')
-      .eq('telefono', cotizTel)
-      .maybeSingle()
-
-    // Usar la ubicación de origen o destino si no tiene frecuentes
-    let lat = cliente?.lat_frecuente ?? cotiz.origenLat ?? null;
-    let lng = cliente?.lng_frecuente ?? cotiz.origenLng ?? null;
-
-    const { data: nuevoPedido, error: pedErr } = await supabase.from('pedidos').insert({
-      cliente_tel: cotizTel,
-      cliente_nombre: cliente?.nombre || null,
-      descripcion: cotiz.referencias ? `[MANDADITO] ${cotiz.referencias}` : '[MANDADITO]',
-      direccion: cotiz.lblDestino,
-      estado: 'pendiente', // Usamos pendiente para que el admin lo asigne
-      origen: cotiz.lblOrigen,
-      destino: cotiz.lblDestino,
-      tipo_pedido: 'mandadito',
-      metodo_pago: isEfectivo ? 'efectivo' : 'transferencia',
-      precio_entrega: cotiz.precio,
-      lat: lat,
-      lng: lng
-    }).select('id').maybeSingle()
-
-    if (pedErr) {
-      console.error('[CONFIRMAR_MANDADITO] Error al insertar pedido:', pedErr)
-    }
-
-    // Notificar al admin
-    const ADMIN_PHONES_ENV = Deno.env.get('ADMIN_PHONES') ?? Deno.env.get('ADMIN_PHONE') ?? ''
-    const adminPhones = ADMIN_PHONES_ENV.split(',').map((p: string) => p.trim()).filter(Boolean)
-    for (const admin of adminPhones) {
-      await sendWA(`52${admin}`,
-        `🛵 *NUEVO MANDADITO CONFIRMADO*\n\n` +
-        `📱 Cliente: ${cotizTel}\n` +
-        `📍 Origen: ${cotiz.lblOrigen}\n` +
-        `🏁 Destino: ${cotiz.lblDestino}\n` +
-        (cotiz.referencias ? `📝 Notas: ${cotiz.referencias}\n` : '') +
-        `💵 Precio: $${cotiz.precio} (${isEfectivo ? 'Efectivo' : 'Transferencia'})\n\n` +
-        `_Abre la App de Admin (Flutter) para gestionarlo._`
-      )
-      await new Promise(r => setTimeout(r, 200))
-    }
-
-    // ── Flujo post-confirmación: guardar dirección del cliente ──
-    // Solo si el cliente aún no tiene direcciones tipo "casa" o "trabajo" guardadas
-    const { data: yaTieneDirs } = await supabase.from('cliente_ubicaciones')
-      .select('id').eq('cliente_telefono', from10).in('tipo', ['casa', 'trabajo']).limit(1)
-    if (!yaTieneDirs?.length) {
-      // Guardar en estado las dos direcciones para el flujo siguiente
-      await supabase.from('bot_memory').upsert({
-        phone: `mand_dir_save_${from10}`,
-        history: [{ lblOrigen: cotiz.lblOrigen, lblDestino: cotiz.lblDestino, origenId: cotiz.origenId, destinoId: cotiz.destinoId }],
-        updated_at: new Date().toISOString()
-      })
-      await new Promise(r => setTimeout(r, 800))
-      await sendInteractiveButtons(fromPhone,
-        `💡 *¿Tú envías o recibes en este mandadito?*\n\n_Preguntamos para guardar tu dirección y agilizar tus próximas entregas. ¡Solo una vez!_`,
-        [
-          { id: 'MAND_YO_ENVIO',  title: '📦 Yo envío' },
-          { id: 'MAND_YO_RECIBO', title: '📬 Yo recibo' }
-        ]
-      )
-    }
-
-    return new Response('OK', { status: 200 })
-  }
-
-  // ── Mandadito post-confirm: ¿tú envías o recibes? ──
-  if (buttonId === 'MAND_YO_ENVIO' || buttonId === 'MAND_YO_RECIBO') {
-    const { data: dirMem } = await supabase.from('bot_memory')
-      .select('history').eq('phone', `mand_dir_save_${from10}`).maybeSingle()
-    const dirs = dirMem?.history?.[0]
-    if (!dirs) {
-      await sendWA(fromPhone, `⚠️ Parece que expiró la sesión. No hay problema, pide un nuevo mandadito cuando quieras.`)
-      return new Response('OK', { status: 200 })
-    }
-
-    // Si envía → su dirección es el ORIGEN. Si recibe → su dirección es el DESTINO.
-    const esMiDirOrigen = buttonId === 'MAND_YO_ENVIO'
-    const miDir = esMiDirOrigen ? dirs.lblOrigen : dirs.lblDestino
-    const otraDir = esMiDirOrigen ? dirs.lblDestino : dirs.lblOrigen
-
-    // Actualizar estado con cuál dirección es la del cliente
-    await supabase.from('bot_memory').upsert({
-      phone: `mand_dir_save_${from10}`,
-      history: [{ ...dirs, esMiDirOrigen }],
-      updated_at: new Date().toISOString()
-    })
-
-    // 🚨 WhatsApp limita títulos de botones a 20 caracteres
-    const capBtn = (s: string, max = 20) => s.length > max ? s.substring(0, max - 1) + '…' : s
-
-    await sendInteractiveButtons(fromPhone,
-      `📍 *¿Cuál de estas es tu dirección?*\n\n` +
-      `Tenemos dos puntos en tu mandadito:\n\n` +
-      `📦 *${dirs.lblOrigen}*\n` +
-      `📬 *${dirs.lblDestino}*\n\n` +
-      `_Al guardarla, la próxima vez la detectaremos automáticamente._`,
-      [
-        { id: 'MAND_GUARDAR_MIA',  title: capBtn(`✅ ${miDir}`) },
-        { id: 'MAND_GUARDAR_OTRA', title: capBtn(`❌ ${otraDir}`) }
-      ]
-    )
-    return new Response('OK', { status: 200 })
-  }
-
-  // ── Mandadito post-confirm: confirmar cuál dirección guardar ──
-  if (buttonId === 'MAND_GUARDAR_MIA' || buttonId === 'MAND_GUARDAR_OTRA') {
-    const { data: dirMem } = await supabase.from('bot_memory')
-      .select('history').eq('phone', `mand_dir_save_${from10}`).maybeSingle()
-    const dirs = dirMem?.history?.[0]
-    if (!dirs) {
-      await sendWA(fromPhone, `⚠️ Sesión expirada. No hay problema, puedes pedir un nuevo mandadito cuando quieras.`)
-      return new Response('OK', { status: 200 })
-    }
-
-    // Bug fix: esMiDirOrigen puede ser undefined si el usuario saltó el paso anterior
-    // MAND_GUARDAR_MIA → guardar la que corresponde al rol (origen si envió, destino si recibió)
-    // MAND_GUARDAR_OTRA → guardar la contraria
-    const esMiDirOrigen = dirs.esMiDirOrigen ?? true // default: origen si no hay estado
-    const usarOrigen = buttonId === 'MAND_GUARDAR_MIA' ? esMiDirOrigen : !esMiDirOrigen
-
-    const dirLabel = usarOrigen ? dirs.lblOrigen : dirs.lblDestino
-    const dirId    = usarOrigen ? dirs.origenId  : dirs.destinoId
-
-    // Intentar recuperar GPS desde el historial de ubicaciones del cliente (tipo origen/destino)
-    let lat: number | null = null, lng: number | null = null
-    {
-      const { data: gpsDir } = await supabase.from('cliente_ubicaciones')
-        .select('lat, lng').eq('cliente_telefono', from10)
-        .eq('tipo', usarOrigen ? 'origen' : 'destino')
-        .not('lat', 'is', null).order('ultima_vez', { ascending: false }).limit(1).maybeSingle()
-      lat = gpsDir?.lat ?? null
-      lng = gpsDir?.lng ?? null
-    }
-
-    // Actualizar estado con la dirección final elegida + coords
-    await supabase.from('bot_memory').upsert({
-      phone: `mand_dir_save_${from10}`,
-      history: [{ ...dirs, dirFinalLabel: dirLabel, dirFinalId: dirId, dirFinalLat: lat, dirFinalLng: lng }],
-      updated_at: new Date().toISOString()
-    })
-
-    const capBtn = (s: string, max = 20) => s.length > max ? s.substring(0, max - 1) + '…' : s
-    await sendInteractiveButtons(fromPhone,
-      `🏠 *¿Es tu casa o trabajo?*\n\n_Dirección a guardar: *${dirLabel}*_`,
-      [
-        { id: 'MAND_TIPO_CASA',    title: capBtn('🏠 Es mi casa') },
-        { id: 'MAND_TIPO_TRABAJO', title: capBtn('🏢 Es mi trabajo') }
-      ]
-    )
-    return new Response('OK', { status: 200 })
-  }
-
-  // ── Mandadito post-confirm: guardar tipo de dirección (casa / trabajo) ──
-  if (buttonId === 'MAND_TIPO_CASA' || buttonId === 'MAND_TIPO_TRABAJO') {
-    const tipo = buttonId === 'MAND_TIPO_CASA' ? 'casa' : 'trabajo'
-    const emoji = tipo === 'casa' ? '🏠' : '🏢'
-
-    const { data: dirMem } = await supabase.from('bot_memory')
-      .select('history').eq('phone', `mand_dir_save_${from10}`).maybeSingle()
-    const dirs = dirMem?.history?.[0]
-
-    // Siempre limpiar estado, incluso si no hay datos
-    await supabase.from('bot_memory').delete().eq('phone', `mand_dir_save_${from10}`)
-
-    if (!dirs?.dirFinalLabel) {
-      await sendWA(fromPhone, `⚠️ No pude guardar la dirección (sesión expirada). Pide otro mandadito para intentarlo de nuevo.`)
-      return new Response('OK', { status: 200 })
-    }
-
-    // GPS: preferir coords del paso anterior (ya buscadas), luego colonia_id, luego nombre
-    let lat: number | null = dirs.dirFinalLat ?? null
-    let lng: number | null = dirs.dirFinalLng ?? null
-
-    if ((!lat || !lng) && dirs.dirFinalId) {
-      const { data: col } = await supabase.from('colonias')
-        .select('lat, lng').eq('id', dirs.dirFinalId).maybeSingle()
-      lat = col?.lat ?? null
-      lng = col?.lng ?? null
-    }
-    if (!lat || !lng) {
-      const { data: histDir } = await supabase.from('cliente_ubicaciones')
-        .select('lat, lng').eq('cliente_telefono', from10)
-        .ilike('colonia_nombre', `%${dirs.dirFinalLabel.substring(0, 20)}%`)
-        .not('lat', 'is', null).limit(1).maybeSingle()
-      lat = histDir?.lat ?? null
-      lng = histDir?.lng ?? null
-    }
-
-    await supabase.from('cliente_ubicaciones').upsert({
-      cliente_telefono: from10,
-      tipo,
-      colonia_nombre: dirs.dirFinalLabel,
-      colonia_id: dirs.dirFinalId || null,
-      lat, lng,
-      ultima_vez: new Date().toISOString()
-    }, { onConflict: 'cliente_telefono,tipo,colonia_nombre' })
-
-    // Verificar si ya tiene cuenta de loyalty
-    const { data: cliente } = await supabase.from('clientes')
-      .select('id, puntos, acepta_terminos').eq('telefono', from10).maybeSingle()
-
-    if (cliente?.acepta_terminos) {
-      await sendWA(fromPhone,
-        `✅ *¡Dirección ${tipo === 'casa' ? 'de casa' : 'de trabajo'} guardada!* ${emoji}\n\n` +
-        `_La próxima vez que pidas un mandadito, te la sugeriremos automáticamente._\n\n` +
-        `⭐ Tienes *${cliente.puntos || 0}* puntos Estrella. ¡Sigue acumulando!`
-      )
-    } else {
-      await sendInteractiveButtons(fromPhone,
-        `✅ *¡Dirección guardada!* ${emoji}\n\n` +
-        `_Ya sabemos donde ${tipo === 'casa' ? 'entregarte' : 'recogerte'} próximas veces._\n\n` +
-        `🌟 *¡Únete al programa de lealtad Estrella!*\n` +
-        `Acumula puntos con cada mandadito y canjéalos por envíos gratis. ¿Te apuntas?`,
-        [
-          { id: 'BTN_ACEPTAR_TERMINOS', title: '⭐ Sí, quiero puntos' },
-          { id: 'MAND_SKIP_LOYALTY',    title: '❌ Ahora no' }
-        ]
-      )
-    }
-    return new Response('OK', { status: 200 })
-  }
-
-  // ── Skip loyalty desde post-mandadito (ID único para no colisionar con otros handlers) ──
-  if (buttonId === 'MAND_SKIP_LOYALTY') {
-    await sendWA(fromPhone, `👍 ¡Entendido! Si cambias de opinión, escríbenos _"quiero puntos"_ y te inscribimos.`)
-    return new Response('OK', { status: 200 })
-  }
-
-
-
-
-
-  // ── Mandadito: cancelar (Bugs 3 y 4 fix: limpiar también mandadito_cotiz_) ──
-  if (buttonId === 'CANCELAR_MANDADITO') {
-    await Promise.all([
-      supabase.from('bot_memory').delete().eq('phone', `mandadito_state_${from10}`),
-      supabase.from('bot_memory').delete().eq('phone', `mandadito_cotiz_${from10}`)
-    ])
-    await sendInteractiveButtons(fromPhone,
-      `❌ *Cotización cancelada.* ¡Sin problema!\n\n¿En qué más puedo ayudarte?`,
-      [
-        { id: 'MENU_PEDIR_SERVICIO', title: '🛵 Nuevo mandadito' },
-        { id: 'MENU_VER_PUNTOS', title: '⭐ Ver mis puntos' }
-      ]
-    )
+    await sendWA(fromPhone, `🚧 *Servicio en mantenimiento*\nPor el momento los mandaditos automáticos están desactivados.`)
     return new Response('OK', { status: 200 })
   }
 
@@ -1024,7 +707,6 @@ export async function handleButtonEvent(
         telefono: clientTel, nombre: regInfo.nombre,
         direccion: regInfo.colonia ? `${regInfo.colonia}, ${regInfo.direccion || ''}`.trim() : (regInfo.direccion || null),
         lat_frecuente: regInfo.lat || null, lng_frecuente: regInfo.lng || null,
-        cumpleanos: regInfo.cumpleanos || null,
         puntos: 0, es_vip: false, acepta_terminos: false,
         qr_code: qrCode, codigo_referido: codigoReferido, created_at: new Date().toISOString()
       }, { onConflict: 'telefono' })
@@ -1036,7 +718,7 @@ export async function handleButtonEvent(
         await supabase.from('bot_memory').delete().eq('phone', `pending_reg_${clientTel}`)
         const tycUrl   = `https://www.app-estrella.shop/terminos`
         const primerNombre = regInfo.nombre.split(' ')[0]
-        const tycTexto = `🌟 *¡Hola, ${primerNombre}! Nos alegra mucho que te unas a Estrella Delivery.* 🛵💨\n\nAl registrarte, entrarás a nuestro programa de lealtad donde:\n✅ Acumulas saldo y puntos con cada envío.\n🎁 Tienes acceso a promociones exclusivas.\n\nConfirma que aceptas nuestros términos y condiciones 👇\n\n🔗 *Léelos aquí:* ${tycUrl}`
+        const tycTexto = `🎉 *¡Felicidades, ${primerNombre}!* Tu cuenta VIP ha sido aprobada con éxito. 🌟\n\nAl unirte a nuestra familia en Estrella Delivery, comienzas a disfrutar de:\n\n✨ *Puntos canjeables* por cada pedido.\n🚚 *Envíos gratis* y descuentos especiales.\n🎁 *Acceso exclusivo* a regalos y dinámicas.\n\nPara completar tu registro, solo necesitamos que confirmes nuestros términos de servicio 👇\n\n🔗 ${tycUrl}`
         await sendWA(`52${clientTel}`, tycTexto)
         await sendInteractiveButtons(`52${clientTel}`, `¿Aceptas los términos y condiciones?`, [
           { id: 'ACEPTAR_TERMINOS', title: '✅ Aceptar' },

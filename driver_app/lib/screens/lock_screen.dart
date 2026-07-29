@@ -46,7 +46,7 @@ class _LockScreenState extends State<LockScreen>
   @override
   void initState() {
     super.initState();
-    debugPrint('[LOCK] initState — usuario=${supabase.auth.currentUser?.email ?? "sin sesión"}');
+//     debugPrint('[LOCK] initState — usuario=${supabase.auth.currentUser?.email ?? "sin sesión"}');
     _initAnimations();
   }
 
@@ -87,7 +87,7 @@ class _LockScreenState extends State<LockScreen>
     ]).animate(_shakeCtrl!);
 
     _entryCtrl!.forward().then((_) {
-      debugPrint('[LOCK] Animación de entrada terminada — lanzando _authenticate()');
+//       debugPrint('[LOCK] Animación de entrada terminada — lanzando _authenticate()');
       // Lanzar autenticación automáticamente al terminar la animación de entrada
       if (mounted) _authenticate();
     });
@@ -104,12 +104,12 @@ class _LockScreenState extends State<LockScreen>
   }
 
   Future<void> _authenticate() async {
-    debugPrint('[LOCK] _authenticate() llamado — isAuthenticating=$_isAuthenticating authenticated=$_authenticated');
+//     debugPrint('[LOCK] _authenticate() llamado — isAuthenticating=$_isAuthenticating authenticated=$_authenticated');
     if (_isAuthenticating || _authenticated) return;
     if (!mounted) return;
 
     if (supabase.auth.currentUser == null) {
-      debugPrint('[LOCK] Sin usuario → redirigiendo a /login');
+//       debugPrint('[LOCK] Sin usuario → redirigiendo a /login');
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) context.go('/login');
       });
@@ -124,10 +124,10 @@ class _LockScreenState extends State<LockScreen>
     try {
       final bool canCheckBiometrics = await auth.canCheckBiometrics;
       final bool canAuthenticate = canCheckBiometrics || await auth.isDeviceSupported();
-      debugPrint('[LOCK] canCheckBiometrics=$canCheckBiometrics canAuthenticate=$canAuthenticate');
+//       debugPrint('[LOCK] canCheckBiometrics=$canCheckBiometrics canAuthenticate=$canAuthenticate');
 
       if (!canAuthenticate) {
-        debugPrint('[LOCK] Dispositivo sin biometria → /dashboard');
+//         debugPrint('[LOCK] Dispositivo sin biometria → /dashboard');
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) context.go('/dashboard');
         });
@@ -149,7 +149,7 @@ class _LockScreenState extends State<LockScreen>
       if (!mounted) return;
 
       if (authenticated) {
-        debugPrint('[LOCK] ✅ Autenticado → /dashboard');
+//         debugPrint('[LOCK] ✅ Autenticado → /dashboard');
         setState(() {
           _authenticated = true;
           _isAuthenticating = false;

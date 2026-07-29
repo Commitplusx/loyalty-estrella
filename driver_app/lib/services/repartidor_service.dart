@@ -481,7 +481,7 @@ class RepartidorService {
     try {
       final data = await supabase
           .rpc('get_deuda_detalle_repartidor', params: {'p_repartidor_id': repartidorId});
-      debugPrint('💰 getDeudaDetalle RPC → ${(data as List).length} restaurantes con deuda');
+//       debugPrint('💰 getDeudaDetalle RPC → ${(data as List).length} restaurantes con deuda');
       return List<Map<String, dynamic>>.from(data);
     } catch (e) {
       debugPrint('💰 Error getDeudaDetalle: $e');

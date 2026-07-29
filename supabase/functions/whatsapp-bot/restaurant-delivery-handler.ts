@@ -4,8 +4,33 @@
 // El bot acumula, extrae con NLP (DeepSeek) y pide confirmacion antes de crear el pedido.
 
 import { sendWA, sendInteractiveButtons } from './whatsapp.ts'
-import { resolveH3Location } from './mandadito-handler.ts'
 import * as h3 from 'npm:h3-js@4.1.0'
+
+export async function resolveH3Location(supabase: any, lat: number | string, lng: number | string) {
+  const numLat = Number(lat);
+  const numLng = Number(lng);
+
+  if (isNaN(numLat) || isNaN(numLng)) {
+    return { precio: 45, colonia_nombre: 'Zona Desconocida', colonia_id: null };
+  }
+
+  // RESOLUCIÓN H3
+  try {
+    const hexIndex = h3.latLngToCell(numLat, numLng, 10);
+    const { data } = await supabase.from('h3_zonas').select('precio, nombre').eq('h3_index', hexIndex).maybeSingle();
+    
+    if (data && data.precio) {
+      console.log(`[H3 HIT] ${numLat},${numLng} -> ${hexIndex} -> ${data.nombre} ($${data.precio})`);
+      return { precio: data.precio, colonia_nombre: data.nombre, colonia_id: null };
+    }
+    console.log(`[H3 MISS] ${numLat},${numLng} -> ${hexIndex} no encontrado en h3_zonas`);
+  } catch (e) {
+    console.error('Error H3 lookup:', e);
+  }
+
+  // Fallback si no está en H3
+  return { precio: 45, colonia_nombre: 'Zona Extendida', colonia_id: null };
+}
 
 // ── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -485,12 +510,118 @@ export async function confirmarRestaurantDelivery(
   }
 
   await sendWA(fromPhone,
-    `🚀 *¡Pedido creado!*\n\n` +
-    `🎟️ Ticket: *#${ticketId}*\n` +
+    `🎉 *¡Pedido creado!*\n\n` +
+    `🎫 Ticket: *#${ticketId}*\n` +
     `📍 Destino: ${draft.destinoTexto ?? 'Sin dirección'}\n` +
-    `💰 Costo: $${precio}\n\n` +
+    `💵 Costo: $${precio}\n\n` +
     `Un repartidor de Estrella Delivery pasará pronto a recogerlo. 🛵`
   )
 
   return new Response('OK', { status: 200 })
+}
+
+export async function handleEstrellaEatsFlow(
+  supabase: any,
+  fromPhone: string,
+  from10: string,
+  nfm_reply: any
+): Promise<Response | null> {
+  const flowData = (() => { try { return JSON.parse(nfm_reply.response_json || '{}') } catch { return {} } })();
+  
+  // Identificamos que es el Estrella Eats Flow buscando sus campos característicos
+  if (flowData.resumen_pedido && flowData.subtotal) {
+    const { sendWA, sendLocationRequest } = await import('./whatsapp.ts');
+    
+    await supabase.from('bot_memory').upsert({
+      phone: `estrella_eats_draft_${from10}`,
+      history: [{ 
+        restaurante_id: flowData.restaurante_id,
+        restaurante_nombre: flowData.restaurante_nombre,
+        resumen_pedido: flowData.resumen_pedido,
+        subtotal: parseFloat(flowData.subtotal) || 0,
+        notas: flowData.notas || ''
+      }],
+      updated_at: new Date().toISOString()
+    });
+
+    await sendWA(fromPhone, `¡Excelente! 🌟 \n\nRecibimos tu pedido de *${flowData.restaurante_nombre || 'nuestro aliado'}*.\n\nPara calcular el costo de envío y confirmar tu orden, compártenos tu ubicación GPS.`);
+    await sendLocationRequest(fromPhone, 'Toca aquí para enviar tu ubicación 📍');
+    return new Response('OK', { status: 200 });
+  }
+
+  return null;
+}
+
+export async function handleEstrellaEatsLocation(
+  supabase: any,
+  fromPhone: string,
+  from10: string,
+  msg: any
+): Promise<Response | null> {
+  const { data } = await supabase.from('bot_memory').select('history').eq('phone', `estrella_eats_draft_${from10}`).maybeSingle();
+  if (!data?.history?.[0]) return null;
+
+  const draft = data.history[0];
+  const { sendWA, sendInteractiveButtons } = await import('./whatsapp.ts');
+
+  const lat = msg.location?.latitude;
+  const lng = msg.location?.longitude;
+
+  if (!lat || !lng) {
+    await sendWA(fromPhone, `❌ Necesitamos tu ubicación GPS válida. Intenta de nuevo.`);
+    return new Response('OK', { status: 200 });
+  }
+
+  await sendWA(fromPhone, `⏳ Calculando tarifa de envío...`);
+
+  // Calcular tarifa del cliente
+  const resolvedCustomer = await resolveH3Location(supabase, lat, lng);
+  let costoEnvio = resolvedCustomer?.precio || 45;
+
+  // Calcular tarifa del restaurante y quedarse con la mayor
+  const { data: rest } = await supabase.from('restaurantes').select('lat, lng').eq('id', draft.restaurante_id).maybeSingle();
+  if (rest?.lat && rest?.lng) {
+    const resolvedRest = await resolveH3Location(supabase, rest.lat, rest.lng);
+    const costoRest = resolvedRest?.precio || 45;
+    if (costoRest > costoEnvio) {
+      costoEnvio = costoRest;
+    }
+  }
+
+  const granTotal = draft.subtotal + costoEnvio;
+
+  await supabase.from('bot_memory').upsert({
+    phone: `estrella_eats_draft_${from10}`,
+    history: [{
+      ...draft,
+      lat,
+      lng,
+      colonia: resolvedCustomer?.colonia_nombre || 'Ubicación GPS',
+      costo_envio: costoEnvio,
+      gran_total: granTotal
+    }],
+    updated_at: new Date().toISOString()
+  });
+
+  const confirmText = `¡Ubicación recibida con éxito! 📍\n\n` +
+    `🧾 *Resumen de tu Orden*\n\n` +
+    `🏪 *Restaurante:* ${draft.restaurante_nombre || 'N/A'}\n` +
+    `🛒 *Pedido:*\n${draft.resumen_pedido}\n\n` +
+    `💵 Subtotal: $${draft.subtotal.toFixed(2)}\n` +
+    `🛵 Envío: $${costoEnvio.toFixed(2)}\n` +
+    `=================\n` +
+    `*TOTAL: $${granTotal.toFixed(2)}*\n\n` +
+    `¿Cómo deseas pagar?`;
+
+  await sendInteractiveButtons(
+    fromPhone,
+    confirmText,
+    [
+      { id: `CONFIRM_EATS_EFECTIVO`, title: '💵 Efectivo' },
+      { id: `CONFIRM_EATS_TRANSF`, title: '🏦 Transferencia' },
+      { id: `CANCELAR_EATS`, title: '❌ Cancelar' }
+    ]
+  );
+
+  return new Response('OK', { status: 200 });
 }

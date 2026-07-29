@@ -37,29 +37,29 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isLogin = state.matchedLocation == '/login';
       final isLock  = state.matchedLocation == '/lock';
 
-      debugPrint('[ROUTER] redirect → loc=${state.matchedLocation} session=${session != null ? "SI" : "NO"} email=${session?.user.email ?? "-"}');
+//       debugPrint('[ROUTER] redirect → loc=${state.matchedLocation} session=${session != null ? "SI" : "NO"} email=${session?.user.email ?? "-"}');
 
       // Sin sesión → siempre al login
       if (session == null && !isLogin) {
-        debugPrint('[ROUTER] Sin sesión → /login');
+//         debugPrint('[ROUTER] Sin sesión → /login');
         return '/login';
       }
 
       if (session != null) {
         // Con sesión válida en el login → al lock
         if (isLogin) {
-          debugPrint('[ROUTER] Con sesión en login → /lock');
+//           debugPrint('[ROUTER] Con sesión en login → /lock');
           return '/lock';
         }
 
         // Repartidor con sesión activa → salta directo al dashboard, sin huella
         if (isLock) {
-          debugPrint('[ROUTER] Repartidor con sesión → /dashboard (skip lock)');
+//           debugPrint('[ROUTER] Repartidor con sesión → /dashboard (skip lock)');
           return '/dashboard';
         }
       }
       
-      debugPrint('[ROUTER] Sin redirección → null');
+//       debugPrint('[ROUTER] Sin redirección → null');
       return null;
     },
     routes: [

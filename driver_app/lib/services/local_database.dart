@@ -58,7 +58,7 @@ class LocalDatabase {
       'payload': jsonEncode(payload),
       'created_at': DateTime.now().toIso8601String(),
     });
-    debugPrint('[LocalDatabase] Mutación encolada para offline sync (Tabla: $tabla, ID: $id)');
+//     debugPrint('[LocalDatabase] Mutación encolada para offline sync (Tabla: $tabla, ID: $id)');
   }
 
   /// Encola un cambio en el pedido (ej. estado y repartidor_id) asegurando que solo haya uno pendiente por pedido
@@ -111,7 +111,7 @@ class LocalDatabase {
 
     if (records.isEmpty) return;
 
-    debugPrint('🚀 [LocalDatabase] Iniciando flush de ${records.length} pedidos (Worker Offline)...');
+//     debugPrint('🚀 [LocalDatabase] Iniciando flush de ${records.length} pedidos (Worker Offline)...');
 
     for (final record in records) {
       try {
@@ -127,7 +127,7 @@ class LocalDatabase {
 
         // Si tuvo éxito, lo eliminamos de la cola
         await db.delete('sync_queue', where: 'id = ?', whereArgs: [record['id']]);
-        debugPrint('✅ [LocalDatabase] Sync exitoso para pedido $recordId');
+//         debugPrint('✅ [LocalDatabase] Sync exitoso para pedido $recordId');
       } catch (e) {
         debugPrint('❌ [LocalDatabase] Sync falló para pedido ${record['record_id']}. Se reintentará luego. Error: $e');
         // Si hay error de red, rompemos para no gastar batería, se reintentará en el próximo reconnect

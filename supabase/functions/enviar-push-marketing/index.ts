@@ -30,17 +30,22 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     
-    // Obtener título y cuerpo desde la petición (del admin web)
-    const { title, body } = await req.json()
+    // Obtener título y cuerpo desde la petición (del admin web o de AI Marketing)
+    const { title, body, target_phones } = await req.json()
 
     if (!title || !body) {
       throw new Error("Se requiere título y cuerpo para la notificación")
     }
 
-    // Obtener todas las suscripciones de la base de datos
-    const { data: subscriptions, error } = await supabase
-      .from('push_subscriptions')
-      .select('*')
+    // Obtener las suscripciones de la base de datos
+    let query = supabase.from('push_subscriptions').select('*')
+    
+    // Si se enviaron teléfonos específicos, filtrar por ellos (Modo Francotirador)
+    if (target_phones && Array.isArray(target_phones) && target_phones.length > 0) {
+      query = query.in('telefono', target_phones)
+    }
+
+    const { data: subscriptions, error } = await query
 
     if (error) throw error
 

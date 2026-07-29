@@ -191,7 +191,7 @@ class _MapaZonasScreenState extends ConsumerState<MapaZonasScreen> {
         zIndex: baseZ,
         consumeTapEvents: true,
         onTap: () {
-          debugPrint('Polígono tocado: ID=${p['id']}, Tipo=${p['tipo']}, Nombre=${p['nombre']}');
+//           debugPrint('Polígono tocado: ID=${p['id']}, Tipo=${p['tipo']}, Nombre=${p['nombre']}');
           setState(() {
             _poligonoSeleccionado = p;
             _modoMagico = false;
@@ -364,7 +364,7 @@ class _MapaZonasScreenState extends ConsumerState<MapaZonasScreen> {
 
   // ── Cambiar zona de polígono existente ──────────────────────────────────
   Future<void> _onPoligonoTap(Map<String, dynamic> pol) async {
-    debugPrint('Abriendo BottomSheet para polígono: ${pol['nombre']} (ID: ${pol['id']})');
+//     debugPrint('Abriendo BottomSheet para polígono: ${pol['nombre']} (ID: ${pol['id']})');
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -377,11 +377,11 @@ class _MapaZonasScreenState extends ConsumerState<MapaZonasScreen> {
     );
 
     if (result == null || !mounted) {
-      debugPrint('BottomSheet cerrado sin guardar o widget no montado.');
+//       debugPrint('BottomSheet cerrado sin guardar o widget no montado.');
       return;
     }
     
-    debugPrint('Datos recibidos del BottomSheet: $result');
+//     debugPrint('Datos recibidos del BottomSheet: $result');
 
     final zClean = (result['zona'] as String).toLowerCase().replaceAll('zona', '').trim();
     final precio = result['precio'] as int;
@@ -394,11 +394,11 @@ class _MapaZonasScreenState extends ConsumerState<MapaZonasScreen> {
         ? {'etiqueta_zona': nuevaZona, 'precio': precio}
         : {'nombre': nuevaZona, 'precio': precio};
 
-    debugPrint('[SUPABASE] Actualizando tabla "$tabla" (ID: ${pol['id']}) -> $updates');
+//     debugPrint('[SUPABASE] Actualizando tabla "$tabla" (ID: ${pol['id']}) -> $updates');
 
     try {
       await supabase.from(tabla).update(updates).eq('id', pol['id']);
-      debugPrint('[SUPABASE] Actualización exitosa.');
+//       debugPrint('[SUPABASE] Actualización exitosa.');
       ref.invalidate(poligonosMapProvider);
 
       if (mounted) {

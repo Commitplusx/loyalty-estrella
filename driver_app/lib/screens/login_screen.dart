@@ -83,13 +83,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               .update({'current_device_id': newDeviceId})
               .eq('user_id', res.session!.user.id);
         } catch (e) {
-          debugPrint('=== LOG: No se pudo actualizar device_id en DB: $e');
+//           debugPrint('=== LOG: No se pudo actualizar device_id en DB: $e');
         }
 
       if (mounted) context.go('/dashboard');
     } catch (e, stackTrace) {
       debugPrint('=== LOG: Exception General Login: $e');
-      debugPrint('=== LOG: StackTrace: $stackTrace');
+//       debugPrint('=== LOG: StackTrace: $stackTrace');
       
       if (!mounted) return;
 

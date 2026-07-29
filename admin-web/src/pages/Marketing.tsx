@@ -5,7 +5,7 @@ import { ConfirmSheet } from '../components/ui/ConfirmSheet';
 import { toast } from 'sonner';
 
 export function Marketing() {
-  const [activeTab, setActiveTab] = useState<'cupones' | 'anuncios' | 'avisos' | 'banners'>('cupones');
+  const [activeTab, setActiveTab] = useState<'cupones' | 'anuncios' | 'avisos' | 'banners' | 'campanas-ia'>('cupones');
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -52,6 +52,14 @@ export function Marketing() {
         >
           <Image size={16} /> Banners Hero
         </button>
+        <button
+          onClick={() => setActiveTab('campanas-ia')}
+          className={`px-4 py-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${
+            activeTab === 'campanas-ia' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
+          }`}
+        >
+          <Sparkles size={16} /> Campañas IA
+        </button>
       </div>
 
       {/* Content */}
@@ -59,6 +67,7 @@ export function Marketing() {
       {activeTab === 'anuncios' && <AnunciosView />}
       {activeTab === 'avisos' && <AvisosView />}
       {activeTab === 'banners' && <BannersView />}
+      {activeTab === 'campanas-ia' && <CampanasIAView />}
     </div>
   );
 }

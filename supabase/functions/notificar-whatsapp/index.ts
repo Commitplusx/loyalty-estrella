@@ -928,14 +928,14 @@ serve(async (req: Request) => {
     } else if (tipo !== 'asignacion' && pedido.cliente_tel) {
       const tel10 = pedido.cliente_tel.replace(/\D/g, '').slice(-10)
 
-      // REGLA ESTRICTA DE PRIVACIDAD: Solo notificar a clientes VIP (acepta_terminos = true)
+      // REGLA ESTRICTA DE PRIVACIDAD: Solo notificar a clientes VIP (acepta_terminos = true) o a los que pidieron directamente por WhatsApp (b2c_flow)
       const { data: clInfo } = await supabase
         .from('clientes')
         .select('acepta_terminos, puntos, rango, es_vip, nombre')
         .eq('telefono', tel10)
         .maybeSingle()
 
-      if (!clInfo || clInfo.acepta_terminos !== true) {
+      if ((!clInfo || clInfo.acepta_terminos !== true) && pedido.origen !== 'b2c_flow') {
         results.push(`🚫 Cliente ${tel10} silencioso o no registrado. Notificaciones bloqueadas por privacidad.`)
       } else {
         let repNom = 'tu repartidor'

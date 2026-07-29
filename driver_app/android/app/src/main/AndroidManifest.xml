@@ -28,7 +28,7 @@
         <!-- Servicio en primer plano para Origin Island (Vivo) y Foreground Task -->
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
-            android:foregroundServiceType="dataSync"
+            android:foregroundServiceType="location|dataSync"
             android:exported="false" />
             
         <activity

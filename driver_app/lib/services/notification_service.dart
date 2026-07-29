@@ -32,7 +32,7 @@ class NotificationService {
         await flutterLocalNotificationsPlugin.cancelAll();
         
         if (notificationResponse.payload != null) {
-          print('Notificación tocada con payload: ${notificationResponse.payload}');
+//           print('Notificación tocada con payload: ${notificationResponse.payload}');
           final context = rootNavigatorKey.currentContext;
           if (context != null) {
             context.go('/pedidos/${notificationResponse.payload}');

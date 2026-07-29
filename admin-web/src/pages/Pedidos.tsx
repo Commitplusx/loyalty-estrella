@@ -11,6 +11,7 @@ import { KanbanCard } from '../components/pedidos/KanbanCard';
 import { FlotaSidebar } from '../components/pedidos/FlotaSidebar';
 import { RadarMap } from '../components/pedidos/RadarMap';
 import { handleDbError } from '../lib/errorHandler';
+import { DisputaModal } from '../components/pedidos/DisputaModal';
 import { toast } from 'sonner';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -68,6 +69,7 @@ export function Pedidos() {
   const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'map'>('kanban');
   const [actionConfirm, setActionConfirm] = useState<{ id: string, action: string, repartidorId?: string } | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [disputaPedido, setDisputaPedido] = useState<any>(null);
   const lastActionRef = useRef<{ id: string, action: string, time: number } | null>(null);
 
   useEffect(() => {
@@ -347,6 +349,15 @@ export function Pedidos() {
               </button>
             </>
           )}
+          {(row.estado === 'entregado' || row.estado === 'cancelado') && (
+            <button 
+              onClick={() => setDisputaPedido(row)}
+              className="p-1.5 bg-white hover:bg-rose-50 border border-zinc-200 hover:border-rose-200 text-rose-500 rounded-md transition-colors shadow-sm"
+              title="Iniciar Disputa / Reembolso"
+            >
+              <ShieldAlert size={16} />
+            </button>
+          )}
         </div>
       )
     }
@@ -589,9 +600,16 @@ export function Pedidos() {
           if (actionConfirm) executeForceAction(actionConfirm.id, actionConfirm.action);
         }}
         title="¿Forzar Estado?"
-        description={`¿Estás seguro de que deseas forzar el estado a ${actionConfirm?.action.toUpperCase()}? Esta es una acción de "God Mode" y afectará al usuario y al repartidor inmediatamente.`}
+        description={`¿Estás seguro de que deseas forzar el estado a ${actionConfirm?.action?.toUpperCase()}? Esta es una acción de "God Mode" y afectará al usuario y al repartidor inmediatamente.`}
         confirmText="Sí, Forzar Estado"
         isDestructive={true}
+      />
+
+      <DisputaModal
+        isOpen={!!disputaPedido}
+        onClose={() => setDisputaPedido(null)}
+        pedido={disputaPedido}
+        onSuccess={() => setDisputaPedido(null)}
       />
     </div>
   );

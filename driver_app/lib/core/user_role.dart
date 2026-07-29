@@ -15,13 +15,13 @@ final isAdminAsyncProvider = FutureProvider<bool>((ref) async {
   if (user == null) return false;
   
   try {
-    debugPrint('isAdminAsyncProvider: Checking for user ${user.id} in admins table...');
+//     debugPrint('isAdminAsyncProvider: Checking for user ${user.id} in admins table...');
     final res = await Supabase.instance.client
         .from('admins')
         .select('id')
         .eq('id', user.id)
         .maybeSingle();
-    debugPrint('isAdminAsyncProvider: result = $res');
+//     debugPrint('isAdminAsyncProvider: result = $res');
     return res != null;
   } catch (e) {
     debugPrint('isAdminAsyncProvider: error = $e');

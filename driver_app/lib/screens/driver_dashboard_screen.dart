@@ -186,6 +186,9 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen> w
       });
       if (_isOnline) {
         _startLocationTracking();
+        OriginIslandService.toggleBackgroundService(true, repartidorId: _repartidorId);
+      } else {
+        OriginIslandService.toggleBackgroundService(false);
       }
     }
   }
@@ -441,6 +444,8 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen> w
                                           }
                                           try {
                                             await ref.read(repartidorServiceProvider).toggleActivo(_repartidorId!, true);
+                                            // ★ AQUI: Iniciar el background service y pasarle el ID explicitamente
+                                            OriginIslandService.toggleBackgroundService(true, repartidorId: _repartidorId);
                                           } catch (e) {}
                                         } else {
                                           setState(() => _isOnline = false);
@@ -661,7 +666,7 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen> w
     _lastNotificationTitle = titulo;
     _lastNotificationText = texto;
 
-    OriginIslandService.toggleBackgroundService(true).then((_) {
+    OriginIslandService.toggleBackgroundService(true, repartidorId: _repartidorId).then((_) {
       OriginIslandService.updateIsland(titulo, texto);
     });
   }

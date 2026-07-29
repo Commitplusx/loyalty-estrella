@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.1'
 import { sendWA, sendInteractiveButtons } from '../whatsapp-bot/whatsapp.ts'
+import { handleNuevoPedidoFlow } from './pedidos-flow-handler.ts'
 
 async function importPrivateKey(pem: string): Promise<CryptoKey> {
   const pemContents = pem
@@ -87,7 +88,131 @@ serve(async (req) => {
         const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
         const supabase = createClient(supabaseUrl, supabaseKey)
 
-        if (payload.accion === "REGISTRO_CLIENTE") {
+        if (payload.accion === "FETCH_RESTAURANTES") {
+          const { data: restaurantes } = await supabase.from('restaurantes').select('id, nombre, descripcion_corta').eq('activo', true)
+          const rList = (restaurantes || []).map((r: any) => ({ id: r.id, title: r.nombre, description: r.descripcion_corta || 'Toca para ver menú', metadata: " " }))
+          responsePayload = { screen: "ELIGE_RESTAURANTE", data: { restaurantes: rList.length ? rList : [{id: '0', title: 'Sin restaurantes', description: 'No hay restaurantes activos', metadata: ' '}] } }
+        }
+        else if (payload.accion === "FETCH_MENU") {
+          const restId = payload.restaurante_id
+          const { data: rest } = await supabase.from('restaurantes').select('nombre').eq('id', restId).maybeSingle()
+          
+          const { data: menu } = await supabase.from('menu_items')
+            .select('id, nombre, descripcion, precio, menu_categorias(nombre)')
+            .eq('restaurante_id', restId)
+            .eq('disponible', true)
+
+          const fuertes: any[] = []
+          const extras: any[] = []
+          const bebidas: any[] = []
+
+          ;(menu || []).forEach((m: any) => {
+            const catName = (m.menu_categorias?.nombre || '').toLowerCase()
+            const item = {
+              id: m.id,
+              title: m.nombre,
+              description: `$${m.precio} — ${m.descripcion || ''}`.substring(0, 100),
+              metadata: " "
+            }
+            if (catName.includes('bebida') || catName.includes('refresco')) {
+              bebidas.push(item)
+            } else if (catName.includes('entrada') || catName.includes('extra') || catName.includes('papa') || catName.includes('postre') || catName.includes('complemento') || catName.includes('snack')) {
+              extras.push(item)
+            } else {
+              fuertes.push(item)
+            }
+          })
+
+          const fallback = [{id: '0', title: 'N/A', description: 'No disponible por el momento', metadata: ' '}]
+
+          responsePayload = {
+            screen: "ELIGE_PLATILLOS",
+            data: {
+              restaurante_id: restId,
+              restaurante_nombre: rest?.nombre || 'Restaurante',
+              platos_fuertes: fuertes.length ? fuertes : fallback,
+              entradas_y_extras: extras.length ? extras : fallback,
+              bebidas: bebidas.length ? bebidas : fallback
+            }
+          }
+        }
+        else if (payload.accion === "FETCH_CARRITO") {
+          const { items_fuertes, items_extras, items_bebidas, notas_cocina } = payload
+          
+          const parseItems = (val: any) => Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',') : [])
+          
+          const arrItems = [
+            ...parseItems(items_fuertes),
+            ...parseItems(items_extras),
+            ...parseItems(items_bebidas)
+          ].filter(id => id !== '0' && id !== '')
+          
+          let resumen = ''
+          let total = 0
+          let finalRestId = payload.restaurante_id || '';
+          let finalRestNombre = 'Restaurante';
+          
+          if (arrItems.length > 0) {
+            const { data: menu } = await supabase.from('menu_items').select('id, nombre, precio, restaurante_id, restaurantes(nombre)').in('id', arrItems)
+            if (menu && menu.length > 0) {
+              finalRestId = menu[0].restaurante_id
+              finalRestNombre = menu[0].restaurantes?.nombre || 'Restaurante'
+              for (const itemId of arrItems) {
+                const item = menu.find((m: any) => m.id === itemId)
+                if (item) {
+                  resumen += `• ${item.nombre} — $${item.precio}\n`
+                  total += Number(item.precio)
+                }
+              }
+            }
+          }
+          if (resumen === '') resumen = 'No agregaste platillos.'
+          
+          resumen += `\n(+ costo de envío)`
+          
+          responsePayload = {
+            screen: "TU_CARRITO",
+            data: {
+              restaurante_id: finalRestId, 
+              restaurante_nombre: finalRestNombre,
+              notas_cocina: notas_cocina || '',
+              resumen_texto: resumen, total_carrito: total
+            }
+          }
+        }
+        else if (payload.accion === "FETCH_COLONIAS") {
+          const { restaurante_id, restaurante_nombre, items_elegidos, notas_cocina, cupon_codigo, total_carrito } = payload
+          const { data: colonias } = await supabase.from('colonias').select('id, nombre, precio, etiqueta_zona').order('nombre', { ascending: true })
+          const cList = (colonias || []).map((c: any) => ({
+            id: c.id,
+            title: c.nombre,
+            description: `Envío: $${c.precio} ${c.etiqueta_zona === 'verde' ? '🟢' : c.etiqueta_zona === 'amarillo' ? '🟡' : '🔴'}`,
+            metadata: `${c.precio}`
+          }))
+          responsePayload = {
+            screen: "DONDE_ENTREGAMOS",
+            data: {
+              restaurante_id, restaurante_nombre, items_elegidos, notas_cocina, cupon_codigo: cupon_codigo || '', total_carrito,
+              colonias: cList.length ? cList : [{id: '0', title: 'Centro', description: 'Envío: $30', metadata: '30'}]
+            }
+          }
+        }
+        else if (payload.accion === "FETCH_CONFIRMACION") {
+          const { restaurante_id, restaurante_nombre, items_elegidos, notas_cocina, cupon_codigo, colonia_id, calle_numero, referencias, total_carrito } = payload
+          const { data: colonia } = await supabase.from('colonias').select('nombre, precio').eq('id', colonia_id).maybeSingle()
+          const envio = colonia?.precio || 0
+          const granTotal = Number(total_carrito) + Number(envio)
+          const resumenFinal = `✅ Subtotal: $${total_carrito}\n🛵 Envío (${colonia?.nombre || 'Colonia'}): $${envio}\n\n💵 *Total Final: $${granTotal}*`
+          responsePayload = {
+            screen: "CONFIRMACION_FINAL",
+            data: {
+              restaurante_id, restaurante_nombre, items_elegidos, notas_cocina, cupon_codigo,
+              colonia_id, calle_numero, referencias,
+              resumen_final: resumenFinal
+            }
+          }
+        }
+        else if (payload.accion === "REGISTRO_CLIENTE") {
           // Process Client Registration - requires Admin Approval
           const { nombre, colonia, cumpleanos } = payload
           const tel10 = fromPhone.slice(-10)
@@ -279,6 +404,36 @@ serve(async (req) => {
           };
           
           console.log(`[whatsapp-flows] Assigned screen: ${nextScreen}`, responsePayload);
+        }
+        else if (payload.accion === 'NUEVO_PEDIDO_FLOW') {
+          // ── PEDIDO VÍA FLOW (terminal) ──────────────────────────────────────
+          // Se ejecuta de forma asíncrona para no bloquear la respuesta a Meta (timeout < 30s)
+          const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+          const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+          const supabaseClient = createClient(supabaseUrl, supabaseKey)
+          const phoneFromToken = tokenData.phone || fromPhone
+
+          // Disparar async (EdgeRuntime.waitUntil si está disponible, sino fire-and-forget)
+          const pedidoPromise = handleNuevoPedidoFlow(supabaseClient, phoneFromToken, payload)
+          try {
+            // @ts-ignore — EdgeRuntime disponible en Supabase Edge Functions
+            EdgeRuntime.waitUntil(pedidoPromise)
+          } catch {
+            pedidoPromise.catch(e => console.error('[Flow] handleNuevoPedidoFlow error:', e))
+          }
+
+          // Respuesta inmediata a Meta (pantalla de éxito nativa del Flow)
+          responsePayload = {
+            version: "3.0",
+            screen: "SUCCESS",
+            data: {
+              extension_message_response: {
+                action: "complete",
+                params: { response_json: '{"ok":true}' }
+              }
+            }
+          }
+          console.log('[Flow] NUEVO_PEDIDO_FLOW recibido — handler disparado async')
         }
 
         // --- EL ARREGLO CRUCIAL ---

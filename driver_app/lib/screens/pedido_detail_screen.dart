@@ -137,7 +137,7 @@ class PedidoDetailScreen extends ConsumerWidget {
         final shortId = pedidoId.replaceAll('-', '').substring(pedidoId.replaceAll('-', '').length - 5).toUpperCase();
         return Scaffold(
           backgroundColor: theme.scaffoldBackgroundColor,
-          appBar: AppBar(
+          appBar: pedido.isTerminado ? AppBar(
             systemOverlayStyle: theme.brightness == Brightness.dark 
                 ? SystemUiOverlayStyle.light 
                 : SystemUiOverlayStyle.dark,
@@ -196,7 +196,8 @@ class PedidoDetailScreen extends ConsumerWidget {
                   ),
                 ),
             ],
-          ),
+          ) : null,
+          extendBodyBehindAppBar: !pedido.isTerminado,
           body: (!pedido.isTerminado) 
             ? DriverActivePedidoView(
                 pedido: pedido,

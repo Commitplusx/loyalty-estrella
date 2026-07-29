@@ -23,7 +23,7 @@ class SyncService {
   }
 
   Future<void> _syncAll() async {
-    debugPrint('Iniciando sincronización offline...');
+//     debugPrint('Iniciando sincronización offline...');
     await syncGastos();
     await syncScans();
     await syncLiquidaciones();
@@ -34,7 +34,7 @@ class SyncService {
     final queue = prefs.getStringList('offline_gastos') ?? [];
     queue.add(jsonEncode(gasto));
     await prefs.setStringList('offline_gastos', queue);
-    debugPrint('Gasto encolado para sincronización offline.');
+//     debugPrint('Gasto encolado para sincronización offline.');
   }
 
   Future<void> syncGastos() async {
@@ -47,7 +47,7 @@ class SyncService {
       try {
         final payload = jsonDecode(item) as Map<String, dynamic>;
         await supabase.from('gastos_motos').insert(payload);
-        debugPrint('Gasto sincronizado: \${payload["concepto"]}');
+//         debugPrint('Gasto sincronizado: \${payload["concepto"]}');
       } catch (e) {
         debugPrint('Error sincronizando gasto: $e');
         failed.add(item);
@@ -63,7 +63,7 @@ class SyncService {
     final queue = prefs.getStringList('offline_scans') ?? [];
     queue.add(jsonEncode(scan));
     await prefs.setStringList('offline_scans', queue);
-    debugPrint('Scan QR encolado para sincronización offline.');
+//     debugPrint('Scan QR encolado para sincronización offline.');
   }
 
   Future<void> syncScans() async {
@@ -88,9 +88,9 @@ class SyncService {
             'p_latitud': payload['lat'],
             'p_longitud': payload['lng'],
           });
-          debugPrint('QR Scan sincronizado para: \${payload["codigo_qr"]}');
+//           debugPrint('QR Scan sincronizado para: \${payload["codigo_qr"]}');
         } else {
-           debugPrint('QR Scan falló sinc: Cliente \${payload["codigo_qr"]} no existe');
+//            debugPrint('QR Scan falló sinc: Cliente \${payload["codigo_qr"]} no existe');
         }
       } catch (e) {
         debugPrint('Error sincronizando escaneo: $e');
@@ -105,7 +105,7 @@ class SyncService {
     final queue = prefs.getStringList('offline_liquidaciones') ?? [];
     queue.add(repartidorId);
     await prefs.setStringList('offline_liquidaciones', queue);
-    debugPrint('Liquidacion encolada para offline.');
+//     debugPrint('Liquidacion encolada para offline.');
   }
 
   Future<void> syncLiquidaciones() async {
@@ -121,7 +121,7 @@ class SyncService {
         await supabase.rpc('liquidar_turno_repartidor', params: {
           'p_repartidor_id': repId
         });
-        debugPrint('Liquidación sincronizada para: $repId');
+//         debugPrint('Liquidación sincronizada para: $repId');
       } catch (e) {
         debugPrint('Error sincronizando liquidacion: $e');
         failed.add(repId);

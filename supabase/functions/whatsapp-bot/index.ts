@@ -14,7 +14,7 @@ import { handleCronEvent }   from './cron-handler.ts'
 import { handleButtonEvent } from './button-handler.ts'
 import { handleAdminFlow }   from './admin-flow.ts'
 import { handleClientFlow }  from './client-flow.ts'
-import { avanzarFlujoMandadito } from './mandadito-handler.ts'
+
 
 const SUPABASE_URL     = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_KEY     = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -295,13 +295,7 @@ Deno.serve(async (req: Request) => {
         
         return await exitSafely(new Response('OK', { status: 200 }))
       }
-      // ── MÁQUINA DE ESTADOS: MANDADITOS (UBICACIÓN) ──
-      const { data: mandaditoRaw } = await supabase.from('bot_memory').select('history').eq('phone', `mandadito_state_${from10}`).maybeSingle()
-      if (mandaditoRaw?.history?.[0]) {
-        const payloadText = loc?.name ? (loc?.address ? `${loc.name}, ${loc.address}` : loc.name) : loc?.address
-        await avanzarFlujoMandadito(supabase, fromPhone, from10, mandaditoRaw.history[0], { lat: loc?.latitude, lng: loc?.longitude, texto: payloadText })
-        return await exitSafely(new Response('OK', { status: 200 }))
-      }
+
 
       const { data: regRaw } = await supabase.from('bot_memory').select('history').eq('phone', `reg_state_${from10}`).maybeSingle()
       const regState = regRaw?.history?.[0]
@@ -385,6 +379,10 @@ Deno.serve(async (req: Request) => {
       const { handleFlowReply } = await import('./restaurant-b2b-handler.ts')
       const res = await handleFlowReply(supabase, fromPhone, from10, msg.interactive.nfm_reply, cachedRestData)
       if (res) return await exitSafely(res)
+
+      const { handleEstrellaEatsFlow } = await import('./restaurant-delivery-handler.ts')
+      const eatsRes = await handleEstrellaEatsFlow(supabase, fromPhone, from10, msg.interactive.nfm_reply)
+      if (eatsRes) return await exitSafely(eatsRes)
     }
 
     if (msgType === 'interactive' || msgType === 'button') {
@@ -620,75 +618,13 @@ Deno.serve(async (req: Request) => {
     }
 
 
-    // ── 6. MÁQUINA DE ESTADOS: MANDADITOS (TEXTO) ──
-    if (msgType === 'text' && userLabel === 'cliente') {
-      const { data: mandaditoRaw } = await supabase.from('bot_memory').select('history').eq('phone', `mandadito_state_${from10}`).maybeSingle()
-      if (mandaditoRaw?.history?.[0]) {
-        const userText = (msg.text?.body as string).trim()
-        if (userText.toLowerCase() === 'cancelar') {
-          await Promise.all([
-            supabase.from('bot_memory').delete().eq('phone', `mandadito_state_${from10}`),
-            supabase.from('bot_memory').delete().eq('phone', `mandadito_cotiz_${from10}`)  // Bug 4 fix
-          ])
-          await sendWA(fromPhone, '✅ Cotización de mandadito cancelada. ¡Aquí cuando me necesites!')
-          return await exitSafely(new Response('OK', { status: 200 }))
-        }
-        
-        // ── DEBOUNCE (COLA DE MENSAJES) PARA PASO 3 ──
-        // Si el cliente manda varios mensajes seguidos (ej. "a nombre de caleb", "mi numero es 963.."), los juntamos
-        if (mandaditoRaw.history[0].step === 3) {
-          const uniqueId = crypto.randomUUID()
-          const bufferKey = `buffer_mandadito_${from10}_${uniqueId}`
-          await supabase.from('bot_memory').insert({ phone: bufferKey, history: [userText, Date.now()], updated_at: new Date().toISOString() })
-          
-          // BUG-B2 fix: reduced from 3500ms to 1800ms to stay within Meta's 20s timeout.
-          // Edge function cold start (~50ms) + AI call (~3-5s) + this debounce must stay < 20s.
-          await new Promise(r => setTimeout(r, 1800))
 
-          
-          // Leer todos los mensajes del buffer de este número en la ventana de tiempo
-          const { data: allBufData } = await supabase.from('bot_memory').select('phone, history').ilike('phone', `buffer_mandadito_${from10}_%`)
-          
-          if (!allBufData || allBufData.length === 0) {
-            // Ya fue procesado por otra ejecución
-            return await exitSafely(new Response('OK', { status: 200 }))
-          }
-          
-          // Buscar el mensaje más reciente para saber quién es el "ganador" (la última ejecución en despertar)
-          let latestTime = 0
-          let latestId = ''
-          const texts: string[] = []
-          
-          // Ordenar por tiempo (el tiempo está en history[1])
-          allBufData.sort((a, b) => (a.history[1] as number) - (b.history[1] as number))
-          
-          for (const buf of allBufData) {
-            texts.push(buf.history[0] as string)
-            if ((buf.history[1] as number) > latestTime) {
-              latestTime = buf.history[1] as number
-              latestId = buf.phone
-            }
-          }
-          
-          // Si YO no soy el mensaje más reciente que llegó, me silencio y dejo que el más reciente procese todo
-          if (bufferKey !== latestId) {
-            return await exitSafely(new Response('OK', { status: 200 }))
-          }
-          
-          // Soy la ejecución final. Limpio TODO el buffer de este usuario.
-          for (const buf of allBufData) {
-            await supabase.from('bot_memory').delete().eq('phone', buf.phone)
-          }
-          
-          const joinedText = texts.join(' | ')
-          await avanzarFlujoMandadito(supabase, fromPhone, from10, mandaditoRaw.history[0], { texto: joinedText })
-          return await exitSafely(new Response('OK', { status: 200 }))
-        }
 
-        // Pasos 1 y 2 se procesan inmediatamente
-        await avanzarFlujoMandadito(supabase, fromPhone, from10, mandaditoRaw.history[0], { texto: userText })
-        return await exitSafely(new Response('OK', { status: 200 }))
-      }
+    // ── 6.5. ESTRELLA EATS (B2C) INTERCEPTOR DE UBICACIÓN ──
+    if (msgType === 'location') {
+      const { handleEstrellaEatsLocation } = await import('./restaurant-delivery-handler.ts')
+      const eatsLocRes = await handleEstrellaEatsLocation(supabase, fromPhone, from10, msg)
+      if (eatsLocRes) return await exitSafely(eatsLocRes)
     }
 
     // ── 7. CLIENTE / NUEVO USUARIO ──

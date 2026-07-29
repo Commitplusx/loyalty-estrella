@@ -158,7 +158,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
     _repartidorId = _cachedRepartidorId;
     _repartidorNombre = _cachedNombre ??
         (supabase.auth.currentUser?.email?.split('@').first ?? '');
-    debugPrint('[MAPA] initState → _isOnline=$_isOnline, _currentLocation=$_currentLocation, _mapController=${_mapController != null ? "EXISTS" : "NULL"}');
+//     debugPrint('[MAPA] initState → _isOnline=$_isOnline, _currentLocation=$_currentLocation, _mapController=${_mapController != null ? "EXISTS" : "NULL"}');
     _loadStatusSilently();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initCustomIcons();
@@ -521,7 +521,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
   }
 
   Future<void> _updateMapData(List<Map<String, dynamic>> allStops) async {
-    debugPrint('[MAPA] _updateMapData → controller=${_mapController != null ? "OK" : "NULL"} | stops=${allStops.length} | _cameraPositioned=$_cameraPositioned');
+//     debugPrint('[MAPA] _updateMapData → controller=${_mapController != null ? "OK" : "NULL"} | stops=${allStops.length} | _cameraPositioned=$_cameraPositioned');
     if (_mapController == null) {
       debugPrint('[MAPA] _updateMapData ❌ ABORTADO — controller es NULL');
       return;
@@ -586,7 +586,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
             alpha: stop['completado'] ? 0.5 : 1.0,
           )
         );
-        debugPrint('[MAPA-LOG] 📍 Marcador generado -> ID: stop_${stop['pedido']['id']}_$isPickup, esPickup: $isPickup, COLOR: ${isPickup ? "NARANJA" : "AZUL"}');
+//         debugPrint('[MAPA-LOG] 📍 Marcador generado -> ID: stop_${stop['pedido']['id']}_$isPickup, esPickup: $isPickup, COLOR: ${isPickup ? "NARANJA" : "AZUL"}');
         orderIndex++;
       }
 
@@ -596,14 +596,14 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
       final centerLng = (minLng + maxLng) / 2;
       if (!_cameraPositioned) {
         _cameraPositioned = true;
-        debugPrint('[MAPA] _updateMapData → 🎯 animateCamera center=(${centerLat.toStringAsFixed(4)}, ${centerLng.toStringAsFixed(4)})');
+//         debugPrint('[MAPA] _updateMapData → 🎯 animateCamera center=(${centerLat.toStringAsFixed(4)}, ${centerLng.toStringAsFixed(4)})');
         try {
           await _mapController!.animateCamera(
             CameraUpdate.newCameraPosition(
               CameraPosition(target: LatLng(centerLat, centerLng), zoom: 14),
             ),
           );
-          debugPrint('[MAPA] _updateMapData → animateCamera center ✅ OK');
+//           debugPrint('[MAPA] _updateMapData → animateCamera center ✅ OK');
         } catch (e) {
           debugPrint('[MAPA] _updateMapData → animateCamera center ❌ ERROR: $e');
         }
@@ -613,11 +613,11 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
           southwest: LatLng(minLat, minLng),
           northeast: LatLng(maxLat, maxLng),
         );
-        debugPrint('[MAPA-LOG] 📐 Encuadre Bounds -> SW: $minLat, $minLng | NE: $maxLat, $maxLng');
+//         debugPrint('[MAPA-LOG] 📐 Encuadre Bounds -> SW: $minLat, $minLng | NE: $maxLat, $maxLng');
         Future.delayed(const Duration(milliseconds: 600), () {
           if (mounted && _mapController != null) {
             try {
-              debugPrint('[MAPA-LOG] 🎥 Ajustando encuadre final con padding 150.0');
+//               debugPrint('[MAPA-LOG] 🎥 Ajustando encuadre final con padding 150.0');
               _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds!, 150.0));
             } catch (e) {
               debugPrint('[MAPA-LOG] Error animating bounds: $e');
@@ -806,7 +806,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
               
               if (newDeviceId != null && localDeviceId != null && newDeviceId != localDeviceId) {
                 // Alguien mas inició sesión
-                debugPrint('=== 🚨 SESIÓN FORZADA A CERRAR: OTRO DISPOSITIVO ===');
+//                 debugPrint('=== 🚨 SESIÓN FORZADA A CERRAR: OTRO DISPOSITIVO ===');
                 await supabase.auth.signOut();
                 await prefs.remove('my_device_id');
                 if (mounted) {
@@ -846,7 +846,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
       }
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
         final pos = await Geolocator.getCurrentPosition();
-        debugPrint('[MAPA] 📍 getCurrentPosition OK → (${pos.latitude}, ${pos.longitude})');
+//         debugPrint('[MAPA] 📍 getCurrentPosition OK → (${pos.latitude}, ${pos.longitude})');
         if (mounted) {
           setState(() {
             _currentLocation = LatLng(pos.latitude, pos.longitude);
@@ -854,13 +854,13 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
           });
           // Si el mapa ya está listo, moverlo a la ubicación real
           if (_mapController != null) {
-            debugPrint('[MAPA-LOG] 📍 Ubicación real obtenida post-init: $pos. Recalculando mapa...');
+//             debugPrint('[MAPA-LOG] 📍 Ubicación real obtenida post-init: $pos. Recalculando mapa...');
             if (_pedidosActivos.isNotEmpty) {
               // Recalcular toda la ruta y el encuadre usando la coordenada real
               _cameraPositioned = false; // FORZAR ENCUADRE
               _updateMapData(_calcularTodasLasParadas());
             } else {
-              debugPrint('[MAPA-LOG] 📍 No hay pedidos, moviendo a ubicación del conductor.');
+//               debugPrint('[MAPA-LOG] 📍 No hay pedidos, moviendo a ubicación del conductor.');
               _mapController!.animateCamera(
                 CameraUpdate.newCameraPosition(CameraPosition(target: _currentLocation, zoom: 15)),
               ).catchError((e) => debugPrint('[MAPA] animateCamera post-location ❌: $e'));
@@ -874,7 +874,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
         if (_isOnline && _repartidorId != null) {
           int? batteryLvl;
           try { batteryLvl = await Battery().batteryLevel; } catch (_) {}
-          debugPrint('📍 Sincronizando ubicación inicial a Supabase: ${pos.latitude}, ${pos.longitude}');
+//           debugPrint('📍 Sincronizando ubicación inicial a Supabase: ${pos.latitude}, ${pos.longitude}');
           ref.read(repartidorServiceProvider).updateStatus(
             _repartidorId!,
             true,
@@ -885,14 +885,14 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
         }
 
         // Suscribirse a cambios de ubicación en vivo
-        debugPrint('[MAPA] 📡 Iniciando positionStream...');
+//         debugPrint('[MAPA] 📡 Iniciando positionStream...');
         _positionStream = Geolocator.getPositionStream(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.high,
             distanceFilter: 5,
           ),
         ).listen((Position position) async {
-          debugPrint('[MAPA] 📡 positionStream tick → (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}) | controller=${_mapController != null ? "OK" : "NULL"}');
+//           debugPrint('[MAPA] 📡 positionStream tick → (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}) | controller=${_mapController != null ? "OK" : "NULL"}');
           if (mounted) {
             setState(() {
               _currentLocation = LatLng(position.latitude, position.longitude);
@@ -931,7 +931,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
         });
       }
     } catch (e) {
-      debugPrint("Could not get location: $e");
+//       debugPrint("Could not get location: $e");
     }
   }
 
@@ -1005,7 +1005,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
     try {
       await _successPlayer.play(AssetSource('sounds/success.mp3'));
     } catch (e) {
-      debugPrint('No se pudo reproducir success sound: $e');
+//       debugPrint('No se pudo reproducir success sound: $e');
     }
   }
 
@@ -1198,7 +1198,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
       final dbDeviceId = dbData['current_device_id'] as String?;
       
       if (dbDeviceId != null && dbDeviceId != localDeviceId) {
-        debugPrint('=== 🚨 SESIÓN FORZADA A CERRAR POR LIFECYCLE (BACKGROUND): OTRO DISPOSITIVO ===');
+//         debugPrint('=== 🚨 SESIÓN FORZADA A CERRAR POR LIFECYCLE (BACKGROUND): OTRO DISPOSITIVO ===');
         await supabase.auth.signOut();
         await prefs.remove('my_device_id');
         if (mounted) {
@@ -1572,7 +1572,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
       if (!success) {
         TopToast.show(context, 'Error al actualizar estado', backgroundColor: Colors.redAccent);
       } else {
-        OriginIslandService.toggleBackgroundService(value);
+        OriginIslandService.toggleBackgroundService(value, repartidorId: _repartidorId);
       }
     }
   }
@@ -1596,7 +1596,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
       // Usar addPostFrameCallback para no llamar setState durante build
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _pedidosActivos.isEmpty && activeProviderPedidos.isNotEmpty) {
-          debugPrint('[GUARDIAN] 🛡️ pedidosActivos local vacío pero provider tiene ${activeProviderPedidos.length} pedidos activos. Restaurando...');
+//           debugPrint('[GUARDIAN] 🛡️ pedidosActivos local vacío pero provider tiene ${activeProviderPedidos.length} pedidos activos. Restaurando...');
           // Cancelar cualquier timer de borrado pendiente
           _clearPedidosTimer?.cancel();
           _clearPedidosTimer = null;
@@ -1626,7 +1626,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
           debugPrint('[MAPA-LOG] ⚠️ Supabase mandó lista vacía. Esperando 8s por si es un glitch de reconexión...');
           _clearPedidosTimer ??= Timer(const Duration(seconds: 8), () {
             if (mounted) {
-              debugPrint('[MAPA-LOG] 🗑️ Han pasado 3s y sigue vacío. Limpiando UI.');
+//               debugPrint('[MAPA-LOG] 🗑️ Han pasado 3s y sigue vacío. Limpiando UI.');
               setState(() {
                 _pedidosActivos = [];
                 _lastPedidoIds = [];
@@ -1641,7 +1641,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
 
         // Si llegó data real o ya estaba vacío de por sí, cancelar el timer de borrado
         if (_clearPedidosTimer != null) {
-          debugPrint('[MAPA-LOG] ✅ Data real recibida. Cancelando borrado fantasma.');
+//           debugPrint('[MAPA-LOG] ✅ Data real recibida. Cancelando borrado fantasma.');
           _clearPedidosTimer?.cancel();
           _clearPedidosTimer = null;
         }
@@ -1731,9 +1731,9 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
     // Reactivar seguimiento de cámara al tocar Radar
     _isFollowingDriver = true;
     
-    debugPrint('[MAPA-LOG] 🧭 Botón Radar presionado, estado actual: $_navButtonState');
+//     debugPrint('[MAPA-LOG] 🧭 Botón Radar presionado, estado actual: $_navButtonState');
     if (_navButtonState == 0) {
-      debugPrint('[MAPA-LOG] 🎥 Zooming a destino (zoom 16.0)');
+//       debugPrint('[MAPA-LOG] 🎥 Zooming a destino (zoom 16.0)');
       // Forzamos recálculo de la ruta desde Google Maps al presionar el radar en estado 0
       _fetchRealRoute(_calcularTodasLasParadas(), forceFetch: true);
       
@@ -1743,7 +1743,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
       TopToast.show(context, '📍 Ruta recalculada hacia: ${nextStop['title']}', backgroundColor: const Color(0xFF10B981));
       _navButtonState = 1;
     } else if (_navButtonState == 1) {
-      debugPrint('[MAPA-LOG] 🎥 Zooming a conductor (zoom 16.0)');
+//       debugPrint('[MAPA-LOG] 🎥 Zooming a conductor (zoom 16.0)');
       _mapController!.animateCamera(CameraUpdate.newCameraPosition(
         CameraPosition(target: _currentLocation, zoom: 16.0, tilt: 50.0),
       ));
@@ -1764,7 +1764,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
         northeast: LatLng(x1 + 0.0001, y1 + 0.0001),
       );
       
-      debugPrint('[MAPA-LOG] 🎥 Zooming a vista panorámica (bounds padding 150.0)');
+//       debugPrint('[MAPA-LOG] 🎥 Zooming a vista panorámica (bounds padding 150.0)');
       _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 150.0));
       TopToast.show(context, '🗺️ Panorama completo de tu ruta', backgroundColor: Colors.black87);
       _navButtonState = 0;

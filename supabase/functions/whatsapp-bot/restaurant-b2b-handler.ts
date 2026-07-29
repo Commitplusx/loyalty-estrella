@@ -477,7 +477,7 @@ export async function handleFlowReply(
   }
 
   // --- NUEVO MANEJADOR DE MASTER FLOW B2B ---
-  if (flowName === 'B2B_MASTER_FLOW' || flowData.accion) {
+  if (flowName === 'B2B_MASTER_FLOW' || (flowData.accion && flowData.accion !== 'NUEVO_PEDIDO_FLOW')) {
     if (!cachedRestData) {
       const { sendWA } = await import('./whatsapp.ts');
       await sendWA(fromPhone, `❌ Error: Restaurante no encontrado.`);

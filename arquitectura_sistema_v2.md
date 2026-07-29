@@ -841,6 +841,14 @@ Pedido asignado → PIN de 4 dígitos generado
         └─ Repartidor entrega → estado: 'entregado'
 ```
 
+### Navegación y Vista de Viaje Activo
+- **Modo Mapa Pantalla Completa:** Interfaz optimizada estilo Uber/Google Maps usando `Stack` y `AnimatedPositioned` (evita desbordamientos tipo RenderFlex) para deslizar información no crítica fuera de la pantalla.
+- **Cálculo de ETA en Vivo:** Se descarta el ETA backend en favor de integraciones en tiempo real con Google Maps Directions API para calcular distancia y tiempo de llegada preciso basados en el tráfico real.
+- **Modo Seguimiento (Follow Mode):** 
+  - La cámara sigue automáticamente al conductor ajustando la perspectiva (tilt 55°) según su posición (`_isNavigating`).
+  - Detección inteligente de interacción manual (`Listener` envolviendo `GoogleMap`): detiene el centrado automático al arrastrar el mapa.
+  - Botón de "Re-centrado" flotante que reanuda el modo de navegación y el seguimiento del conductor.
+
 ### Botón SOS
 Captura GPS en tiempo real y notifica al admin por Supabase Realtime para despacho de asistencia inmediata.
 
@@ -858,4 +866,5 @@ El ciclo del cliente está automatizado mediante WhatsApp:
 
 ---
 
-*Última actualización: Julio 2026 — Motor de Asignación v2.0, Doble Disparo eliminado, Flujo de pagos cancelados resuelto.*
+*Última actualización: Julio 2026 — Motor de Asignación v2.0, Doble Disparo eliminado, Flujo de pagos cancelados resuelto, Mejoras UX Navegación Repartidor.*
+

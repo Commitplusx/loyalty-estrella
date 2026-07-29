@@ -420,8 +420,16 @@ serve(async (req: Request) => {
       const flowToken = JSON.stringify({ phone: fromPhone })
       await sendInteractiveFlow(fromPhone, `¡Genial! 🎉 Para darte de alta como Cliente VIP y enviarte tu tarjeta digital, por favor llena este rápido formulario:`, `📝 Llenar Formulario`, `1489224042353572`, flowToken, `REGISTRO_CLIENTE`)
     } else if (accion === 'VER_RESTAURANTES_CLIENTE') {
-      const { enviarCatalogoRestaurantes } = await import('../whatsapp-bot/restaurant-b2b-handler.ts')
-      await enviarCatalogoRestaurantes(supabase, fromPhone)
+      const { sendInteractiveFlow } = await import('../whatsapp-bot/whatsapp.ts')
+      const flowToken = JSON.stringify({ phone: fromPhone })
+      await sendInteractiveFlow(
+        fromPhone, 
+        `¡Con gusto! 🍔🍕 Toca el botón de abajo para abrir nuestro menú interactivo de *Estrella Eats* y hacer tu pedido en segundos:`, 
+        `🛒 Ver Menú / Pedir`, 
+        `1375770424492120`, 
+        flowToken, 
+        `BIENVENIDA`
+      )
     } else if (accion === 'APLICAR_REFERIDO') {
       // ── 👥 SISTEMA DE REFERIDOS ───────────────────────────────────────────
       const codigoRef = d?.codigoReferido?.toUpperCase()?.trim()

@@ -186,7 +186,7 @@ class PedidoService {
             },
           );
         } catch (e) {
-          debugPrint('Aviso: No se pudo notificar al restaurante: $e');
+//           debugPrint('Aviso: No se pudo notificar al restaurante: $e');
         }
       }
 
@@ -213,7 +213,7 @@ class PedidoService {
           timeLimit: const Duration(seconds: 5),
         ).timeout(const Duration(seconds: 6));
       } catch (e) {
-        debugPrint('Aviso: No se pudo obtener GPS rapido para Geocerca.');
+//         debugPrint('Aviso: No se pudo obtener GPS rapido para Geocerca.');
       }
     }
 
@@ -242,7 +242,7 @@ class PedidoService {
         }
 
         if (newPriority < currentPriority) {
-          debugPrint('AVISO: Intento de regresar estado de $currentState a $nuevoEstado bloqueado.');
+//           debugPrint('AVISO: Intento de regresar estado de $currentState a $nuevoEstado bloqueado.');
           // Si el repartidor intentaba aceptar ('asignado') un pedido que ya está en cocina, SOLO le asignamos su ID sin cambiar estado
           if (nuevoEstado == 'asignado' && user != null) {
             await supabase.from('pedidos').update({'repartidor_id': user.id}).eq('id', pedidoId);
@@ -267,7 +267,7 @@ class PedidoService {
       } catch (e) {
         // Validación Anti-Fraude de Supabase (SQL RAISE EXCEPTION)
         if (e is PostgrestException && e.message.contains('FRAUDE DE GEOCERCA')) {
-          debugPrint('RECHAZADO por DB: Repartidor lejos del destino.');
+//           debugPrint('RECHAZADO por DB: Repartidor lejos del destino.');
           rethrow; // Rompe el ciclo y le lanza el error a la UI
         }
 

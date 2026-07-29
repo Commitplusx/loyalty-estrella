@@ -33,31 +33,31 @@ class OrderQueueService {
       }
     }
 
-    debugPrint('================================================================');
-    debugPrint('🚨 [OrderQueueService] 📥 NUEVO VIAJE RECIBIDO (PAYLOAD BRUTO)');
-    debugPrint('================================================================');
-    debugPrint('ID Pedido: ${payload['pedido_id']}');
-    debugPrint('Payload Completo: $payload');
+//     debugPrint('================================================================');
+//     debugPrint('🚨 [OrderQueueService] 📥 NUEVO VIAJE RECIBIDO (PAYLOAD BRUTO)');
+//     debugPrint('================================================================');
+//     debugPrint('ID Pedido: ${payload['pedido_id']}');
+//     debugPrint('Payload Completo: $payload');
     
     // Agregamos timestamp local para el TTL (Time To Live)
     payload['_enqueued_at'] = DateTime.now();
 
     final esApilado = payload['viaje_apilado'] == true || payload['viaje_apilado'] == 'true';
-    debugPrint('🔎 [OrderQueueService] ¿Es Viaje Apilado?: $esApilado');
+//     debugPrint('🔎 [OrderQueueService] ¿Es Viaje Apilado?: $esApilado');
     
     if (esApilado) {
       // Prioridad máxima: lo mandamos al frente de la cola
-      debugPrint('🚀🚀🚀 [OrderQueueService] VIAJE APILADO (BATCH) DETECTADO 🚀🚀🚀');
-      debugPrint('👉 Este viaje saltará la cola y se mostrará de inmediato al repartidor.');
+//       debugPrint('🚀🚀🚀 [OrderQueueService] VIAJE APILADO (BATCH) DETECTADO 🚀🚀🚀');
+//       debugPrint('👉 Este viaje saltará la cola y se mostrará de inmediato al repartidor.');
       _queue.insert(0, payload);
     } else {
       // Pedido normal: al final de la cola
-      debugPrint('📦 [OrderQueueService] Viaje normal detectado. Añadido al final de la cola.');
+//       debugPrint('📦 [OrderQueueService] Viaje normal detectado. Añadido al final de la cola.');
       _queue.add(payload);
     }
     
-    debugPrint('📊 [OrderQueueService] Total de pedidos en cola actualmente: ${_queue.length}');
-    debugPrint('================================================================\n');
+//     debugPrint('📊 [OrderQueueService] Total de pedidos en cola actualmente: ${_queue.length}');
+//     debugPrint('================================================================\n');
     _processQueue(context);
   }
 
@@ -75,14 +75,14 @@ class OrderQueueService {
     // Verificamos el TTL (Time To Live) de 15 segundos
     final enqueuedAt = nextPayload['_enqueued_at'] as DateTime;
     if (DateTime.now().difference(enqueuedAt).inSeconds > 15) {
-      debugPrint('🗑️ [OrderQueueService] Pedido expirado (TTL > 15s). Descartando pedido fantasma: ${nextPayload['pedido_id']}');
+//       debugPrint('🗑️ [OrderQueueService] Pedido expirado (TTL > 15s). Descartando pedido fantasma: ${nextPayload['pedido_id']}');
       _isShowing = false;
       // Saltamos directamente al siguiente sin mostrar nada
       _processQueue(context);
       return;
     }
 
-    debugPrint('🚀 [OrderQueueService] Mostrando BottomSheet para: ${nextPayload['pedido_id']}');
+//     debugPrint('🚀 [OrderQueueService] Mostrando BottomSheet para: ${nextPayload['pedido_id']}');
 
     try {
       if (context.mounted) {
@@ -93,7 +93,7 @@ class OrderQueueService {
       // Liberamos el candado de la UI
       _isShowing = false;
       _currentShowingPedidoId = null;
-      debugPrint('🔓 [OrderQueueService] BottomSheet cerrado. Pedidos restantes en cola: ${_queue.length}');
+//       debugPrint('🔓 [OrderQueueService] BottomSheet cerrado. Pedidos restantes en cola: ${_queue.length}');
       
       // Si hay más pedidos esperando, procesamos el siguiente
       if (context.mounted && _queue.isNotEmpty) {
@@ -107,6 +107,6 @@ class OrderQueueService {
   void clearQueue() {
     _queue.clear();
     _currentShowingPedidoId = null;
-    debugPrint('🧹 [OrderQueueService] Cola limpiada manualmente.');
+//     debugPrint('🧹 [OrderQueueService] Cola limpiada manualmente.');
   }
 }

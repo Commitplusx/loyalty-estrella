@@ -90,7 +90,7 @@ class ClienteService {
 
   Future<bool> enviarTerminos(String telefono, String nombre) async {
     try {
-      debugPrint('Enviando términos a $telefono, $nombre...');
+//       debugPrint('Enviando términos a $telefono, $nombre...');
       final res = await supabase.functions.invoke(
         'whatsapp-bot',
         body: {
@@ -99,7 +99,7 @@ class ClienteService {
           'nombre': nombre,
         },
       );
-      debugPrint('Respuesta Edge Function: status=${res.status}, body=${res.data}');
+//       debugPrint('Respuesta Edge Function: status=${res.status}, body=${res.data}');
       return res.status == 200;
     } on FunctionException catch (e) {
       debugPrint('FunctionException en enviarTerminos: status=${e.status}, reason=${e.reasonPhrase}, details=${e.details}');
