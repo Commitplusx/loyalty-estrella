@@ -1,6 +1,6 @@
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { AlertCircle, Bike, ChefHat, Store, MoreVertical, CheckCircle2, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertCircle, Bike, ChefHat, Store, MoreVertical, CheckCircle2, XCircle, ChevronDown, ChevronUp, Package } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { toast } from 'sonner';
 import { useAppStore } from '../../store/useAppStore';
@@ -146,9 +146,15 @@ export function KanbanCard({ pedido, onForceAction }: { pedido: any, onForceActi
                   </button>
                   <button 
                     onClick={(e) => { e.stopPropagation(); onForceAction(pedido.id, 'cancelado'); setShowOptions(false); }}
-                    className="w-full text-left px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2"
+                    className="w-full text-left px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2 border-b border-zinc-100"
                   >
                     <XCircle size={14} /> Forzar Cancelación
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onForceAction(pedido.id, 'externo'); setShowOptions(false); }}
+                    className="w-full text-left px-3 py-2 text-xs font-bold text-orange-600 hover:bg-orange-50 flex items-center gap-2"
+                  >
+                    <Package size={14} /> Mandar Externo
                   </button>
                 </div>
               )}

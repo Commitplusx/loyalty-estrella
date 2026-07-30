@@ -9,6 +9,7 @@ interface ConfirmSheetProps {
   confirmText?: string;
   cancelText?: string;
   isDestructive?: boolean;
+  children?: React.ReactNode;
 }
 
 export function ConfirmSheet({
@@ -19,7 +20,8 @@ export function ConfirmSheet({
   description,
   confirmText = 'Confirmar',
   cancelText = 'Cancelar',
-  isDestructive = false
+  isDestructive = false,
+  children
 }: ConfirmSheetProps) {
   return (
     <BottomSheet isOpen={isOpen} onClose={onClose}>
@@ -27,6 +29,8 @@ export function ConfirmSheet({
         <h3 className="text-xl font-black text-zinc-900 tracking-tight">{title}</h3>
         <p className="text-sm text-zinc-500 mt-2 leading-relaxed">{description}</p>
         
+        {children && <div className="mt-4">{children}</div>}
+
         <div className="mt-8 flex flex-col sm:flex-row-reverse gap-3">
           <button
             onClick={() => {

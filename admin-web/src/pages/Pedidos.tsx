@@ -70,6 +70,8 @@ export function Pedidos() {
   const [actionConfirm, setActionConfirm] = useState<{ id: string, action: string, repartidorId?: string } | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [disputaPedido, setDisputaPedido] = useState<any>(null);
+  const [externoName, setExternoName] = useState('');
+  const [externoPhone, setExternoPhone] = useState('');
   const lastActionRef = useRef<{ id: string, action: string, time: number } | null>(null);
 
   useEffect(() => {
@@ -88,7 +90,7 @@ export function Pedidos() {
     }
     lastActionRef.current = { id, action, time: now };
 
-    if (action === 'entregado' || action === 'cancelado') {
+    if (action === 'entregado' || action === 'cancelado' || action === 'externo') {
        setActionConfirm({ id, action, repartidorId });
        return;
     }
@@ -106,7 +108,7 @@ export function Pedidos() {
     await executeForceAction(id, action, repartidorId);
   };
 
-  const executeForceAction = async (id: string, action: string, repartidorId?: string) => {
+  const executeForceAction = async (id: string, action: string, repartidorId?: string, phone?: string, name?: string) => {
     try {
       const currentPedido = pedidos.find(p => p.id === id);
       if (currentPedido) {
@@ -122,7 +124,7 @@ export function Pedidos() {
       const payload: any = { estado: action };
       if (repartidorId) {
         payload.repartidor_id = repartidorId;
-      } else if (action === 'buscando_repartidor' || action === 'recibido' || action === 'preparando') {
+      } else if (action === 'buscando_repartidor' || action === 'recibido' || action === 'preparando' || action === 'externo') {
         payload.repartidor_id = null;
       }
 
@@ -134,7 +136,19 @@ export function Pedidos() {
       if (error) throw error;
       
       // Invocaciones a Supabase Edge Functions para automatizar
-      if (action === 'buscando_repartidor') {
+      if (action === 'externo') {
+        supabase.functions.invoke('asignar-externo', {
+          body: {
+            pedido_id: id,
+            telefono: phone,
+            nombre: name,
+            restaurante: currentPedido?.restaurante || 'Estrella',
+            descripcion: currentPedido?.descripcion || 'Pedido',
+            base_url: window.location.origin
+          }
+        }).catch(err => console.error('Error invocando asignar-externo:', err));
+        toast.success('Pedido externo. Notificando por WhatsApp...');
+      } else if (action === 'buscando_repartidor') {
         // NOTA: Se eliminó la invocación manual a 'asignar-repartidor' aquí.
         // La Base de Datos (Webhook) detecta el UPDATE a 'buscando_repartidor' y lo dispara automáticamente.
         toast.success('Búsqueda automática de repartidor iniciada por el sistema');
@@ -250,6 +264,8 @@ export function Pedidos() {
     switch (estado) {
       case 'cancelado':
         return <span className="px-2 py-1 bg-white text-zinc-500 border border-zinc-200 rounded-md text-[10px] font-bold uppercase tracking-widest line-through">Cancelado</span>;
+      case 'externo':
+        return <span className="px-2 py-1 bg-orange-50 text-orange-600 border border-orange-200 rounded-md text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 w-max"><Package size={10}/>Externo</span>;
       case 'buscando_repartidor':
         return <span className="px-2 py-1 bg-amber-50 text-amber-600 border border-amber-200 rounded-md text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 w-max"><AlertCircle size={10}/>Buscando Repartidor</span>;
       default:
@@ -270,6 +286,7 @@ export function Pedidos() {
     if (filterStatus === 'en_ruta') statusMatch = ['asignado', 'preparando', 'en_camino'].includes(p.estado);
     if (filterStatus === 'entregados') statusMatch = p.estado === 'entregado';
     if (filterStatus === 'cancelados') statusMatch = p.estado === 'cancelado';
+    if (filterStatus === 'externos') statusMatch = p.estado === 'externo';
 
     return searchMatch && statusMatch;
   });
@@ -346,6 +363,13 @@ export function Pedidos() {
                 title="Forzar Cancelación"
               >
                 <XCircle size={16} />
+              </button>
+              <button 
+                onClick={() => handleForceAction(row.id, 'externo')}
+                className="p-1.5 bg-white hover:bg-orange-50 border border-zinc-200 hover:border-orange-200 text-orange-500 rounded-md transition-colors shadow-sm"
+                title="Mandar Externo"
+              >
+                <Package size={16} />
               </button>
             </>
           )}
@@ -434,13 +458,14 @@ export function Pedidos() {
           { id: 'asignando', label: 'Asignando', count: pedidos.filter(p => ['buscando_repartidor', 'ofrecido'].includes(p.estado)).length },
           { id: 'en_ruta', label: 'En Ruta', count: pedidos.filter(p => ['asignado', 'preparando', 'en_camino'].includes(p.estado)).length },
           { id: 'entregados', label: 'Entregados', count: pedidos.filter(p => p.estado === 'entregado').length },
-          { id: 'cancelados', label: 'Cancelados', count: pedidos.filter(p => p.estado === 'cancelado').length }
+          { id: 'cancelados', label: 'Cancelados', count: pedidos.filter(p => p.estado === 'cancelado').length },
+          { id: 'externos', label: 'Externos', count: pedidos.filter(p => p.estado === 'externo').length }
         ].map(f => (
           <button
             key={f.id}
             onClick={() => {
               setFilterStatus(f.id);
-              if (f.id === 'entregados' || f.id === 'cancelados') {
+              if (f.id === 'entregados' || f.id === 'cancelados' || f.id === 'externos') {
                 setViewMode('list'); // Forzar vista de tabla porque Kanban no muestra estos estados
               }
             }}
@@ -595,15 +620,37 @@ export function Pedidos() {
 
       <ConfirmSheet
         isOpen={!!actionConfirm}
-        onClose={() => setActionConfirm(null)}
+        onClose={() => { setActionConfirm(null); setExternoName(''); setExternoPhone(''); }}
         onConfirm={() => {
-          if (actionConfirm) executeForceAction(actionConfirm.id, actionConfirm.action);
+          if (actionConfirm) {
+            if (actionConfirm.action === 'externo' && externoPhone.length < 10) {
+              toast.error('El teléfono debe tener 10 dígitos');
+              return;
+            }
+            executeForceAction(actionConfirm.id, actionConfirm.action, actionConfirm.repartidorId, externoPhone, externoName);
+          }
         }}
-        title="¿Forzar Estado?"
-        description={`¿Estás seguro de que deseas forzar el estado a ${actionConfirm?.action?.toUpperCase()}? Esta es una acción de "God Mode" y afectará al usuario y al repartidor inmediatamente.`}
-        confirmText="Sí, Forzar Estado"
-        isDestructive={true}
-      />
+        title={actionConfirm?.action === 'externo' ? "Asignar a Externo" : "¿Forzar Estado?"}
+        description={actionConfirm?.action === 'externo' 
+          ? `Al confirmar, el pedido se marcará como externo y se enviará un WhatsApp al repartidor con el link de seguimiento.`
+          : `¿Estás seguro de que deseas forzar el estado a ${actionConfirm?.action?.toUpperCase()}? Esta es una acción de "God Mode" y afectará al usuario y al repartidor inmediatamente.`
+        }
+        confirmText={actionConfirm?.action === 'externo' ? "Enviar WhatsApp" : "Sí, Forzar Estado"}
+        isDestructive={actionConfirm?.action !== 'externo'}
+      >
+        {actionConfirm?.action === 'externo' && (
+          <div className="flex flex-col gap-3 mt-4 text-left">
+            <div>
+              <label className="text-xs font-bold text-zinc-700">Teléfono (10 dígitos) *</label>
+              <input type="number" value={externoPhone} onChange={e => setExternoPhone(e.target.value)} placeholder="Ej. 9631234567" className="w-full mt-1 bg-zinc-50 border border-zinc-200 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-zinc-700">Nombre del Repartidor (Opcional)</label>
+              <input type="text" value={externoName} onChange={e => setExternoName(e.target.value)} placeholder="Ej. Juan de Moto Express" className="w-full mt-1 bg-zinc-50 border border-zinc-200 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+        )}
+      </ConfirmSheet>
 
       <DisputaModal
         isOpen={!!disputaPedido}

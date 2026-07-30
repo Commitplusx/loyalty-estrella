@@ -17,6 +17,7 @@ import { AliadoDetail } from './pages/AliadoDetail';
 import { RepartidorDetail } from './pages/RepartidorDetail';
 import { Marketing } from './pages/Marketing';
 import { Monitor } from './pages/Monitor';
+import { TrackerApp } from './pages/TrackerApp';
 
 // Wrapper para proteger rutas
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -48,6 +49,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/tracker/:id" element={<TrackerApp />} />
         
         {/* Rutas Protegidas */}
         <Route
