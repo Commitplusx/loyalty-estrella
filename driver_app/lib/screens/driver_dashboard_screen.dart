@@ -6,9 +6,10 @@ import '../widgets/friendly_error_widget.dart';
 import 'driver_dashboard_view.dart';
 import '../models/pedido_model.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:animate_do/animate_do.dart';
 import 'package:shimmer/shimmer.dart';
+import '../widgets/radar_scanner.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -39,47 +40,7 @@ final driverStatsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((re
   return ref.read(dashboardServiceProvider).getDriverDailyStats(userId);
 });
 
-const String _cleanMapStyle = '''
-[
-  {
-    "elementType": "labels",
-    "stylers": [{"visibility": "off"}]
-  },
-  {
-    "featureType": "poi",
-    "stylers": [{"visibility": "off"}]
-  },
-  {
-    "featureType": "transit",
-    "stylers": [{"visibility": "off"}]
-  },
-  {
-    "featureType": "landscape",
-    "elementType": "geometry",
-    "stylers": [{"color": "#f0f2f5"}]
-  },
-  {
-    "featureType": "water",
-    "elementType": "geometry",
-    "stylers": [{"color": "#d1d5db"}]
-  },
-  {
-    "featureType": "road",
-    "elementType": "geometry",
-    "stylers": [{"visibility": "on"}, {"color": "#ffffff"}]
-  },
-  {
-    "featureType": "road.highway",
-    "elementType": "geometry",
-    "stylers": [{"color": "#e5e7eb"}]
-  },
-  {
-    "featureType": "road.arterial",
-    "elementType": "geometry",
-    "stylers": [{"color": "#ffffff"}]
-  }
-]
-''';
+// (Google Maps style removed)
 
 class DriverDashboardScreen extends ConsumerStatefulWidget {
   const DriverDashboardScreen({super.key});
@@ -98,6 +59,7 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen> w
   
   StreamSubscription<Position>? _positionSubscription;
   Timer? _smartAssistantTimer;
+  mapbox.MapboxMap? _mapboxMap;
   
   String _lastNotificationTitle = '';
   String _lastNotificationText = '';
@@ -267,6 +229,19 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen> w
             lng: position.longitude,
             bateria: bat,
           );
+
+          // Actualizar mapa del dashboard en vivo si existe
+          if (_mapboxMap != null && _tabController.index == 0) { // Solo si estamos en la pestaña de radar
+            _mapboxMap!.easeTo(
+              mapbox.CameraOptions(
+                center: mapbox.Point(coordinates: mapbox.Position(position.longitude, position.latitude)),
+                zoom: 17.5,
+                pitch: 50.0,
+                bearing: position.heading >= 0 ? position.heading : 0.0,
+              ),
+              mapbox.MapAnimationOptions(duration: 1000, startDelay: 0),
+            );
+          }
         }
       }
     });
@@ -707,66 +682,69 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen> w
             color: const Color(0xFFFF6B35),
             child: Stack(
               children: [
-                // Google Maps Background
-                GoogleMap(
-                  initialCameraPosition: const CameraPosition(
-                    target: LatLng(21.87982, -102.29600),
-                    zoom: 13.5,
+                // Mapbox Background
+                mapbox.MapWidget(
+                  key: const ValueKey('dashboardMap'),
+                  cameraOptions: mapbox.CameraOptions(
+                    center: mapbox.Point(coordinates: mapbox.Position(-92.1345, 16.2519)), // Comitán fallback
+                    zoom: 17.5,
+                    pitch: 50.0,
                   ),
-                  zoomControlsEnabled: false,
-                  myLocationButtonEnabled: false,
-                  mapToolbarEnabled: false,
-                  compassEnabled: false,
-                  scrollGesturesEnabled: false,
-                  zoomGesturesEnabled: false,
-                  tiltGesturesEnabled: false,
-                  rotateGesturesEnabled: false,
-                  onMapCreated: (controller) {
-                    controller.setMapStyle(_cleanMapStyle);
-                  },
-                  circles: () {
-                    final circles = <Circle>{};
-                    // Extraer coordenadas reales de los pedidos
-                    for (final p in allPedidos) {
-                      if (p.restauranteLat != null && p.restauranteLng != null) {
-                        circles.add(
-                          Circle(
-                            circleId: CircleId('real_${p.id}'),
-                            center: LatLng(p.restauranteLat!, p.restauranteLng!),
-                            fillColor: Colors.red.withOpacity(0.35),
-                            strokeWidth: 0,
-                            radius: 500, // metros
+                  styleUri: 'mapbox://styles/mapbox/streets-v12', // Estilo limpio sin líneas de tráfico verdes
+                  onMapCreated: (mapboxMap) async {
+                    // Activar el punto azul (Puck) con brújula
+                    await mapboxMap.location.updateSettings(mapbox.LocationComponentSettings(
+                      enabled: true,
+                      pulsingEnabled: true,
+                      puckBearingEnabled: true,
+                      puckBearing: mapbox.PuckBearing.HEADING,
+                    ));
+                    
+                    // Centrar cámara en la ubicación real del repartidor
+                    try {
+                      final pos = await Geolocator.getCurrentPosition(
+                        desiredAccuracy: LocationAccuracy.high,
+                        timeLimit: const Duration(seconds: 3),
+                      );
+                      // Transición cinemática y fluida hacia la ubicación
+                      mapboxMap.flyTo(
+                        mapbox.CameraOptions(
+                          center: mapbox.Point(coordinates: mapbox.Position(pos.longitude, pos.latitude)),
+                          zoom: 17.5, 
+                          pitch: 50.0, 
+                          bearing: pos.heading >= 0 ? pos.heading : 0.0,
+                        ),
+                        mapbox.MapAnimationOptions(duration: 2500),
+                      );
+                    } catch (_) {
+                      // Si falla o tarda, intentamos con la última conocida
+                      final lastPos = await Geolocator.getLastKnownPosition();
+                      if (lastPos != null) {
+                        mapboxMap.flyTo(
+                          mapbox.CameraOptions(
+                            center: mapbox.Point(coordinates: mapbox.Position(lastPos.longitude, lastPos.latitude)),
+                            zoom: 17.5,
+                            pitch: 50.0,
+                            bearing: lastPos.heading >= 0 ? lastPos.heading : 0.0,
                           ),
+                          mapbox.MapAnimationOptions(duration: 2500),
                         );
                       }
                     }
-
-                    if (circles.isNotEmpty) {
-                      return circles;
-                    }
-
-                    // Fallback estético si no hay actividad real
-                    return {
-                      Circle(
-                        circleId: const CircleId('fallback_centro'),
-                        center: const LatLng(21.87982, -102.29600),
-                        fillColor: Colors.red.withOpacity(0.3),
-                        strokeWidth: 0,
-                        radius: 800,
-                      ),
-                      Circle(
-                        circleId: const CircleId('fallback_norte'),
-                        center: const LatLng(21.89000, -102.28500),
-                        fillColor: Colors.orange.withOpacity(0.3),
-                        strokeWidth: 0,
-                        radius: 1200,
-                      ),
-                    };
-                  }(),
+                  },
                 ),
-                // Capa para difuminar un poco el mapa y que el texto sea legible
-                Container(
-                  color: Colors.white.withOpacity(0.2), // Reducido porque Google Maps claro ya es muy blanco
+                // Capa para difuminar un poco el mapa y que el texto sea legible (ahora ignora toques)
+                IgnorePointer(
+                  child: Container(
+                    color: Colors.white.withOpacity(0.2),
+                  ),
+                ),
+
+                // Radar de búsqueda animado centrado en el mapa (ahora ignora toques)
+                const IgnorePointer(
+                  child: Center(
+                    child: RadarScanner(size: 350.0),
+                  ),
                 ),
                 
                 // Radar Icon / Searching State (Sleek, Premium, Uber-like)

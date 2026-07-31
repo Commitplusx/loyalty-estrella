@@ -3,14 +3,11 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart' as fm;
-import 'package:latlong2/latlong.dart' as latlng2;
+import 'package:latlong2/latlong.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/ui_helpers.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../utils/top_toast.dart';
-import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:volume_controller/volume_controller.dart';
 import '../services/repartidor_service.dart';
@@ -35,55 +32,7 @@ import 'driver_pedidos_screen.dart' show pedidosActivosProvider, rejectedPedidos
 import '../utils/routing_engine.dart';
 import '../widgets/itinerary_stepper.dart';
 
-const String _mapStyleLight = '''
-[
-  {"featureType": "all","elementType": "geometry.fill","stylers": [{"weight": "2.00"}]},
-  {"featureType": "all","elementType": "geometry.stroke","stylers": [{"color": "#9c9c9c"}]},
-  {"featureType": "all","elementType": "labels.text","stylers": [{"visibility": "on"}]},
-  {"featureType": "landscape","elementType": "all","stylers": [{"color": "#f2f2f2"}]},
-  {"featureType": "landscape","elementType": "geometry.fill","stylers": [{"color": "#ffffff"}]},
-  {"featureType": "landscape.man_made","elementType": "geometry.fill","stylers": [{"color": "#ffffff"}]},
-  {"featureType": "poi","elementType": "all","stylers": [{"visibility": "off"}]},
-  {"featureType": "road","elementType": "all","stylers": [{"saturation": -100},{"lightness": 45}]},
-  {"featureType": "road","elementType": "geometry.fill","stylers": [{"color": "#eeeeee"}]},
-  {"featureType": "road","elementType": "labels.text.fill","stylers": [{"color": "#7b7b7b"}]},
-  {"featureType": "road","elementType": "labels.text.stroke","stylers": [{"color": "#ffffff"}]},
-  {"featureType": "road.highway","elementType": "all","stylers": [{"visibility": "simplified"}]},
-  {"featureType": "road.arterial","elementType": "labels.icon","stylers": [{"visibility": "off"}]},
-  {"featureType": "transit","elementType": "all","stylers": [{"visibility": "off"}]},
-  {"featureType": "water","elementType": "all","stylers": [{"color": "#46bcec"},{"visibility": "on"}]},
-  {"featureType": "water","elementType": "geometry.fill","stylers": [{"color": "#c8d7d4"}]},
-  {"featureType": "water","elementType": "labels.text.fill","stylers": [{"color": "#070707"}]},
-  {"featureType": "water","elementType": "labels.text.stroke","stylers": [{"color": "#ffffff"}]}
-]
-''';
 
-const String _mapStyleDark = '''
-[
-  {"elementType": "geometry","stylers": [{"color": "#212121"}]},
-  {"elementType": "labels.icon","stylers": [{"visibility": "off"}]},
-  {"elementType": "labels.text.fill","stylers": [{"color": "#757575"}]},
-  {"elementType": "labels.text.stroke","stylers": [{"color": "#212121"}]},
-  {"featureType": "administrative","elementType": "geometry","stylers": [{"color": "#757575"}]},
-  {"featureType": "administrative.country","elementType": "labels.text.fill","stylers": [{"color": "#9e9e9e"}]},
-  {"featureType": "administrative.land_parcel","stylers": [{"visibility": "off"}]},
-  {"featureType": "administrative.locality","elementType": "labels.text.fill","stylers": [{"color": "#bdbdbd"}]},
-  {"featureType": "poi","elementType": "labels.text.fill","stylers": [{"color": "#757575"}]},
-  {"featureType": "poi","stylers": [{"visibility": "off"}]},
-  {"featureType": "poi.park","elementType": "geometry","stylers": [{"color": "#181818"}]},
-  {"featureType": "poi.park","elementType": "labels.text.fill","stylers": [{"color": "#616161"}]},
-  {"featureType": "poi.park","elementType": "labels.text.stroke","stylers": [{"color": "#1b1b1b"}]},
-  {"featureType": "road","elementType": "geometry.fill","stylers": [{"color": "#2c2c2c"}]},
-  {"featureType": "road","elementType": "labels.text.fill","stylers": [{"color": "#8a8a8a"}]},
-  {"featureType": "road.arterial","elementType": "geometry","stylers": [{"color": "#373737"}]},
-  {"featureType": "road.highway","elementType": "geometry","stylers": [{"color": "#3c3c3c"}]},
-  {"featureType": "road.highway.controlled_access","elementType": "geometry","stylers": [{"color": "#4e4e4e"}]},
-  {"featureType": "road.local","elementType": "labels.text.fill","stylers": [{"color": "#616161"}]},
-  {"featureType": "transit","elementType": "labels.text.fill","stylers": [{"color": "#757575"}]},
-  {"featureType": "water","elementType": "geometry","stylers": [{"color": "#000000"}]},
-  {"featureType": "water","elementType": "labels.text.fill","stylers": [{"color": "#3d3d3d"}]}
-]
-''';
 
 class DriverDashboardView extends ConsumerStatefulWidget {
   final Map<String, dynamic>? stats;
@@ -111,31 +60,13 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
   // Novedades para el tracker e Inteligencia
   List<Map<String, dynamic>> _pedidosActivos = [];
   StreamSubscription<Position>? _positionStream;
-  GoogleMapController? _mapController;
-  Set<Circle> _heatCircles = {};
   int _navButtonState = 0;
-  final GlobalKey _mapKey = GlobalKey();
-  Set<Marker> _markers = {};
-  Set<Polyline> _polylines = {};
-  Set<Circle> _circles = {};
-  BitmapDescriptor? _deliveryIcon;
   Timer? _smartAssistantTimer;
 
-  bool _cameraPositioned = false; // true una vez que la cámara apuntó a los pedidos
   List<String> _lastPedidoIds = []; // para detectar cuando llega un pedido nuevo
-  String? _lastFocusedStopId; // para no re-enfocar si la próxima parada no cambió
-  List<LatLng>? _cachedActiveRoute;
-  String? _cachedActiveRouteId;
-  int _lastRouteProgressIndex = 0; // Previene saltos bruscos si la ruta cruza sobre sí misma
-  bool _isFollowingDriver = true; // Auto-follow mode
-  DateTime? _lastRecalcTime; // Debounce para recálculo off-route
-  
-  BitmapDescriptor? _pickupIcon;
-  BitmapDescriptor? _dropoffIcon;
 
   late AnimationController _radarPulseController;
   late Animation<double> _radarPulseAnimation;
-  Timer? _routeDrawTimer;
 
   // Animación del card activo
   late AnimationController _cardPulseController;
@@ -160,9 +91,6 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
         (supabase.auth.currentUser?.email?.split('@').first ?? '');
 //     debugPrint('[MAPA] initState → _isOnline=$_isOnline, _currentLocation=$_currentLocation, _mapController=${_mapController != null ? "EXISTS" : "NULL"}');
     _loadStatusSilently();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initCustomIcons();
-    });
 
     // Animación del Radar (Latido)
     _radarPulseController = AnimationController(
@@ -182,212 +110,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
     _radarPulseAnimation = Tween<double>(begin: 0.0, end: 150.0).animate(
       CurvedAnimation(parent: _radarPulseController, curve: Curves.easeOut),
     );
-
-    _radarPulseController.addListener(() {
-      if (_currentLocation.latitude != 0.0 && mounted) {
-        setState(() {
-          _circles.removeWhere((c) => c.circleId.value == 'pulse');
-          _circles.add(
-            Circle(
-              circleId: const CircleId('pulse'),
-              center: _currentLocation,
-              radius: _pedidosActivos.isEmpty ? (_radarPulseAnimation.value * 3.3) : _radarPulseAnimation.value,
-              fillColor: _pedidosActivos.isEmpty 
-                  ? Colors.redAccent.withOpacity((1 - _radarPulseController.value) * 0.4) 
-                  : Colors.blueAccent.withOpacity((1 - _radarPulseController.value) * 0.4),
-              strokeWidth: 2,
-              strokeColor: _pedidosActivos.isEmpty 
-                  ? Colors.redAccent.withOpacity((1 - _radarPulseController.value) * 0.8) 
-                  : Colors.blueAccent.withOpacity((1 - _radarPulseController.value) * 0.8),
-            )
-          );
-        });
-      }
-    });
   }
-
-  Future<void> _initCustomIcons() async {
-    try {
-      _pickupIcon = await _getCustomIcon(Icons.storefront_rounded, const Color(0xFFF59E0B), size: 100);
-      _dropoffIcon = await _getCustomIcon(Icons.person_rounded, const Color(0xFF3B82F6), size: 110, isCircle: true);
-      if (mounted && _pedidosActivos.isNotEmpty) {
-        _updateMapData(_calcularTodasLasParadas());
-      }
-    } catch (e) {
-      debugPrint('[MAPA] Error generando iconos: $e');
-    }
-  }
-
-  Future<BitmapDescriptor> _getCustomIcon(IconData iconData, Color color, {double size = 110, bool isCircle = false}) async {
-    final pictureRecorder = ui.PictureRecorder();
-    final canvas = Canvas(pictureRecorder);
-    
-    // Espacio para la sombra y la "cola" del pin
-    const double padding = 25.0;
-    const double tailHeight = 30.0;
-    
-    final double canvasWidth = size + (padding * 2);
-    final double canvasHeight = size + tailHeight + padding; // Sin padding inferior para que la punta toque el fondo
-    
-    final center = Offset(canvasWidth / 2, padding + size / 2);
-    
-    // 1. Sombra base
-    final shadowPath = Path();
-    if (isCircle) {
-      shadowPath.addOval(Rect.fromCircle(center: center, radius: size / 2));
-    } else {
-      shadowPath.addRRect(RRect.fromRectAndRadius(
-        Rect.fromCenter(center: center, width: size, height: size),
-        const Radius.circular(28)
-      ));
-    }
-    
-    // Cola para la sombra
-    shadowPath.moveTo(center.dx - 18, padding + size - 10);
-    shadowPath.lineTo(center.dx, canvasHeight);
-    shadowPath.lineTo(center.dx + 18, padding + size - 10);
-    shadowPath.close();
-    
-    canvas.drawShadow(shadowPath, Colors.black87, 16.0, false);
-    
-    // 2. Dibujar Cuerpo Principal y Cola
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-      
-    final borderPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 8.0;
-
-    // Dibujar Cola
-    final tailPath = Path();
-    tailPath.moveTo(center.dx - 18, padding + size - 15);
-    tailPath.lineTo(center.dx, canvasHeight - 2); // Un poco antes del borde absoluto
-    tailPath.lineTo(center.dx + 18, padding + size - 15);
-    tailPath.close();
-    
-    canvas.drawPath(tailPath, paint);
-    canvas.drawPath(tailPath, borderPaint); // Borde de la cola
-    
-    // Dibujar Cuerpo
-    if (isCircle) {
-      canvas.drawCircle(center, size / 2, paint);
-      canvas.drawCircle(center, size / 2, borderPaint);
-    } else {
-      final rrect = RRect.fromRectAndRadius(
-        Rect.fromCenter(center: center, width: size, height: size),
-        const Radius.circular(28)
-      );
-      canvas.drawRRect(rrect, paint);
-      canvas.drawRRect(rrect, borderPaint);
-    }
-
-    // 3. Dibujar Ícono Interior
-    TextPainter textPainter = TextPainter(textDirection: TextDirection.ltr);
-    textPainter.text = TextSpan(
-      text: String.fromCharCode(iconData.codePoint),
-      style: TextStyle(
-        fontSize: size * 0.55,
-        fontFamily: iconData.fontFamily,
-        package: iconData.fontPackage,
-        color: Colors.white,
-      ),
-    );
-    textPainter.layout();
-    textPainter.paint(
-      canvas,
-      Offset(center.dx - (textPainter.width / 2), center.dy - (textPainter.height / 2)),
-    );
-
-    final picture = pictureRecorder.endRecording();
-    final image = await picture.toImage(canvasWidth.toInt(), canvasHeight.toInt());
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.fromBytes(bytes!.buffer.asUint8List());
-  }
-
-  // Animación Suave del Mapa
-  void _animatedMapMove(LatLng destLocation, double destZoom) {
-    _mapController?.animateCamera(CameraUpdate.newLatLngZoom(destLocation, destZoom));
-  }
-
-  /// Auto-enfoca el mapa para mostrar al conductor Y la próxima parada.
-  /// Solo anima si la parada cambió — evita jitter en actualizaciones frecuentes.
-  void _autoFocusNextStop({bool force = false}) {
-    if (_mapController == null) return;
-    // 🚀 EVITA BRINCOS: Si el chofer va manejando en modo 3D, no alejar la cámara
-    if (_isFollowingDriver && !force) return; 
-    
-    final nextStop = _calcularProximaParada();
-    if (nextStop == null) return;
-
-    // ID único de la parada actual: pedidoId + acción
-    final pedido = nextStop['pedido'] as Map<String, dynamic>?;
-    final stopId = '${pedido?["id"] ?? ""}_${nextStop["action"] ?? ""}';
-
-    if (!force && _lastFocusedStopId == stopId) return; // misma parada, no mover
-    _lastFocusedStopId = stopId;
-
-    final destLat = (nextStop['targetLat'] as num).toDouble();
-    final destLng = (nextStop['targetLng'] as num).toDouble();
-
-    if (destLat == 0.0 && destLng == 0.0) return;
-
-    double minLat = _currentLocation.latitude < destLat ? _currentLocation.latitude : destLat;
-    double maxLat = _currentLocation.latitude > destLat ? _currentLocation.latitude : destLat;
-    double minLng = _currentLocation.longitude < destLng ? _currentLocation.longitude : destLng;
-    double maxLng = _currentLocation.longitude > destLng ? _currentLocation.longitude : destLng;
-
-    // Margen mínimo para que no sea un punto
-    if ((maxLat - minLat) < 0.002) { minLat -= 0.001; maxLat += 0.001; }
-    if ((maxLng - minLng) < 0.002) { minLng -= 0.001; maxLng += 0.001; }
-
-    _lastProgrammaticCameraMove = DateTime.now();
-    _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(minLat - 0.001, minLng - 0.001),
-          northeast: LatLng(maxLat + 0.001, maxLng + 0.001),
-        ),
-        80.0, // padding generoso para que la tarjeta no tape el destino
-      ),
-    );
-  }
-
-  void _updateDriverMarkerSilently() {
-    if (_mapController == null) return;
-    
-    final newMarkers = Set<Marker>.from(_markers);
-    newMarkers.removeWhere((m) => m.markerId == const MarkerId('driver'));
-    newMarkers.add(
-      Marker(
-        markerId: const MarkerId('driver'),
-        position: _currentLocation,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan), // CYAN PARA LA MOTO
-        infoWindow: const InfoWindow(title: 'Tú'),
-        zIndex: 100,
-      )
-    );
-    _markers = newMarkers;
-
-    final newCircles = Set<Circle>.from(_circles);
-    newCircles.removeWhere((c) => c.circleId == const CircleId('driver_halo'));
-    newCircles.add(
-      Circle(
-        circleId: const CircleId('driver_halo'),
-        center: _currentLocation,
-        radius: _pedidosActivos.isEmpty ? 500 : 150,
-        fillColor: _pedidosActivos.isEmpty ? Colors.red.withOpacity(0.15) : Colors.blue.withOpacity(0.15),
-        strokeColor: _pedidosActivos.isEmpty ? Colors.red.withOpacity(0.5) : Colors.blue.withOpacity(0.5),
-        strokeWidth: 2,
-      )
-    );
-    _circles = newCircles;
-  }
-
-
-
-
 
   bool _showSuccessAnimation = false;
   DateTime _lastProgrammaticCameraMove = DateTime.now().subtract(const Duration(days: 1));
@@ -413,7 +136,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
       await supabase.from('pedidos').update({'estado': newStatus}).eq('id', pedidoId);
       
       // Resetear el foco para que _autoFocusNextStop apunte a la nueva parada
-      _lastFocusedStopId = null;
+      // _lastFocusedStopId = null; // Eliminado
 
       if (newStatus == 'entregado' && mounted) {
         setState(() {
@@ -453,323 +176,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
     overlay.insert(entry);
   }
 
-  Future<void> _enfocarRuta(Map<String, dynamic> stop) async {
-    if (_mapController == null) return;
-    final destLat = stop['targetLat'];
-    final destLng = stop['targetLng'];
 
-    if (destLat == 0.0 || destLng == 0.0) {
-      if (mounted) {
-        TopToast.show(context, 'Ubicación del destino no disponible', backgroundColor: Colors.orange);
-      }
-      return;
-    }
-
-    PolylinePoints polylinePoints = PolylinePoints();
-
-    // Trazar ruta específica desde el conductor a la parada
-    PolylineResult nextResult = await polylinePoints.getRouteBetweenCoordinates(
-      googleApiKey: 'AIzaSyBOZkp595ze0Agwb7yPG5u7MD29EL9gHMw',
-      request: PolylineRequest(
-        origin: PointLatLng(_currentLocation.latitude, _currentLocation.longitude),
-        destination: PointLatLng(destLat, destLng),
-        mode: TravelMode.driving,
-      ),
-    );
-
-    List<LatLng> specificRoute = [];
-    if (nextResult.points.isNotEmpty) {
-      specificRoute = nextResult.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
-    } else {
-      // Fallback a línea recta si Google Maps no encuentra ruta pero hay coordenadas válidas
-      specificRoute = [
-        _currentLocation,
-        LatLng(destLat, destLng),
-      ];
-    }
-    
-    if (mounted) {
-      setState(() {
-        _polylines.removeWhere((p) => p.polylineId == const PolylineId('focused_route'));
-        _polylines.add(
-          Polyline(
-            polylineId: const PolylineId('focused_route'),
-            points: specificRoute,
-            color: const Color(0xFF10B981), // Verde esmeralda para destacar
-            width: 8,
-            jointType: JointType.round,
-            endCap: Cap.roundCap,
-            startCap: Cap.roundCap,
-            zIndex: 50,
-          )
-        );
-      });
-    }
-
-    // Encuadrar la cámara exactamente en ese trayecto
-    double minLat = _currentLocation.latitude < destLat ? _currentLocation.latitude : destLat;
-    double maxLat = _currentLocation.latitude > destLat ? _currentLocation.latitude : destLat;
-    double minLng = _currentLocation.longitude < destLng ? _currentLocation.longitude : destLng;
-    double maxLng = _currentLocation.longitude > destLng ? _currentLocation.longitude : destLng;
-
-    final bounds = LatLngBounds(
-      southwest: LatLng(minLat, minLng),
-      northeast: LatLng(maxLat, maxLng),
-    );
-    
-    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 60.0));
-  }
-
-  Future<void> _updateMapData(List<Map<String, dynamic>> allStops) async {
-//     debugPrint('[MAPA] _updateMapData → controller=${_mapController != null ? "OK" : "NULL"} | stops=${allStops.length} | _cameraPositioned=$_cameraPositioned');
-    if (_mapController == null) {
-      debugPrint('[MAPA] _updateMapData ❌ ABORTADO — controller es NULL');
-      return;
-    }
-    
-    Set<Marker> newMarkers = {};
-    Set<Circle> newCircles = {};
-    
-    // 1. Marcador del repartidor (El halo animado se gestiona en el listener de _radarPulseController)
-    
-    newMarkers.add(
-      Marker(
-        markerId: const MarkerId('driver'),
-        position: _currentLocation,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan), // CYAN PARA LA MOTO
-        infoWindow: const InfoWindow(title: 'Tú'),
-        zIndex: 100,
-      )
-    );
-
-    // 2. Paradas
-    int orderIndex = 1;
-    LatLngBounds? bounds;
-    
-    if (allStops.isNotEmpty) {
-      // Calcular bounds SOLO de las paradas (sin incluir el GPS del repartidor
-      // para evitar que el encuadre sea demasiado grande si estamos lejos)
-      final pendingOnly = allStops.where((s) => s['completado'] == false).toList();
-      final stopsForBounds = pendingOnly.isNotEmpty ? pendingOnly : allStops;
-
-      double minLat = math.min(stopsForBounds.first['targetLat'], _currentLocation.latitude);
-      double maxLat = math.max(stopsForBounds.first['targetLat'], _currentLocation.latitude);
-      double minLng = math.min(stopsForBounds.first['targetLng'], _currentLocation.longitude);
-      double maxLng = math.max(stopsForBounds.first['targetLng'], _currentLocation.longitude);
-
-      for (var stop in allStops) {
-        final isPickup = stop['isPickup'];
-        final lat = stop['targetLat'] as double;
-        final lng = stop['targetLng'] as double;
-        final pos = LatLng(lat, lng);
-
-        if (!stop['completado']) {
-          minLat = math.min(minLat, lat);
-          maxLat = math.max(maxLat, lat);
-          minLng = math.min(minLng, lng);
-          maxLng = math.max(maxLng, lng);
-        }
-
-        newMarkers.add(
-          Marker(
-            markerId: MarkerId('stop_${stop['pedido']['id']}_$isPickup'),
-            position: pos,
-            anchor: const Offset(0.5, 1.0), // 🎯 Hace que la punta de la cola apunte a la coordenada exacta
-            icon: isPickup
-              ? (_pickupIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange))
-              : (_dropoffIcon ?? BitmapDescriptor.defaultMarker), // Ícono de perfil personalizado 
-            infoWindow: InfoWindow(
-              title: stop['action'],
-              snippet: stop['title'],
-            ),
-            zIndex: stop['completado'] ? 1.0 : 10.0,
-            alpha: stop['completado'] ? 0.5 : 1.0,
-          )
-        );
-//         debugPrint('[MAPA-LOG] 📍 Marcador generado -> ID: stop_${stop['pedido']['id']}_$isPickup, esPickup: $isPickup, COLOR: ${isPickup ? "NARANJA" : "AZUL"}');
-        orderIndex++;
-      }
-
-      // 🔑 PASO 1: Ir primero al punto central de los pedidos con zoom fijo
-      // Esto garantiza que los tiles del mapa carguen de inmediato
-      final centerLat = (minLat + maxLat) / 2;
-      final centerLng = (minLng + maxLng) / 2;
-      if (!_cameraPositioned) {
-        _cameraPositioned = true;
-//         debugPrint('[MAPA] _updateMapData → 🎯 animateCamera center=(${centerLat.toStringAsFixed(4)}, ${centerLng.toStringAsFixed(4)})');
-        try {
-          await _mapController!.animateCamera(
-            CameraUpdate.newCameraPosition(
-              CameraPosition(target: LatLng(centerLat, centerLng), zoom: 14),
-            ),
-          );
-//           debugPrint('[MAPA] _updateMapData → animateCamera center ✅ OK');
-        } catch (e) {
-          debugPrint('[MAPA] _updateMapData → animateCamera center ❌ ERROR: $e');
-        }
-
-        // 🔑 PASO 2: Después de 600ms (los tiles ya cargaron), ajustar el encuadre
-        bounds = LatLngBounds(
-          southwest: LatLng(minLat, minLng),
-          northeast: LatLng(maxLat, maxLng),
-        );
-//         debugPrint('[MAPA-LOG] 📐 Encuadre Bounds -> SW: $minLat, $minLng | NE: $maxLat, $maxLng');
-        Future.delayed(const Duration(milliseconds: 600), () {
-          if (mounted && _mapController != null) {
-            try {
-//               debugPrint('[MAPA-LOG] 🎥 Ajustando encuadre final con padding 150.0');
-              _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds!, 150.0));
-            } catch (e) {
-              debugPrint('[MAPA-LOG] Error animating bounds: $e');
-            }
-          }
-        });
-      }
-
-      // 3. Trazar ruta
-      await _fetchRealRoute(allStops);
-    } else {
-      try {
-        _mapController!.animateCamera(CameraUpdate.newLatLngZoom(_currentLocation, 15));
-      } catch (e) {
-        debugPrint('Error animating to current location: $e');
-      }
-      if (mounted) {
-        setState(() {
-          _polylines = {};
-        });
-      }
-    }
-
-    if (mounted) {
-      setState(() {
-        _markers = newMarkers;
-        _circles = newCircles;
-      });
-    }
-  }
-
-  // Paleta de colores por tramo — sin verde (reservado para completado)
-  static const List<Color> _routeColors = [
-    Color(0xFF3B82F6), // Azul (primer tramo: conductor → parada 1)
-    Color(0xFFF97316), // Naranja
-    Color(0xFFA855F7), // Morado
-    Color(0xFFEC4899), // Rosa
-    Color(0xFF06B6D4), // Cian
-    Color(0xFFEAB308), // Amarillo
-  ];
-
-  Future<void> _fetchRealRoute(List<Map<String, dynamic>> allStops, {bool forceFetch = false}) async {
-    try {
-      final pendingStops = allStops.where((s) => s['completado'] == false).toList();
-      if (pendingStops.isEmpty) return;
-
-      final nextStop = pendingStops.first;
-      final pedidoId = nextStop['pedido']['id'];
-      final action = nextStop['action'];
-      final routeId = '${pedidoId}_$action';
-
-      // Si ya tenemos la ruta en RAM para este destino y no estamos forzando, solo actualizar
-      if (!forceFetch && _cachedActiveRouteId == routeId && _cachedActiveRoute != null) {
-        _updateDynamicRoute();
-        return;
-      }
-
-      PolylinePoints polylinePoints = PolylinePoints();
-      List<LatLng> segPoints = [];
-      
-      try {
-        final result = await polylinePoints.getRouteBetweenCoordinates(
-          googleApiKey: 'AIzaSyBOZkp595ze0Agwb7yPG5u7MD29EL9gHMw',
-          request: PolylineRequest(
-            origin: PointLatLng(_currentLocation.latitude, _currentLocation.longitude),
-            destination: PointLatLng(nextStop['targetLat'], nextStop['targetLng']),
-            mode: TravelMode.driving,
-          ),
-        );
-        if (result.points.isNotEmpty) {
-          segPoints = result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
-        }
-      } catch (e) {
-        debugPrint('[MAPA] Error obteniendo ruta dinámica: $e');
-      }
-
-      // Fallback a línea recta si falla la API
-      if (segPoints.isEmpty) {
-        segPoints = [_currentLocation, LatLng(nextStop['targetLat'], nextStop['targetLng'])];
-      }
-
-      _cachedActiveRoute = segPoints;
-      _cachedActiveRouteId = routeId;
-      _lastRouteProgressIndex = 0; // Reiniciamos el progreso en la nueva ruta
-
-      _updateDynamicRoute();
-    } catch (globalError) {
-      debugPrint('[MAPA] Error crítico en _fetchRealRoute: $globalError');
-    }
-  }
-
-  void _updateDynamicRoute() {
-    if (_cachedActiveRoute == null || _cachedActiveRoute!.isEmpty) return;
-
-    // Encontrar el punto más cercano en la ruta pre-calculada a la ubicación actual
-    // 🛡️ INTELIGENCIA DE RUTAS (Prevención de fallos):
-    // Solo buscamos en una "ventana" de los siguientes 50 puntos desde donde nos quedamos.
-    // Esto evita que si la calle hace un "loop" (circuito) o cruza por el mismo lado después, 
-    // la línea azul se acorte repentinamente brincándose media ciudad por error.
-    int lookaheadLimit = math.min(_cachedActiveRoute!.length, _lastRouteProgressIndex + 50);
-    
-    int closestIndex = _lastRouteProgressIndex;
-    double minDistance = double.infinity;
-    
-    for (int i = _lastRouteProgressIndex; i < lookaheadLimit; i++) {
-      final dist = _haversineKm(
-        _currentLocation.latitude, _currentLocation.longitude,
-        _cachedActiveRoute![i].latitude, _cachedActiveRoute![i].longitude
-      );
-      if (dist < minDistance) {
-        minDistance = dist;
-        closestIndex = i;
-      }
-    }
-
-    // 🚀 NUEVA INTELIGENCIA: OFF-ROUTE RECALCULATION
-    if (minDistance > 0.05) { // Más de 50 metros lejos de la ruta
-      final now = DateTime.now();
-      if (_lastRecalcTime == null || now.difference(_lastRecalcTime!).inSeconds > 15) {
-        _lastRecalcTime = now;
-        debugPrint('[MAPA-LOG] ⚠️ Desvío detectado (${(minDistance * 1000).toStringAsFixed(1)}m). Forzando recálculo...');
-        _fetchRealRoute(_calcularTodasLasParadas(), forceFetch: true);
-        return; // Terminamos aquí, la API volverá a dibujarlo cuando responda
-      }
-    }
-
-    // Actualizamos nuestro progreso guardado para no retroceder en búsquedas futuras
-    _lastRouteProgressIndex = closestIndex;
-
-    // Dibujar la ruta dinámica: Desde el conductor uniendo con el resto del camino
-    final dynamicPoints = [
-      _currentLocation,
-      ..._cachedActiveRoute!.sublist(closestIndex)
-    ];
-
-    final newPolyline = Polyline(
-      polylineId: const PolylineId('dynamic_route'),
-      points: dynamicPoints,
-      color: const Color(0xFF3B82F6), // Azul sólido
-      width: 9,
-      jointType: JointType.round,
-      endCap: Cap.roundCap,
-      startCap: Cap.roundCap,
-      zIndex: 20,
-    );
-
-    if (mounted) {
-      setState(() {
-        _polylines = {newPolyline};
-      });
-    }
-  }
 
   Future<void> _loadStatusSilently() async {
     final statusData = await ref.read(repartidorServiceProvider).getCurrentStatus();
@@ -852,22 +259,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
             _currentLocation = LatLng(pos.latitude, pos.longitude);
             _cachedLocation = _currentLocation;
           });
-          // Si el mapa ya está listo, moverlo a la ubicación real
-          if (_mapController != null) {
-//             debugPrint('[MAPA-LOG] 📍 Ubicación real obtenida post-init: $pos. Recalculando mapa...');
-            if (_pedidosActivos.isNotEmpty) {
-              // Recalcular toda la ruta y el encuadre usando la coordenada real
-              _cameraPositioned = false; // FORZAR ENCUADRE
-              _updateMapData(_calcularTodasLasParadas());
-            } else {
-//               debugPrint('[MAPA-LOG] 📍 No hay pedidos, moviendo a ubicación del conductor.');
-              _mapController!.animateCamera(
-                CameraUpdate.newCameraPosition(CameraPosition(target: _currentLocation, zoom: 15)),
-              ).catchError((e) => debugPrint('[MAPA] animateCamera post-location ❌: $e'));
-            }
-          } else {
-            debugPrint('[MAPA] ⚠️ _mapController es NULL cuando llegó la ubicación real');
-          }
+          // Removido inicializador de Google Maps
         }
         
         // Sincronización inicial obligatoria si decidimos estar en línea
@@ -897,24 +289,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
             setState(() {
               _currentLocation = LatLng(position.latitude, position.longitude);
               _cachedLocation = _currentLocation;
-              _updateDriverMarkerSilently();
             });
-            _updateDynamicRoute(); // 🚀 ACTUALIZACIÓN DINÁMICA DE LA RUTA EN VIVO
-
-            // 🎥 AUTO-FOLLOW CAMERA EN NAVEGACIÓN
-            if (_isFollowingDriver && _mapController != null && _pedidosActivos.isNotEmpty) {
-              _lastProgrammaticCameraMove = DateTime.now();
-              _mapController!.animateCamera(
-                CameraUpdate.newCameraPosition(
-                  CameraPosition(
-                    target: _currentLocation,
-                    zoom: 17,
-                    tilt: 45,
-                    bearing: (position.speed < 1.0) ? _calcularBearingHaciaDestino() : position.heading, // Enfoca al destino si está detenido
-                  ),
-                ),
-              ).catchError((_) {});
-            }
 
             if (_isOnline && !_isPressed && !_isSuccess && _repartidorId != null) {
               int? bat;
@@ -953,23 +328,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
   /// ETA en minutos asumiendo 25 km/h promedio en ciudad.
   int _etaMin(double distKm) => (distKm / 25.0 * 60).ceil().clamp(1, 999);
 
-  /// Calcula el ángulo hacia el destino para enfocar la cámara 3D correctamente.
-  double _calcularBearingHaciaDestino() {
-    final nextStop = _calcularProximaParada();
-    if (nextStop == null) return 0.0;
-    
-    final lat1 = _currentLocation.latitude * math.pi / 180.0;
-    final lng1 = _currentLocation.longitude * math.pi / 180.0;
-    final lat2 = (nextStop['targetLat'] as num).toDouble() * math.pi / 180.0;
-    final lng2 = (nextStop['targetLng'] as num).toDouble() * math.pi / 180.0;
 
-    final dLng = lng2 - lng1;
-    final y = math.sin(dLng) * math.cos(lat2);
-    final x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dLng);
-    final bearing = math.atan2(y, x);
-
-    return (bearing * 180.0 / math.pi + 360.0) % 360.0;
-  }
 
 
   // ==========================================================================
@@ -992,12 +351,11 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
     _positionStream?.cancel();
     _radarTimer?.cancel();
     _clearPedidosTimer?.cancel();
-    _routeDrawTimer?.cancel();
+    // _routeDrawTimer?.cancel(); // Eliminado
     _radarPulseController.dispose();
     _cardPulseController.dispose();
     _successPlayer.dispose();
     _radarPlayer.dispose();
-    _mapController = null;
     super.dispose();
   }
 
@@ -1555,7 +913,6 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
           _isSuccess = false;
           _isOnline = false;
           _cachedIsOnline = false;
-          _mapController = null;
         });
       } else {
         setState(() {
@@ -1605,9 +962,6 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
             _pedidosActivos = mappedList;
             _lastPedidoIds = mappedList.map((p) => p['id'].toString()).toList();
           });
-          if (_mapController != null) {
-            _updateMapData(_calcularTodasLasParadas());
-          }
         }
       });
     }
@@ -1630,7 +984,6 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
               setState(() {
                 _pedidosActivos = [];
                 _lastPedidoIds = [];
-                _polylines = {};
                 _clearPedidosTimer = null;
                 if (_isOnline && _radarTimer == null) _startRadarSound();
               });
@@ -1652,21 +1005,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
         setState(() {
           _pedidosActivos = mappedList;
           _lastPedidoIds = newIds;
-          if (pedidosChanged) _cameraPositioned = false; // reposicionar cámara si cambió la lista
         });
-        
-        // Mantener el mapa sincronizado con la realidad
-        if (_mapController != null) {
-          if (mappedList.isEmpty) {
-            setState(() { _polylines = {}; });
-          } else {
-            _updateMapData(_calcularTodasLasParadas());
-            // Auto-enfocar si la próxima parada cambió
-            Future.delayed(const Duration(milliseconds: 400), () {
-              if (mounted) _autoFocusNextStop();
-            });
-          }
-        }
 
         if (mappedList.isNotEmpty) {
           _stopRadarSound();
@@ -1694,11 +1033,6 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    // Actualizar estilo del mapa de forma dinámica si ya existe el controlador
-    if (_mapController != null) {
-      _mapController!.setMapStyle(isDark ? _mapStyleDark : _mapStyleLight);
-    }
-    
     final ganancias = widget.stats?['ganancias'] ?? 0.0;
     
     return _buildRadarMode(context, isDark, cs, ganancias, providerPedidos);
@@ -1725,51 +1059,7 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
     return nextStop;
   }
 
-  void _recenterRadarMap(BuildContext context, Map<String, dynamic> nextStop) {
-    if (_mapController == null) return;
-    
-    // Reactivar seguimiento de cámara al tocar Radar
-    _isFollowingDriver = true;
-    
-//     debugPrint('[MAPA-LOG] 🧭 Botón Radar presionado, estado actual: $_navButtonState');
-    if (_navButtonState == 0) {
-//       debugPrint('[MAPA-LOG] 🎥 Zooming a destino (zoom 16.0)');
-      // Forzamos recálculo de la ruta desde Google Maps al presionar el radar en estado 0
-      _fetchRealRoute(_calcularTodasLasParadas(), forceFetch: true);
-      
-      _mapController!.animateCamera(CameraUpdate.newCameraPosition(
-        CameraPosition(target: LatLng(nextStop['targetLat'], nextStop['targetLng']), zoom: 16.0, tilt: 45.0),
-      ));
-      TopToast.show(context, '📍 Ruta recalculada hacia: ${nextStop['title']}', backgroundColor: const Color(0xFF10B981));
-      _navButtonState = 1;
-    } else if (_navButtonState == 1) {
-//       debugPrint('[MAPA-LOG] 🎥 Zooming a conductor (zoom 16.0)');
-      _mapController!.animateCamera(CameraUpdate.newCameraPosition(
-        CameraPosition(target: _currentLocation, zoom: 16.0, tilt: 50.0),
-      ));
-      TopToast.show(context, '🚗 Esta es tu ubicación', backgroundColor: Colors.blueAccent);
-      _navButtonState = 2;
-    } else {
-      double x0 = _currentLocation.latitude;
-      double x1 = nextStop['targetLat'];
-      double y0 = _currentLocation.longitude;
-      double y1 = nextStop['targetLng'];
-      
-      if (x0 > x1) { final t = x0; x0 = x1; x1 = t; }
-      if (y0 > y1) { final t = y0; y0 = y1; y1 = t; }
-      
-      // Añadimos un micro-margen mínimo por si ambos puntos son idénticos
-      final bounds = LatLngBounds(
-        southwest: LatLng(x0 - 0.0001, y0 - 0.0001),
-        northeast: LatLng(x1 + 0.0001, y1 + 0.0001),
-      );
-      
-//       debugPrint('[MAPA-LOG] 🎥 Zooming a vista panorámica (bounds padding 150.0)');
-      _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 150.0));
-      TopToast.show(context, '🗺️ Panorama completo de tu ruta', backgroundColor: Colors.black87);
-      _navButtonState = 0;
-    }
-  }
+
 
   Widget _buildRadarMode(BuildContext context, bool isDark, ColorScheme cs, dynamic ganancias, List<PedidoModel> providerPedidos) {
     final nextStop = _calcularProximaParada();
@@ -2536,24 +1826,10 @@ class _DriverDashboardViewState extends ConsumerState<DriverDashboardView> with 
                           if (mounted) {
                             final nStop = _calcularProximaParada();
                             if (nStop != null) {
-                               _isFollowingDriver = true;
+                               // _isFollowingDriver = true;
                                _navButtonState = 2; // Estado de seguimiento
-                               
-                               if (_mapController != null) {
-                                 _lastProgrammaticCameraMove = DateTime.now();
-                                 _mapController!.animateCamera(
-                                   CameraUpdate.newCameraPosition(
-                                     CameraPosition(
-                                       target: _currentLocation,
-                                       zoom: 17,
-                                       tilt: 45,
-                                       bearing: _calcularBearingHaciaDestino(),
-                                     ),
-                                   ),
-                                 );
-                               }
-                            }
-                          }
+                             }
+                           }
                         });
                       } catch (e) {
                         controller.reset();

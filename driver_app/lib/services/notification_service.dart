@@ -14,7 +14,9 @@ class NotificationService {
   Future<void> init({bool isBackground = false}) async {
     // Solicitar permiso POST_NOTIFICATIONS en Android 13+ (Solo si estamos en Foreground)
     if (!isBackground) {
-      await Permission.notification.request();
+      // NO hacemos await aquí porque en Funtouch OS (Vivo) pedir permisos 
+      // antes de runApp() congela el hilo principal indefinidamente.
+      Permission.notification.request();
     }
 
     // El ícono debe coincidir con el nombre de tu launcher_icon o agregar un ícono pequeño específico en drawable

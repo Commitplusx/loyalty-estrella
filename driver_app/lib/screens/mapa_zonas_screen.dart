@@ -4,7 +4,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import '../core/supabase_config.dart';
@@ -52,23 +52,23 @@ const _zonasDef = [
 ];
 
 // Helper para decodificar GeoJSON
-List<LatLng> _parseGeoJson(String geojsonStr) {
+List<Position> _parseGeoJson(String geojsonStr) {
   try {
     final geojson = jsonDecode(geojsonStr);
     final type = geojson['type'];
     final coords = geojson['coordinates'];
     
-    List<LatLng> points = [];
+    List<Position> points = [];
     if (type == 'Polygon') {
       final ring = coords[0] as List;
       for (var p in ring) {
-        points.add(LatLng((p[1] as num).toDouble(), (p[0] as num).toDouble()));
+        points.add(Position((p[0] as num).toDouble(), (p[1] as num).toDouble()));
       }
     } else if (type == 'MultiPolygon') {
       final polygon = coords[0] as List;
       final ring = polygon[0] as List;
       for (var p in ring) {
-        points.add(LatLng((p[1] as num).toDouble(), (p[0] as num).toDouble()));
+        points.add(Position((p[0] as num).toDouble(), (p[1] as num).toDouble()));
       }
     }
     return points;
@@ -131,26 +131,27 @@ class _MapaZonasScreenState extends ConsumerState<MapaZonasScreen> {
   @override
   void dispose() {
     _searchCtrl.dispose();
-    _mapCtrl?.dispose();
     super.dispose();
   }
 
-  double _calcBboxArea(List<LatLng> points) {
-    if (points.isEmpty) return 0;
-    double minLat = points[0].latitude, maxLat = points[0].latitude;
-    double minLng = points[0].longitude, maxLng = points[0].longitude;
-    for (var p in points) {
-      if (p.latitude < minLat) minLat = p.latitude;
-      if (p.latitude > maxLat) maxLat = p.latitude;
-      if (p.longitude < minLng) minLng = p.longitude;
-      if (p.longitude > maxLng) maxLng = p.longitude;
+  double _calcBboxArea(List<Position> pts) {
+    if (pts.isEmpty) return 0;
+    double minX = 999, maxX = -999, minY = 999, maxY = -999;
+    for (var p in pts) {
+      if (p.lng < minX) minX = p.lng.toDouble();
+      if (p.lng > maxX) maxX = p.lng.toDouble();
+      if (p.lat < minY) minY = p.lat.toDouble();
+      if (p.lat > maxY) maxY = p.lat.toDouble();
     }
-    return (maxLat - minLat) * (maxLng - minLng);
+    return (maxX - minX) * (maxY - minY);
   }
 
-  // 🌍 Renderizado de Polígonos de BD 🌍
-  Set<Polygon> _buildPolygons(List<Map<String, dynamic>> data) {
-    Set<Polygon> polys = {};
+  // 🌍 Renderizado de Polígonos en Mapbox 🌍
+  Future<void> _drawMapboxPolygons(List<Map<String, dynamic>> data) async {
+    if (_polygonManager == null) return;
+    await _polygonManager!.deleteAll();
+
+    List<PolygonAnnotationOptions> optionsList = [];
 
     for (var p in data) {
       if (!_mostrarCapas && p['tipo'] == 'colonia') continue; // Filtro de capas
@@ -179,25 +180,10 @@ class _MapaZonasScreenState extends ConsumerState<MapaZonasScreen> {
 
       final color = _colorDeZona(zona);
       
-      final area = _calcBboxArea(points);
-      int baseZ = (1000000 - (area * 10000000)).toInt().clamp(0, 1000000);
-      
-      polys.add(Polygon(
-        polygonId: PolygonId(p['id'].toString()),
-        points: points,
-        fillColor: isSelected ? color.withOpacity(0.5) : color.withOpacity(0.2),
-        strokeColor: isSelected ? Colors.white : color,
-        strokeWidth: isSelected ? 4 : 2,
-        zIndex: baseZ,
-        consumeTapEvents: true,
-        onTap: () {
-//           debugPrint('Polígono tocado: ID=${p['id']}, Tipo=${p['tipo']}, Nombre=${p['nombre']}');
-          setState(() {
-            _poligonoSeleccionado = p;
-            _modoMagico = false;
-            _resultadoMagico = null;
-          });
-        },
+      optionsList.add(PolygonAnnotationOptions(
+        geometry: Polygon(coordinates: [points]),
+        fillColor: isSelected ? color.withOpacity(0.5).value : color.withOpacity(0.2).value,
+        fillOutlineColor: isSelected ? Colors.white.value : color.value,
       ));
     }
 
@@ -205,17 +191,17 @@ class _MapaZonasScreenState extends ConsumerState<MapaZonasScreen> {
     if (_modoMagico && _resultadoMagico != null && _resultadoMagico!['geojson'] != null) {
       final points = _parseGeoJson(jsonEncode(_resultadoMagico!['geojson']));
       if (points.isNotEmpty) {
-        polys.add(Polygon(
-          polygonId: const PolygonId('magico'),
-          points: points,
-          fillColor: Colors.deepPurpleAccent.withOpacity(0.4),
-          strokeColor: Colors.deepPurpleAccent,
-          strokeWidth: 4,
+        optionsList.add(PolygonAnnotationOptions(
+          geometry: Polygon(coordinates: [points]),
+          fillColor: Colors.deepPurpleAccent.withOpacity(0.4).value,
+          fillOutlineColor: Colors.deepPurpleAccent.value,
         ));
       }
     }
 
-    return polys;
+    if (optionsList.isNotEmpty) {
+      await _polygonManager!.createMulti(optionsList);
+    }
   }
 
   // ── Buscar Mágicamente en OSM ───────────────────────────────────────────
@@ -241,7 +227,7 @@ class _MapaZonasScreenState extends ConsumerState<MapaZonasScreen> {
       final lat = double.parse(res['lat'].toString());
       final lon = double.parse(res['lon'].toString());
       
-      _mapCtrl?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lon), 15));
+      _mapboxMap?.flyTo(CameraOptions(center: Point(coordinates: Position(lon, lat)), zoom: 15.0), MapAnimationOptions(duration: 1000));
       
       if (res['geojson']?['type'] != 'Polygon' && res['geojson']?['type'] != 'MultiPolygon') {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -339,7 +325,7 @@ class _MapaZonasScreenState extends ConsumerState<MapaZonasScreen> {
     }).select('id').single();
 
     // Actualizar su geometría
-    final coordsArray = points.map((p) => [p.longitude, p.latitude]).toList();
+    final coordsArray = points.map((p) => [p.lng, p.lat]).toList();
     await supabase.rpc('update_poligono_geom', params: {
       'p_id': insertRes['id'],
       'p_tipo': 'colonia',
@@ -432,22 +418,38 @@ class _MapaZonasScreenState extends ConsumerState<MapaZonasScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (data) {
+          if (_polygonManager != null) {
+            _drawMapboxPolygons(data);
+          }
           return Stack(
             children: [
               // ── MAPA ────────────────────────────────────────────────────────
-              GoogleMap(
-                initialCameraPosition: const CameraPosition(target: _comitan, zoom: 13),
-                onMapCreated: (ctrl) => _mapCtrl = ctrl,
-                polygons: _buildPolygons(data),
-                myLocationButtonEnabled: false,
-                zoomControlsEnabled: false,
-                mapToolbarEnabled: false,
-                compassEnabled: true,
-                onTap: (_) {
+              MapWidget(
+                cameraOptions: CameraOptions(
+                  center: Point(coordinates: Position(-92.13, 16.25)), // Comitan
+                  zoom: 13,
+                ),
+                onMapCreated: (mapboxMap) async {
+                  _mapboxMap = mapboxMap;
+                  await mapboxMap.compass.updateSettings(CompassSettings(enabled: true));
+                  await mapboxMap.scaleBar.updateSettings(ScaleBarSettings(enabled: false));
+                  await mapboxMap.logo.updateSettings(LogoSettings(position: OrnamentPosition.BOTTOM_LEFT, marginBottom: 30));
+                  await mapboxMap.attribution.updateSettings(AttributionSettings(position: OrnamentPosition.BOTTOM_LEFT, marginBottom: 10));
+                  
+                  _polygonManager = await mapboxMap.annotations.createPolygonAnnotationManager();
+                  
+                  if (mounted) {
+                    _drawMapboxPolygons(data);
+                  }
+                },
+                onTapListener: (ctx) {
                   if (_poligonoSeleccionado != null) {
                     setState(() => _poligonoSeleccionado = null);
                   }
                 },
+                resourceOptions: ResourceOptions(
+                  accessToken: const String.fromEnvironment("MAPBOX_ACCESS_TOKEN", defaultValue: "pk.eyJ1IjoiZGVpZmZ4ZCIsImEiOiJjbW9ha2UybG4wNzJiMnJwcHJteXFua3BmIn0.hASM0wsh3h4QYqnBNHwa1A"),
+                ),
               ),
 
               // ── HEADER ──────────────────────────────────────────────────────

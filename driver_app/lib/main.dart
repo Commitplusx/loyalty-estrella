@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,8 +38,8 @@ void stopAlarm() {
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-//   debugPrint("Handling a background message: ${message.messageId}");
-  
+  debugPrint("🚨 [FCM BG] NOTIFICACIÓN RECIBIDA EN SEGUNDO PLANO");
+  debugPrint("🚨 [FCM BG] Payload Data: ${message.data}");
   if (message.data['tipo'] == 'pedido_asignado') {
     // Validar que el push sea realmente para el usuario actual (aislar sesiones cruzadas)
     await Supabase.initialize(
@@ -81,10 +82,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   FlutterForegroundTask.requestIgnoreBatteryOptimization();
-//   debugPrint('[MAIN] 1. ensureInitialized OK');
+  debugPrint('[MAIN] 1. ensureInitialized OK');
 
   await initializeDateFormatting('es');
-//   debugPrint('[MAIN] 2. initializeDateFormatting OK');
+  debugPrint('[MAIN] 2. initializeDateFormatting OK');
 
   // Configurar audioplayers para que suene como ALARMA (salta el modo silencio/no molestar)
   final audioContext = AudioContext(
@@ -103,11 +104,11 @@ void main() async {
     ),
   );
   AudioPlayer.global.setAudioContext(audioContext);
-//   debugPrint('[MAIN] 3. AudioPlayer configurado OK');
+  debugPrint('[MAIN] 3. AudioPlayer configurado OK');
 
   // Inicializar Firebase
   await Firebase.initializeApp();
-//   debugPrint('[MAIN] 4. Firebase OK');
+  debugPrint('[MAIN] 4. Firebase OK');
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   // ⚠️ IMPORTANTE: NO hacer await en requestPermission ni en topic operations
@@ -118,33 +119,28 @@ void main() async {
       await FirebaseMessaging.instance.requestPermission(
         alert: true, badge: true, sound: true,
       );
-//       debugPrint('[MAIN] FCM: permisos concedidos');
     } catch (e) {
       debugPrint('[MAIN] FCM: error requestPermission: $e');
-    }
-    try {
-      await FirebaseMessaging.instance.unsubscribeFromTopic('admins');
-//       debugPrint('[MAIN] FCM: desuscrito de admins OK');
-    } catch (e) {
-      debugPrint('[MAIN] FCM: error unsubscribe: $e');
     }
   });
 
   GoogleFonts.config.allowRuntimeFetching = true;
-//   debugPrint('[MAIN] 5. GoogleFonts OK');
+  debugPrint('[MAIN] 5. GoogleFonts OK');
 
   await Supabase.initialize(
     url: 'https://jdrrkpvodnqoljycixbg.supabase.co',
     anonKey:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkcnJrcHZvZG5xb2xqeWNpeGJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNDkyOTEsImV4cCI6MjA5MDYyNTI5MX0.WEKqdL2p99cy8XvyqY31EP8-KbdOnhx2-fx9qz_iQtQ',
   );
-//   debugPrint('[MAIN] 6. Supabase OK');
+  debugPrint('[MAIN] 6. Supabase OK');
 
   await NotificationService().init();
-//   debugPrint('[MAIN] 7. NotificationService OK');
+  debugPrint('[MAIN] 7. NotificationService OK');
+
+  MapboxOptions.setAccessToken('pk.eyJ1IjoiZGVpZmZ4ZCIsImEiOiJjbW9ha2UybG4wNzJiMnJwcHJteXFua3BmIn0.hASM0wsh3h4QYqnBNHwa1A');
 
   OriginIslandService.initService();
-//   debugPrint('[MAIN] 8. OriginIslandService OK → llamando runApp()');
+  debugPrint('[MAIN] 8. OriginIslandService OK → llamando runApp()');
 
   FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
     stopAlarm(); // Detener alarma al abrir notificación
@@ -199,8 +195,8 @@ void main() async {
 
   // Escuchar cuando llega un push mientras la app ESTÁ ABIERTA (Foreground)
   FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-//     debugPrint("==== FOREGROUND FIREBASE PUSH RECEIVED ====");
-//     debugPrint("Data: ${message.data}");
+    debugPrint("🚨 [FCM FOREGROUND] NOTIFICACIÓN RECIBIDA CON APP ABIERTA");
+    debugPrint("🚨 [FCM FOREGROUND] Payload Data: ${message.data}");
     
     // Si la notificación trae texto (ej. push de Admin), forzamos que baje el banner 
     // incluso si la app está abierta (exactamente como WhatsApp)
@@ -246,16 +242,16 @@ void main() async {
   Supabase.instance.client.auth.onAuthStateChange.listen((data) {
     final event = data.event;
     final currentUser = Supabase.instance.client.auth.currentUser;
-    
-    // Gestionar tópicos de FCM según el rol
+
+    // Suscribir al repartidor a su canal privado de Firebase para recibir Alertas de Pedidos.
+    // Usamos try-catch para evitar que si Firebase falla, se congele toda la aplicación.
     if (currentUser != null) {
-//       debugPrint('🔔 [FCM] Usuario es REPARTIDOR. Suscribiendo al tópico privado "driver_${currentUser.id}"...');
-      FirebaseMessaging.instance.subscribeToTopic('driver_${currentUser.id}');
-      FirebaseMessaging.instance.unsubscribeFromTopic('admins');
-    } else {
-      // Si cierra sesión, se desuscribe
-//       debugPrint('🔔 [FCM] Sesión cerrada. Limpiando suscripciones a tópicos FCM...');
-      FirebaseMessaging.instance.unsubscribeFromTopic('admins');
+      try {
+        FirebaseMessaging.instance.subscribeToTopic('driver_${currentUser.id}');
+        debugPrint('✅ [FCM TOPIC] Éxito: Suscrito al tópico: driver_${currentUser.id}');
+      } catch (e) {
+        debugPrint('❌ [FCM TOPIC] Error: No se pudo suscribir al tópico del repartidor: $e');
+      }
     }
 
     if (currentUser != null && _alarmaChannel == null) {

@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/supabase_config.dart';
 import '../models/pedido_model.dart';
 
@@ -289,6 +290,16 @@ class PedidoService {
           'detalles': 'Estado cambiado a $nuevoEstado',
           'actor_id': supabase.auth.currentUser?.id,
         });
+      } catch (_) {}
+
+      // Guardar el estado en SharedPreferences para que el Isolate de GPS sepa la frecuencia
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (nuevoEstado == 'entregado' || nuevoEstado == 'cancelado' || nuevoEstado == 'rechazado') {
+          await prefs.remove('repartidor_estado_viaje'); // Regresa a 60s
+        } else {
+          await prefs.setString('repartidor_estado_viaje', nuevoEstado);
+        }
       } catch (_) {}
 
       // 3. Notificación Fire & Forget

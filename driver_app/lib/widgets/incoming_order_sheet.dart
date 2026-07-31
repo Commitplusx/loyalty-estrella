@@ -109,6 +109,12 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
                   icon: Icons.timer_off_rounded,
                 );
               }
+            } else if (isMio && !_isProcessing) {
+              // Si es mío y yo no lo estoy procesando aquí, significa que lo acepté desde la lista principal.
+              if (mounted && Navigator.canPop(context)) {
+                stopAlarm();
+                Navigator.of(context).pop();
+              }
             }
           },
         )
@@ -129,6 +135,18 @@ class _IncomingOrderSheetContentState extends ConsumerState<_IncomingOrderSheetC
       final pedido = await PedidoService().getPedido(pedidoId);
       
       if (mounted) {
+        final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+        final isMio = (pedido?.estado == 'asignado' || pedido?.estado == 'en_camino') && pedido?.repartidorId == currentUserId;
+        
+        if (isMio) {
+          // Ya lo habíamos aceptado por fuera (ej. en la lista)
+          if (Navigator.canPop(context)) {
+            stopAlarm();
+            Navigator.of(context).pop();
+          }
+          return;
+        }
+
         setState(() {
           _pedido = pedido;
           _isLoading = false;

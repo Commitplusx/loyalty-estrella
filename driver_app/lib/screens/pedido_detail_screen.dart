@@ -149,7 +149,6 @@ class PedidoDetailScreen extends ConsumerWidget {
               child: GestureDetector(
                 onTap: () {
                   ref.invalidate(pedidosActivosProvider);
-                  ref.invalidate(driverStatsProvider);
                   if (Navigator.canPop(context)) {
                     Navigator.pop(context);
                   } else {
@@ -203,14 +202,12 @@ class PedidoDetailScreen extends ConsumerWidget {
                 pedido: pedido,
                 onRefresh: () {
                   ref.invalidate(pedidoDetailProvider(pedidoId));
-                  ref.invalidate(driverStatsProvider);
                 },
               )
             : DriverPedidoDetailView(
               pedido: pedido,
               onRefresh: () {
                 ref.invalidate(pedidoDetailProvider(pedidoId));
-                ref.invalidate(driverStatsProvider);
               },
             ),
         );

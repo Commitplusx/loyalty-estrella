@@ -28,6 +28,8 @@ class OriginIslandTaskHandler extends TaskHandler {
 //     print('🏝️ [BG] Servicio de fondo iniciado.');
   }
 
+  static DateTime? _lastUpdate;
+
   @override
   void onRepeatEvent(DateTime timestamp) {
     // Lanzamos async sin bloquear el hilo del Isolate
@@ -41,11 +43,26 @@ class OriginIslandTaskHandler extends TaskHandler {
       await prefs.reload(); // Obligatorio para aislamientos en segundo plano
       final repartidorId = prefs.getString('repartidor_id');
       final isOnline = prefs.getBool('repartidor_online') ?? false;
+      final estadoViaje = prefs.getString('repartidor_estado_viaje'); // null, asignado, en_cocina, llegada_restaurante, en_camino
 
       if (repartidorId == null || !isOnline) {
 //         print('🏝️ [BG] Repartidor offline o sin ID — omitiendo update.');
         return;
       }
+
+      // 1.5 Lógica de estrangulamiento (Throttling) dinámico
+      int intervalSeconds = 60; // Por defecto: Sin viaje o esperando comida
+      if (estadoViaje == 'asignado' || estadoViaje == 'preparando' || estadoViaje == 'en_camino') {
+        intervalSeconds = 1; // Viaje activo (hacia rest o hacia cliente)
+      } else if (estadoViaje == 'en_cocina' || estadoViaje == 'llegada_restaurante') {
+        intervalSeconds = 60; // Llegó al rest pero sigue esperando comida
+      }
+
+      final now = DateTime.now();
+      if (_lastUpdate != null && now.difference(_lastUpdate!).inSeconds < intervalSeconds) {
+        return; // Aún no es tiempo de actualizar
+      }
+      _lastUpdate = now;
 
       // 2. Obtener GPS
       final permission = await Geolocator.checkPermission();
@@ -137,7 +154,7 @@ class OriginIslandService {
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(5000), // cada 5 segundos
+        eventAction: ForegroundTaskEventAction.repeat(1000), // cada 1 segundo (throttled internamente)
         autoRunOnBoot: true,
         allowWakeLock: true,
         allowWifiLock: true,

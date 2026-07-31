@@ -12,10 +12,13 @@ import 'package:geolocator/geolocator.dart';
 import 'dart:io';
 import '../services/local_database.dart';
 import 'driver_pedidos_screen.dart' show pedidosActivosProvider;
+import '../providers/route_optimizer_provider.dart';
+import '../models/route_stop.dart';
 import '../core/theme.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:action_slider/action_slider.dart';
+import 'package:latlong2/latlong.dart';
+import '../widgets/mapbox_navigation_map.dart';
+import '../services/mapbox_directions_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WIDGET PRINCIPAL
@@ -42,13 +45,10 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
   bool _itemsConfirmed = false;
 
   // ── MAPA ──────────────────────────────────────────────────────────────────
-  GoogleMapController? _mapController;
   LatLng? _driverPosition;
-  LatLng? _displayDriverPosition; // El que realmente se dibuja interpolado
+  double? _driverHeading;
   StreamSubscription<Position>? _positionStream;
 
-  AnimationController? _markerAnimController;
-  Animation<LatLng>? _markerAnimation;
   bool _isNavigating = false; // Modo seguimiento activo
   bool _isFullScreenMap = false; // Modo mapa completo
 
@@ -56,152 +56,33 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
   String _etaString = '';
   String _distanceString = '';
   int? _etaSeconds;
-  Set<Polyline> _polylines = {};
-
-  // Iconos personalizados del mapa
-  BitmapDescriptor? _driverIcon;
-  BitmapDescriptor? _restaurantIcon;
-  BitmapDescriptor? _clientIcon;
-  bool _iconsLoaded = false; // flag para forzar rebuild de markers
-
-  // Animación de la ruta (efecto dibujo/trazado)
-  AnimationController? _routeAnimController;
-  List<LatLng> _fullRouteCoordinates = [];
-
-  static const String _mapStyle = '''[
-    {"elementType":"labels","stylers":[{"visibility":"off"}]},
-    {"featureType":"poi","stylers":[{"visibility":"off"}]},
-    {"featureType":"transit","stylers":[{"visibility":"off"}]},
-    {"featureType":"landscape","elementType":"geometry","stylers":[{"color":"#eff1f5"}]},
-    {"featureType":"water","elementType":"geometry","stylers":[{"color":"#cdd6e0"}]},
-    {"featureType":"road","elementType":"geometry.fill","stylers":[{"color":"#ffffff"}]},
-    {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#d5dce4"},{"weight":1.5}]},
-    {"featureType":"road.highway","elementType":"geometry.fill","stylers":[{"color":"#ffffff"}]},
-    {"featureType":"road.highway","elementType":"geometry.stroke","stylers":[{"color":"#c2cad4"},{"weight":2.5}]},
-    {"featureType":"road.arterial","elementType":"geometry.fill","stylers":[{"color":"#ffffff"}]},
-    {"featureType":"road.arterial","elementType":"geometry.stroke","stylers":[{"color":"#d5dce4"},{"weight":1.8}]}
-  ]''';
+  
+  int _frameRouteTrigger = 0;
+  Map<String, dynamic>? _routeGeometry;
+  List<List<double>>? _trafficSignals;
 
   @override
   void initState() {
     super.initState();
-    _markerAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    )..addListener(() {
-        if (_markerAnimation != null && mounted) {
-          setState(() {
-            _displayDriverPosition = _markerAnimation!.value;
-          });
-        }
-      });
-
-    _routeAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..addListener(() {
-        if (_fullRouteCoordinates.isEmpty) return;
-        final int pointCount = (_fullRouteCoordinates.length * _routeAnimController!.value).ceil();
-        final currentPoints = _fullRouteCoordinates.take(pointCount).toList();
-        if (mounted) {
-          setState(() {
-            _polylines = {
-              Polyline(
-                polylineId: const PolylineId('route'),
-                color: const Color(0xFF5038ED),
-                width: 6,
-                points: currentPoints,
-                jointType: JointType.round,
-                startCap: Cap.roundCap,
-                endCap: Cap.roundCap,
-              )
-            };
-          });
-        }
-      });
-
-    _loadCustomMarkers();
     _initGpsStream();
   }
 
 
 
-  /// Dibuja un ícono circular con emoji en canvas y lo convierte a BitmapDescriptor
-  Future<BitmapDescriptor> _buildCanvasMarker({
-    required Color bgColor,
-    required String emoji,
-    double size = 85,
-  }) async {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    final double r = size / 2;
 
-    // Sombra
-    final shadowPaint = Paint()..color = Colors.black.withOpacity(0.25);
-    canvas.drawCircle(Offset(r, r + 4), r * 0.88, shadowPaint);
-
-    // Círculo principal
-    final circlePaint = Paint()..color = bgColor;
-    canvas.drawCircle(Offset(r, r), r * 0.88, circlePaint);
-
-    // Borde blanco
-    final borderPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = size * 0.055;
-    canvas.drawCircle(Offset(r, r), r * 0.88, borderPaint);
-
-    // Emoji centrado
-    final paragraphBuilder = ui.ParagraphBuilder(
-      ui.ParagraphStyle(
-        fontSize: size * 0.46,
-        textAlign: TextAlign.center,
-      ),
-    )..addText(emoji);
-    final paragraph = paragraphBuilder.build()
-      ..layout(ui.ParagraphConstraints(width: size));
-    canvas.drawParagraph(paragraph, Offset(0, r - paragraph.height / 2));
-
-    final picture = recorder.endRecording();
-    final img = await picture.toImage(size.toInt(), size.toInt());
-    final data = await img.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
-  }
-
-  /// Genera los tres marcadores personalizados
-  Future<void> _loadCustomMarkers() async {
-    try {
-      final results = await Future.wait([
-        _buildCanvasMarker(bgColor: const Color(0xFFE53935), emoji: '🏍️'),  // driver
-        _buildCanvasMarker(bgColor: const Color(0xFF1565C0), emoji: '🍽️'),  // restaurante
-        _buildCanvasMarker(bgColor: const Color(0xFF2E7D32), emoji: '🏠'),  // cliente
-      ]);
-      _driverIcon     = results[0];
-      _restaurantIcon = results[1];
-      _clientIcon     = results[2];
-      if (mounted) setState(() => _iconsLoaded = true);
-    } catch (e) {
-      debugPrint('Error generando íconos del mapa: $e');
-    }
-  }
 
   @override
   void didUpdateWidget(covariant DriverActivePedidoView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.pedido.estado != widget.pedido.estado) {
       _itemsConfirmed = false;
-      // Recentrar el mapa cuando cambia el estado
-      WidgetsBinding.instance.addPostFrameCallback((_) => _fitMapToBounds());
       _fetchETA(); // Actualizar ruta y ETA
     }
   }
 
   @override
   void dispose() {
-    _markerAnimController?.dispose();
-    _routeAnimController?.dispose();
     _positionStream?.cancel();
-    _mapController?.dispose();
     super.dispose();
   }
 
@@ -211,66 +92,54 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
       final permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
 
-      // Posición inicial rápida
       bool hasFetchedETA = false;
+      DateTime? lastEtaFetch;
       final lastPos = await Geolocator.getLastKnownPosition();
       if (lastPos != null && mounted) {
         setState(() {
           _driverPosition = LatLng(lastPos.latitude, lastPos.longitude);
-          _displayDriverPosition = _driverPosition;
         });
       }
       
-      // Siempre forzar la descarga de ETA al iniciar, sin importar si lastPos fue nulo.
-      // _fetchETA se encarga de usar getCurrentPosition si es necesario.
       hasFetchedETA = true;
+      lastEtaFetch = DateTime.now();
       _fetchETA();
 
-      // Stream continuo
       _positionStream = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 8, // solo actualizar si se movió 8m
+          distanceFilter: 2, // Bajamos el filtro a 2 metros para actualizaciones mucho más fluidas
         ),
       ).listen((Position pos) {
         if (!mounted) return;
         final newLatLng = LatLng(pos.latitude, pos.longitude);
         
-        // Configurar la animación del marcador
-        if (_displayDriverPosition == null) {
-          _displayDriverPosition = newLatLng;
+        setState(() {
           _driverPosition = newLatLng;
-          setState(() {});
-        } else {
-          _markerAnimation = LatLngTween(
-            begin: _displayDriverPosition!,
-            end: newLatLng,
-          ).animate(CurvedAnimation(
-            parent: _markerAnimController!, 
-            curve: Curves.fastOutSlowIn, // Curva dramática/potente
-          ));
-          
-          _driverPosition = newLatLng;
-          _markerAnimController!.forward(from: 0.0);
-        }
+          // ROTACIÓN MAGICA:
+          // Si va a más de 1.5 m/s, usamos el rumbo real del GPS (conduciendo).
+          // Si está parado o caminando muy lento, apuntamos la cámara hacia el destino
+          // para que la ruta siempre se dibuje hacia ARRIBA por defecto.
+          if (pos.speed > 1.5 && pos.heading >= 0) {
+            _driverHeading = pos.heading;
+          } else {
+            final dest = _getDestinationLatLng();
+            if (dest != null) {
+              double brng = Geolocator.bearingBetween(
+                pos.latitude, pos.longitude,
+                dest.latitude, dest.longitude,
+              );
+              if (brng < 0) brng += 360;
+              _driverHeading = brng;
+            }
+          }
+        });
         
-        if (!hasFetchedETA) {
+        final now = DateTime.now();
+        if (!hasFetchedETA || (lastEtaFetch != null && now.difference(lastEtaFetch!).inSeconds >= 15)) {
           hasFetchedETA = true;
+          lastEtaFetch = now;
           _fetchETA();
-        }
-
-        // Si está en modo navegación, seguir al conductor con tilt (estilo Uber)
-        if (_isNavigating && _mapController != null) {
-          _mapController!.animateCamera(
-            CameraUpdate.newCameraPosition(
-              CameraPosition(
-                target: newLatLng,
-                zoom: 17.5,
-                tilt: 55,
-                bearing: pos.heading,
-              ),
-            ),
-          );
         }
       });
     } catch (e) {
@@ -278,32 +147,7 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
     }
   }
 
-  /// Calcula los bounds para que quepan repartidor + destino en pantalla
-  Future<void> _fitMapToBounds() async {
-    if (_mapController == null) return;
-    final dest = _getDestinationLatLng();
-    if (dest == null && _driverPosition == null) return;
 
-    if (dest != null && _driverPosition != null) {
-      final bounds = LatLngBounds(
-        southwest: LatLng(
-          dest.latitude < _driverPosition!.latitude ? dest.latitude : _driverPosition!.latitude,
-          dest.longitude < _driverPosition!.longitude ? dest.longitude : _driverPosition!.longitude,
-        ),
-        northeast: LatLng(
-          dest.latitude > _driverPosition!.latitude ? dest.latitude : _driverPosition!.latitude,
-          dest.longitude > _driverPosition!.longitude ? dest.longitude : _driverPosition!.longitude,
-        ),
-      );
-      
-      final padding = _isFullScreenMap ? 80.0 : 40.0;
-      await _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, padding));
-    } else if (dest != null) {
-      await _mapController!.animateCamera(CameraUpdate.newLatLngZoom(dest, 14.5));
-    } else if (_driverPosition != null) {
-      await _mapController!.animateCamera(CameraUpdate.newLatLngZoom(_driverPosition!, 14.5));
-    }
-  }
 
   /// Devuelve la coordenada destino según el estado actual del pedido
   LatLng? _getDestinationLatLng() {
@@ -316,10 +160,11 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
         if (p.lat != null && p.lng != null) return LatLng(p.lat!, p.lng!);
         return null;
       case 'recibido':
-        // Mapa estático mostrando el restaurante
-        if (p.restauranteLat != null && p.restauranteLng != null) {
-          return LatLng(p.restauranteLat!, p.restauranteLng!);
+        // El repartidor ya llegó al restaurante. Ahora quiere ver a dónde va a ir (el cliente).
+        if (p.latEntrega != null && p.lngEntrega != null) {
+          return LatLng(p.latEntrega!, p.lngEntrega!);
         }
+        if (p.lat != null && p.lng != null) return LatLng(p.lat!, p.lng!);
         return null;
       case 'en_camino':
         if (p.latEntrega != null && p.lngEntrega != null) {
@@ -338,43 +183,23 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
     try {
       final pos = await Geolocator.getLastKnownPosition() ?? await Geolocator.getCurrentPosition();
       final dest = _getDestinationLatLng();
-      
       if (dest == null) return;
-      
-      final targetLat = dest.latitude;
-      final targetLng = dest.longitude;
 
-      final url = Uri.parse('https://maps.googleapis.com/maps/api/directions/json?origin=${pos.latitude},${pos.longitude}&destination=$targetLat,$targetLng&key=AIzaSyBOZkp595ze0Agwb7yPG5u7MD29EL9gHMw');
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['routes'] != null && data['routes'].isNotEmpty) {
-          final route = data['routes'][0];
-          final leg = route['legs'][0];
-          
-          final points = PolylinePoints().decodePolyline(route['overview_polyline']['points']);
-          final polylineCoordinates = points.map((p) => LatLng(p.latitude, p.longitude)).toList();
-          _fullRouteCoordinates = polylineCoordinates;
+      final routeData = await MapboxDirectionsService.getRoute(
+        originLat: pos.latitude,
+        originLng: pos.longitude,
+        destLat: dest.latitude,
+        destLng: dest.longitude,
+      );
 
-          if (mounted) {
-            setState(() {
-              _etaString = leg['duration']['text'];
-              _distanceString = leg['distance']['text'];
-              _etaSeconds = leg['duration']['value'];
-              
-//               debugPrint('📍 [ETA] _fetchETA successful. String: $_etaString, Dist: $_distanceString, Secs: $_etaSeconds');
-            });
-            // Activar la animación de trazado de ruta en lugar de dibujarla de golpe
-            _routeAnimController?.forward(from: 0.0);
-            
-            // Re-enfocar el mapa para ver la nueva ruta
-            Future.delayed(const Duration(milliseconds: 300), () => _fitMapToBounds());
-          }
-        } else {
-//           debugPrint('📍 [ETA] Google API response did not contain routes.');
-        }
-      } else {
-        debugPrint('📍 [ETA] Google API error ${response.statusCode}');
+      if (routeData != null && mounted) {
+        setState(() {
+          _routeGeometry = routeData['geometry'];
+          _trafficSignals = routeData['traffic_signals'] as List<List<double>>?;
+          _etaSeconds = routeData['duration_seconds'];
+          _etaString = routeData['eta_string'];
+          _distanceString = routeData['distance_string'];
+        });
       }
     } catch (e) {
       debugPrint('📍 [ETA] Error fetchETA: $e');
@@ -454,10 +279,16 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
           setState(() {
             _isFullScreenMap = false;
           });
-          Future.delayed(const Duration(milliseconds: 400), () => _fitMapToBounds());
+
           return false; // Prevent pop
         }
-        return true; // Allow pop
+        
+        if (!context.canPop()) {
+          context.go('/dashboard');
+          return false; // Evita que se cierre la app si venimos de una push
+        }
+        
+        return true; // Allow pop (vuelve a la pantalla anterior)
       },
       child: Container(
         color: bgColor,
@@ -468,7 +299,8 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
               // Hacemos que el panel inferior sea más pequeño y el mapa más grande
               // Si la pantalla es alta, dejamos 380px fijos para el panel inferior, el resto es mapa.
               final normalMapHeight = (maxH > 600 ? maxH - 380.0 : maxH * 0.5);
-              final mapHeight = _isFullScreenMap ? maxH : normalMapHeight;
+              // Si está en pantalla completa, dejamos 40px para el "Drag Handle" y evitar overflow.
+              final mapHeight = _isFullScreenMap ? maxH - 40.0 : normalMapHeight;
               final bottomPanelHeight = maxH - normalMapHeight;
 //               print('DEBUG LAYOUT: maxH=$maxH, mapHeight=$mapHeight, bottomPanelHeight=$bottomPanelHeight, showMap=$showMap, isFullScreen=$_isFullScreenMap');
 
@@ -577,120 +409,31 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildLiveMap(bool isDark) {
     final pedido = widget.pedido;
-    final dest = _getDestinationLatLng();
     final isActive = pedido.estado != 'recibido'; // recibido = mapa estático
+    final dest = _getDestinationLatLng();
+    final bool isPickup = pedido.estado == 'asignado';
 
-    // Posición inicial de la cámara
-    LatLng initialCamera;
-    if (_driverPosition != null) {
-      initialCamera = _driverPosition!;
-    } else if (dest != null) {
-      initialCamera = dest;
-    } else {
-      initialCamera = const LatLng(21.879, -102.296); // fallback Aguascalientes
-    }
-
-    // Marcadores — el sufijo en markerId fuerza a GoogleMap a re-dibujar cuando cargan los iconos
-    final markers = <Marker>{};
-    final iconSuffix = _iconsLoaded ? '_custom' : '_default';
-
-    // Marcador repartidor animado
-    if (_displayDriverPosition != null) {
-      markers.add(Marker(
-        markerId: MarkerId('driver$iconSuffix'),
-        position: _displayDriverPosition!,
-        icon: _driverIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-        anchor: const Offset(0.5, 0.5),
-        zIndex: 2,
-      ));
-    }
-
-    // Marcador destino — con offset si el repartidor está muy cerca
-    if (dest != null) {
-      final destLabel = pedido.estado == 'asignado'
-          ? (pedido.restaurante ?? 'Restaurante')
-          : (pedido.clienteNombre ?? 'Cliente');
-    final destIcon = pedido.estado == 'en_camino'
-          ? (_clientIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen))
-          : (_restaurantIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure));
-
-      // Si el repartidor está a menos de 80m del destino, desplazar el pin del
-      // destino ligeramente al norte para que los dos íconos no se encimen.
-      LatLng displayDest = dest;
-      if (_driverPosition != null) {
-        final distMeters = Geolocator.distanceBetween(
-          _driverPosition!.latitude, _driverPosition!.longitude,
-          dest.latitude, dest.longitude,
-        );
-        if (distMeters < 80) {
-          // ~0.0004° lat ≈ 44m hacia el norte
-          displayDest = LatLng(dest.latitude + 0.0004, dest.longitude);
-        }
-      }
-
-      markers.add(Marker(
-        markerId: MarkerId('destination$iconSuffix'),
-        position: displayDest,
-        infoWindow: InfoWindow(title: destLabel),
-        icon: destIcon,
-        anchor: const Offset(0.5, 0.5),
-        zIndex: 1,
-      ));
-    }
     return Stack(
         children: [
           // ── Mapa ──
-          Listener(
-            onPointerDown: (_) {
-              if (_isNavigating || _isFullScreenMap) {
+          MapboxNavigationMap(
+            driverLat: _driverPosition?.latitude,
+            driverLng: _driverPosition?.longitude,
+            driverHeading: _driverHeading,
+            isPickup: isPickup,
+            destLat: dest?.latitude,
+            destLng: dest?.longitude,
+            routeGeometry: _routeGeometry,
+            trafficSignals: _trafficSignals,
+            followMode: _isNavigating,
+            frameRouteTrigger: _frameRouteTrigger,
+            onPanMap: () {
+              if (_isNavigating) {
                 setState(() {
                   _isNavigating = false;
-                  _isFullScreenMap = false;
                 });
-                // Dar un pequeño delay para que la UI regrese antes de ajustar cámara
-                Future.delayed(const Duration(milliseconds: 100), () => _fitMapToBounds());
               }
             },
-            child: GoogleMap(
-              initialCameraPosition: CameraPosition(target: initialCamera, zoom: 14.5),
-              minMaxZoomPreference: const MinMaxZoomPreference(null, 17.5),
-              markers: markers,
-              polylines: _polylines,
-              zoomControlsEnabled: false,
-              myLocationButtonEnabled: false,
-              mapToolbarEnabled: false,
-              compassEnabled: true, // Brújula activada
-              scrollGesturesEnabled: isActive, // estático en recibido
-              zoomGesturesEnabled: isActive,
-              tiltGesturesEnabled: false,
-              rotateGesturesEnabled: false,
-              onMapCreated: (controller) async {
-                _mapController = controller;
-                await controller.setMapStyle(_mapStyle);
-                // Vuelo de cámara cinematográfico (Premium entry)
-                if (_driverPosition != null) {
-                  // Iniciamos alejados...
-                  await controller.moveCamera(CameraUpdate.newCameraPosition(
-                    CameraPosition(target: initialCamera, zoom: 12.0)
-                  ));
-                  await Future.delayed(const Duration(milliseconds: 250));
-                  // ...y volamos hacia el coche con tilt
-                  await controller.animateCamera(
-                    CameraUpdate.newCameraPosition(
-                      CameraPosition(
-                        target: _driverPosition!,
-                        zoom: 17.5,
-                        tilt: 55.0,
-                        bearing: 20.0,
-                      )
-                    )
-                  );
-                } else {
-                  await Future.delayed(const Duration(milliseconds: 300));
-                  _fitMapToBounds();
-                }
-              },
-            ),
           ),
 
           // ── Pill de estado (arriba centro/izquierda) ──
@@ -726,9 +469,7 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
               children: [
                 // Zoom In
                 GestureDetector(
-                  onTap: () {
-                    _mapController?.animateCamera(CameraUpdate.zoomIn());
-                  },
+                  onTap: () {},
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 8),
                     padding: const EdgeInsets.all(12),
@@ -742,9 +483,7 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
                 ),
                 // Zoom Out
                 GestureDetector(
-                  onTap: () {
-                    _mapController?.animateCamera(CameraUpdate.zoomOut());
-                  },
+                  onTap: () {},
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 8),
                     padding: const EdgeInsets.all(12),
@@ -760,18 +499,6 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
                 GestureDetector(
                   onTap: () {
                     setState(() => _isNavigating = true);
-                    if (_driverPosition != null) {
-                      _mapController?.animateCamera(
-                        CameraUpdate.newCameraPosition(
-                          CameraPosition(
-                            target: LatLng(_driverPosition!.latitude, _driverPosition!.longitude),
-                            zoom: 17.5,
-                            tilt: 55.0,
-                            bearing: 0.0,
-                          ),
-                        ),
-                      );
-                    }
                   },
                   child: Container(
                     padding: const EdgeInsets.all(12),
@@ -789,21 +516,6 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
                     GestureDetector(
                       onTap: () {
                         setState(() => _isNavigating = !_isNavigating);
-                        if (!_isNavigating && _driverPosition != null) {
-                          // Al desactivar: regresar a vista general
-                          _fitMapToBounds();
-                        } else if (_isNavigating && _driverPosition != null) {
-                          // Al activar: enfocar al conductor con inclinación
-                          _mapController?.animateCamera(
-                            CameraUpdate.newCameraPosition(
-                              CameraPosition(
-                                target: _driverPosition!,
-                                zoom: 17.5,
-                                tilt: 55,
-                              ),
-                            ),
-                          );
-                        }
                       },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 250),
@@ -905,8 +617,10 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
                     // Botón Salir de pantalla completa
                     GestureDetector(
                       onTap: () {
-                        setState(() => _isFullScreenMap = false);
-                        Future.delayed(const Duration(milliseconds: 400), () => _fitMapToBounds());
+                        setState(() {
+                          _isFullScreenMap = false;
+                          _frameRouteTrigger++;
+                        });
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -965,8 +679,10 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
                 children: [
                   GestureDetector(
                     onTap: () {
-                      if (Navigator.canPop(context)) {
-                        Navigator.pop(context);
+                      if (context.canPop()) {
+                        context.pop();
+                      } else {
+                        context.go('/dashboard');
                       }
                     },
                     child: Container(
@@ -1030,6 +746,156 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
           ),
         ),
       ),
+    );
+  }
+
+  void _showItineraryBottomSheet(BuildContext context, bool isDark) {
+    final parentContext = this.context; // Guardamos el contexto del padre
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Consumer(
+          builder: (context, ref, child) {
+            final routeAsync = ref.watch(optimizedRouteProvider);
+            final stops = routeAsync.valueOrNull ?? [];
+            
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.7,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 5,
+                      margin: const EdgeInsets.only(bottom: 24),
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white24 : Colors.black12,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'Itinerario Inteligente',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: isDark ? Colors.white : Colors.black87),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Ruta optimizada para ahorrar tiempo y gasolina.',
+                    style: TextStyle(fontSize: 14, color: isDark ? Colors.white70 : Colors.black54),
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  if (routeAsync.isLoading)
+                    const Expanded(child: Center(child: CircularProgressIndicator(color: Color(0xFF5038ED))))
+                  else if (stops.isEmpty)
+                    const Expanded(child: Center(child: Text('No hay paradas pendientes.')))
+                  else
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: stops.length,
+                        itemBuilder: (context, index) {
+                          final stop = stops[index];
+                          final isPickup = stop.type == StopType.pickup;
+                          
+                          return InkWell(
+                            onTap: () {
+                              Navigator.pop(context); // Close bottom sheet
+                              if (stop.pedido.id != widget.pedido.id) {
+                                // Navigate to the selected order usando el contexto del padre
+                                parentContext.pushReplacement('/pedidos/${stop.pedido.id}');
+                              }
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Timeline line and dot
+                                  Column(
+                                    children: [
+                                      Container(
+                                        width: 32,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: isPickup ? const Color(0xFFF9F5FF) : const Color(0xFFF3E8FF),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: stop.pedido.id == widget.pedido.id ? const Color(0xFF7C3AED) : Colors.transparent,
+                                            width: 2,
+                                          )
+                                        ),
+                                        child: Icon(
+                                          isPickup ? Icons.storefront_rounded : Icons.person_pin_circle_rounded,
+                                          size: 16,
+                                          color: const Color(0xFF7C3AED),
+                                        ),
+                                      ),
+                                      if (index < stops.length - 1)
+                                        Container(
+                                          width: 2,
+                                          height: 40,
+                                          color: isDark ? Colors.white12 : Colors.black12,
+                                          margin: const EdgeInsets.symmetric(vertical: 4),
+                                        )
+                                    ],
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Parada ${index + 1}',
+                                          style: const TextStyle(color: Color(0xFF7C3AED), fontSize: 12, fontWeight: FontWeight.bold),
+                                        ),
+                                        Text(
+                                          stop.title,
+                                          style: TextStyle(
+                                            fontSize: 16, 
+                                            fontWeight: FontWeight.bold,
+                                            color: isDark ? Colors.white : Colors.black87,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          stop.address,
+                                          style: const TextStyle(color: Colors.grey, fontSize: 13),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (stop.pedido.id == widget.pedido.id)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF7C3AED),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Text('ACTUAL', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    )
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }
+        );
+      },
     );
   }
 
@@ -1114,12 +980,16 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
               builder: (context) {
                 final activos = ref.watch(pedidosActivosProvider).value ?? [];
                 final hasMultiple = activos.length > 1;
-                // Filtrar solo los que son de recolección para darles orden A, B, C...
-                final pickups = activos.where((p) => ['asignado', 'preparando', 'recibido'].contains(p.estado)).toList();
-                final index = pickups.indexWhere((p) => p.id == pedido.id);
-                final letter = String.fromCharCode(65 + (index >= 0 ? index : 0));
-                final titleRecoleccion = hasMultiple ? 'Recoger Pedido $letter' : 'Recoger Pedido';
-                final stopsCount = activos.length * 2;
+                final routeAsync = ref.watch(optimizedRouteProvider);
+                final route = routeAsync.valueOrNull ?? [];
+                
+                String titleRecoleccion = 'Recoger pedido';
+                if (hasMultiple && route.isNotEmpty) {
+                  int stopIndex = route.indexWhere((s) => s.id == '${pedido.id}_pickup');
+                  if (stopIndex != -1) {
+                    titleRecoleccion = 'Parada ${stopIndex + 1} de ${route.length}: Recoger';
+                  }
+                }
 
                 return Column(
                   children: [
@@ -1199,18 +1069,6 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
                       _isNavigating = true;
                       _isFullScreenMap = true;
                     });
-                    if (_driverPosition != null && _mapController != null) {
-                      _mapController!.animateCamera(
-                        CameraUpdate.newCameraPosition(
-                          CameraPosition(
-                            target: _driverPosition!,
-                            zoom: 17.5,
-                            tilt: 55,
-                            bearing: 0,
-                          ),
-                        ),
-                      );
-                    }
                   },
                   child: Container(
                     width: 56,
@@ -1256,7 +1114,7 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
             
                     const SizedBox(height: 16),
                     
-                    // NUEVO DISEÑO (Botón Itinerario / Detalles)
+                    // Botón Detalles de la orden
                     GestureDetector(
                       onTap: () {
                         _showOrderDetailsBottomSheet(context, isDark);
@@ -1272,16 +1130,44 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.format_list_bulleted_rounded, size: 20, color: Color(0xFF5038ED)),
+                            const Icon(Icons.inventory_2_rounded, size: 20, color: Color(0xFF5038ED)),
                             const SizedBox(width: 8),
-                            Text(
-                              hasMultiple ? 'Ver itinerario de ruta ($stopsCount paradas)' : 'Ver detalles de la orden', 
-                              style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF5038ED), fontSize: 15)
+                            const Text(
+                              'Ver detalles de la orden', 
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF5038ED), fontSize: 15)
                             ),
                           ],
                         ),
                       ),
                     ),
+                    if (hasMultiple) ...[
+                      const SizedBox(height: 12),
+                      GestureDetector(
+                        onTap: () {
+                          _showItineraryBottomSheet(context, isDark);
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF3F4F6),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.map_rounded, size: 20, color: Colors.grey),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Ver itinerario (${route.length} paradas)', 
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 15)
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 );
               }
@@ -1334,9 +1220,27 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
                         ],
                       ),
                       const SizedBox(height: 6),
-                      Text(
-                        'Entregar a ${pedido.clienteNombre ?? "Cliente"}',
-                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: isDark ? Colors.white : const Color(0xFF111827)),
+                      Builder(
+                        builder: (context) {
+                          final activos = ref.watch(pedidosActivosProvider).value ?? [];
+                          final hasMultiple = activos.length > 1;
+                          final route = ref.watch(optimizedRouteProvider).valueOrNull ?? [];
+                          
+                          String titleEntrega = 'Entregar a ${pedido.clienteNombre ?? "Cliente"}';
+                          if (hasMultiple && route.isNotEmpty) {
+                            int stopIndex = route.indexWhere((s) => s.id == '${pedido.id}_dropoff');
+                            if (stopIndex != -1) {
+                              titleEntrega = 'Parada ${stopIndex + 1} de ${route.length}: Entregar a ${pedido.clienteNombre ?? "Cliente"}';
+                            }
+                          }
+                          
+                          return Text(
+                            titleEntrega,
+                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: isDark ? Colors.white : const Color(0xFF111827)),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          );
+                        }
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -1383,18 +1287,6 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
                       _isNavigating = true;
                       _isFullScreenMap = true;
                     });
-                    if (_driverPosition != null && _mapController != null) {
-                      _mapController!.animateCamera(
-                        CameraUpdate.newCameraPosition(
-                          CameraPosition(
-                            target: _driverPosition!,
-                            zoom: 17.5,
-                            tilt: 55,
-                            bearing: 0,
-                          ),
-                        ),
-                      );
-                    }
                   },
                   child: Container(
                     width: 56,
@@ -1437,30 +1329,70 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
             
             const SizedBox(height: 16),
             
-            GestureDetector(
-              onTap: () {
-                _showOrderDetailsBottomSheet(context, isDark);
-              },
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+            Builder(
+              builder: (context) {
+                final activos = ref.watch(pedidosActivosProvider).value ?? [];
+                final hasMultiple = activos.length > 1;
+                final stopsCount = activos.length * 2;
+                
+                return Column(
                   children: [
-                    const Icon(Icons.inventory_2_rounded, size: 20, color: Color(0xFF7C3AED)),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Ver detalles de la orden', 
-                      style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7C3AED), fontSize: 15)
+                    GestureDetector(
+                      onTap: () {
+                        _showOrderDetailsBottomSheet(context, isDark);
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.inventory_2_rounded, size: 20, color: Color(0xFF7C3AED)),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Ver detalles de la orden', 
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7C3AED), fontSize: 15)
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
+                    if (hasMultiple) ...[
+                      const SizedBox(height: 12),
+                      GestureDetector(
+                        onTap: () {
+                          if (Navigator.canPop(context)) Navigator.pop(context);
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF3F4F6),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.map_rounded, size: 20, color: Colors.grey),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Ver itinerario ($stopsCount paradas)', 
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 15)
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
-                ),
-              ),
+                );
+              }
             ),
           ],
         );
@@ -1573,30 +1505,70 @@ class _DriverActivePedidoViewState extends ConsumerState<DriverActivePedidoView>
               ],
             ),
             const SizedBox(height: 16),
-            GestureDetector(
-              onTap: () {
-                _showOrderDetailsBottomSheet(context, isDark);
-              },
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+            Builder(
+              builder: (context) {
+                final activos = ref.watch(pedidosActivosProvider).value ?? [];
+                final hasMultiple = activos.length > 1;
+                final stopsCount = activos.length * 2;
+                
+                return Column(
                   children: [
-                    const Icon(Icons.inventory_2_rounded, size: 20, color: Color(0xFFF97316)),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Ver detalles de la orden', 
-                      style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFF97316), fontSize: 15)
+                    GestureDetector(
+                      onTap: () {
+                        _showOrderDetailsBottomSheet(context, isDark);
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.inventory_2_rounded, size: 20, color: Color(0xFFF97316)),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Ver detalles de la orden', 
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFF97316), fontSize: 15)
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
+                    if (hasMultiple) ...[
+                      const SizedBox(height: 12),
+                      GestureDetector(
+                        onTap: () {
+                          if (Navigator.canPop(context)) Navigator.pop(context);
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF3F4F6),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.map_rounded, size: 20, color: Colors.grey),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Ver itinerario ($stopsCount paradas)', 
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 15)
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
-                ),
-              ),
+                );
+              }
             ),
           ],
         );
@@ -2409,16 +2381,5 @@ class _ActionBox extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class LatLngTween extends Tween<LatLng> {
-  LatLngTween({required LatLng begin, required LatLng end}) : super(begin: begin, end: end);
-
-  @override
-  LatLng lerp(double t) {
-    final lat = begin!.latitude + (end!.latitude - begin!.latitude) * t;
-    final lng = begin!.longitude + (end!.longitude - begin!.longitude) * t;
-    return LatLng(lat, lng);
   }
 }

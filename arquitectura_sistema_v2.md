@@ -62,6 +62,13 @@ El campo `maps_url` en la tabla `restaurantes` es **solo un link de referencia v
 
 ---
 
+### 0.1 Las Reglas de Oro (NUNCA violar)
+
+#### ❌ NUNCA insertes pedidos directamente desde el frontend
+La creación de pedidos JAMÁS debe hacerse mediante `supabase.from('pedidos').insert(...)` en el cliente (`estrella-eats`). Siempre debe pasar por la Edge Function `auth-otp` (acción: `direct-order` o `verify-and-order`), la cual implementa la lógica **Anti-Fraude Zero Trust**. Esta función recalcula los precios reales desde la BD, valida cupones y asegura que el `total` no haya sido manipulado en el navegador del cliente.
+
+---
+
 ### 0.2 Qué puedes tocar con confianza
 
 | Área | Archivos | Riesgo |
