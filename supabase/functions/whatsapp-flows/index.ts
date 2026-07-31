@@ -89,7 +89,7 @@ serve(async (req) => {
         const supabase = createClient(supabaseUrl, supabaseKey)
 
         if (payload.accion === "FETCH_RESTAURANTES") {
-          const { data: restaurantes } = await supabase.from('restaurantes').select('id, nombre, descripcion_corta').eq('activo', true)
+          const { data: restaurantes } = await supabase.from('restaurantes').select('id, nombre, descripcion_corta').eq('activo', true).is('matriz_id', null)
           const rList = (restaurantes || []).map((r: any) => ({ id: r.id, title: r.nombre, description: r.descripcion_corta || 'Toca para ver menú', metadata: " " }))
           responsePayload = { screen: "ELIGE_RESTAURANTE", data: { restaurantes: rList.length ? rList : [{id: '0', title: 'Sin restaurantes', description: 'No hay restaurantes activos', metadata: ' '}] } }
         }

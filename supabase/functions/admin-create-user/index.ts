@@ -44,9 +44,59 @@ serve(async (req) => {
       )
     }
 
-    const { type, nombre, telefono, alias } = await req.json()
+    const { type, nombre, telefono, alias, email: reqEmail, password: reqPassword, restaurante_id } = await req.json()
 
-    // Validar inputs
+    // Validar tipo primero
+    if (!['repartidor', 'restaurante', 'asignar_restaurante'].includes(type)) {
+      return new Response(
+        JSON.stringify({ error: 'Tipo de usuario inválido' }),
+        { status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (type === 'asignar_restaurante') {
+      if (!reqEmail || !reqPassword || !restaurante_id) {
+        return new Response(JSON.stringify({ error: 'Faltan parámetros de asignación' }), { status: 400, headers: CORS_HEADERS })
+      }
+
+      // 1. Crear el usuario en Auth
+      const { data: authData, error: createErr } = await supabase.auth.admin.createUser({
+        email: reqEmail,
+        password: reqPassword,
+        email_confirm: true
+      })
+
+      let finalUserId = ''
+
+      if (createErr) {
+        // Si ya existe, usar el existente
+        if (createErr.message.includes('already registered')) {
+          const { data: users } = await supabase.auth.admin.listUsers()
+          const existing = users.users.find((u: any) => u.email === reqEmail)
+          if (!existing) throw createErr
+          
+          // Opcional: Actualizarle la contraseña
+          await supabase.auth.admin.updateUserById(existing.id, { password: reqPassword })
+          finalUserId = existing.id
+        } else {
+          throw createErr
+        }
+      } else {
+        finalUserId = authData.user.id
+      }
+
+      // 2. Vincular a la tabla restaurantes
+      const { error: updateErr } = await supabase
+        .from('restaurantes')
+        .update({ admin_id: finalUserId, correo: reqEmail })
+        .eq('id', restaurante_id)
+
+      if (updateErr) throw updateErr
+
+      return new Response(JSON.stringify({ ok: true, user_id: finalUserId }), { headers: CORS_HEADERS })
+    }
+
+    // --- LÓGICA ORIGINAL PARA REPARTIDORES ---
     const phoneRegex = /^[\d\s\-\+\(\)]{7,20}$/
     if (!phoneRegex.test(telefono || '')) {
       return new Response(
@@ -57,12 +107,6 @@ serve(async (req) => {
     if (nombre && nombre.length > 100) {
       return new Response(
         JSON.stringify({ error: 'Nombre demasiado largo' }),
-        { status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
-      )
-    }
-    if (!['repartidor', 'restaurante'].includes(type)) {
-      return new Response(
-        JSON.stringify({ error: 'Tipo de usuario inválido' }),
         { status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
       )
     }

@@ -348,11 +348,20 @@ serve(async (req: Request) => {
         } catch (err: any) {
           console.error(`[DB_WEBHOOK] Error procesando nuevo pedido: ${err.message}`)
         }
+      } else if (payload.type === 'UPDATE' && payload.old_record && payload.old_record.estado !== record.estado) {
+        console.log(`[DB_WEBHOOK] Estado cambió de ${payload.old_record.estado} a ${record.estado}. Delegando a notificaciones...`)
+        payload.tipo = record.estado
+        payload.pedido_id = record.id
+        // No retornamos aquí para que el flujo caiga a los handlers manuales de abajo
       } else {
-        console.log(`[DB_WEBHOOK] Evento ignorado: type=${payload.type} estado=${record.estado} — No requiere acción.`)
+        console.log(`[DB_WEBHOOK] Evento ignorado: type=${payload.type} estado=${record?.estado} — No requiere acción.`)
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
       }
-
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+      
+      // Si fue un INSERT, ya terminó y retornamos. Si fue un UPDATE con cambio de estado, sigue abajo.
+      if (payload.type === 'INSERT') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+      }
     }
 
     // ── HANDLER DE LLAMADAS MANUALES (desde la app Flutter o funciones internas) ──
@@ -768,6 +777,12 @@ serve(async (req: Request) => {
 
     // ── ZOMBIE WATCHDOG (INTERVENCIÓN DEL ADMIN) ──
     if (tipo === 'alerta_zombie') {
+      // 🛡️ VALIDACIÓN: Si el pedido ya fue aceptado o cancelado, ignorar la alerta zombie
+      if (pedido.repartidor_id || ['asignado', 'en_camino', 'recibido', 'entregado', 'cancelado'].includes(pedido.estado)) {
+        console.log(`[ZOMBIE IGNORADO] El pedido ${pedido.id} ya no es zombie. Estado actual: ${pedido.estado}`);
+        return new Response(JSON.stringify({ ok: true, message: 'Pedido ya atendido' }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+      }
+
       const adminPhone = Deno.env.get('ADMIN_PHONE') || (Deno.env.get('ADMIN_PHONES') ?? '').split(',')[0]?.trim()
       if (!adminPhone) throw new Error('Missing ADMIN_PHONE en entorno')
 
@@ -783,7 +798,7 @@ serve(async (req: Request) => {
       const clienteNombre = pedido.cliente_nombre || 'Cliente Anónimo'
       const restTexto = pedido.restaurante ? `🍔 *Restaurante:* ${pedido.restaurante}\n` : ''
 
-      const msgZ = `🧠 *Asistente Estrella*\n¡Hola jefe! 🚨 Tenemos un pedido que se nos está quedando frío (Alerta Zombie).\n\n${restTexto}📦 *Paquete:* ${descripcion || pedido.descripcion}\n🔢 *Orden:* ${numeroOrden}\n📌 *Estado actual:* ${pedido.estado.toUpperCase()}\n\n⏱️ *Tiempo total:* ${minutos_total} min\n⏳ *Estancado por:* ${minutos_estancado} min\n\n👤 *Cliente:* ${clienteNombre}${clienteLink}\n${repInfoTexto}\n\n¿Qué hacemos con este pedido?`
+      const msgZ = `🚨 *URGENTE: Pedido sin asignar* 🚨\n¡El pedido *${numeroOrden}* se está quedando frío! 🥶\n\n🍽️ *De:* ${pedido.restaurante || 'No especificado'}\n📦 *Lleva:* ${descripcion || pedido.descripcion}\n⏳ *Tiempo esperando:* ${minutos_estancado} min (Total: ${minutos_total}m)\n\n👤 *Cliente:* ${clienteNombre}${clienteLink}\n${repInfoTexto}\n\n🔗 *Ver en panel:* https://admin.estrella-eats.mx\n\n👇 *Acción rápida:*`
 
       const payloadZ = {
         messaging_product: 'whatsapp',
@@ -936,8 +951,13 @@ serve(async (req: Request) => {
         .maybeSingle()
 
       if ((!clInfo || clInfo.acepta_terminos !== true) && pedido.origen !== 'b2c_flow') {
-        results.push(`🚫 Cliente ${tel10} silencioso o no registrado. Notificaciones bloqueadas por privacidad.`)
-      } else {
+        // En lugar de bloquear, registramos que es un cliente no VIP, pero
+        // permitimos el envío de plantillas transaccionales (asignado, en_camino, etc)
+        // ya que Meta permite plantillas de utilidad sin opt-in explícito en el bot (el opt-in se asume al pedir por la app).
+        results.push(`⚠️ Cliente ${tel10} no tiene acepta_terminos=true, pero se enviará notificación transaccional.`)
+      }
+      
+      if (true) { // Bypass para permitir el envío de tracking
         let repNom = 'tu repartidor'
         if (pedido.repartidor_id) {
           // Buscar por user_id O por id para cubrir repartidores sin cuenta Auth

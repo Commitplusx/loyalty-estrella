@@ -1,4 +1,4 @@
-import { sendWA, sendInteractiveButtons, sendWADocument, sendInteractiveButton, sendInteractiveCTAUrl } from './whatsapp.ts'
+import { sendWA, sendInteractiveButtons, sendWADocument, sendInteractiveButton, sendInteractiveCtaUrl } from './whatsapp.ts'
 import { handleAdminInteractive } from './slash-commands-handler.ts'
 import { handleRepButtons } from './rep-handler.ts'
 import { handleCalificacion, handleTerminos, handleAdminCommands } from './admin-handler.ts'
@@ -22,6 +22,30 @@ export async function handleButtonEvent(
   ) as string | undefined
 
   if (!buttonId) return null
+
+  // ── Cliente: Aceptar Tracking de Pedido ──
+  if (buttonId.toLowerCase() === 'aceptar' || buttonId === 'VER_TRACKER') {
+    // Buscar el pedido más reciente activo de este cliente
+    const { data: p } = await supabase
+      .from('pedidos')
+      .select('id, wb_message_id')
+      .eq('cliente_tel', from10) // También puedes buscar por cliente_id si lo tienes
+      .in('estado', ['asignado', 'en_camino', 'preparando', 'en_cocina', 'llegada_restaurante'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (p) {
+      const orderId = p.wb_message_id || p.id;
+      await sendInteractiveCtaUrl(
+        fromPhone,
+        `¡Excelente! 📍 Puedes ver la ruta de tu repartidor en tiempo real aquí 👇`,
+        `Rastrear Pedido`,
+        `https://estrella-eats.mx/tracker?pedido=${p.id}`
+      );
+      return new Response('OK', { status: 200 })
+    }
+  }
 
   // ── Admin / Repartidor interactive actions (ACT_) ──
   if ((esAdmin || userLabel === 'repartidor') && buttonId.startsWith('ACT_')) {
@@ -75,7 +99,8 @@ export async function handleButtonEvent(
     const { data: pedidoAsignado, error: assignError } = await supabase
       .from('pedidos')
       .update({
-        repartidor_id: repRow.id
+        repartidor_id: repRow.id,
+        estado: 'asignado'
       })
       .eq('wb_message_id', ticketId)
       .neq('estado', 'cancelado')          // Bloquear si fue cancelado
@@ -321,7 +346,7 @@ export async function handleButtonEvent(
       }).catch(e => console.error("Error disparando asignar-repartidor desde WA:", e));
 
       // Primer burbuja: Mensaje con detalles y botón URL para abrir el monitor
-      await sendInteractiveCTAUrl(
+      await sendInteractiveCtaUrl(
         fromPhone,
         `¡Excelente! 👨‍🍳 Ya le avisamos al cliente y estamos buscando repartidor (T. Est: ${minutes} min).\n\nAquí tienes el resumen:\n📝 *Lo que pidieron:*\n${p.descripcion || 'Sin detalles'}\n\n👇 _Toca abajo para abrirlo en tu pantalla:_`,
         'Ver pedido',

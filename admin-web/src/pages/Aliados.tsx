@@ -13,7 +13,8 @@ export function Aliados() {
 
   const fetchAliados = async () => {
     try {
-      const { data, error } = await supabase.from('restaurantes').select('*');
+      // Solo cargamos matrices o restaurantes independientes, las sucursales se ven dentro de la matriz
+      const { data, error } = await supabase.from('restaurantes').select('*').is('matriz_id', null);
       if (error) {
         console.error(error);
       } else {

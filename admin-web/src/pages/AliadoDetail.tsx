@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Store, MapPin, Phone, Mail, Edit3, ShieldCheck, Key, Package, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { ArrowLeft, Store, MapPin, Phone, Mail, Edit3, ShieldCheck, Key, Package, Image as ImageIcon, Loader2, Save, X, Network } from 'lucide-react';
 import { ConfirmSheet } from '../components/ui/ConfirmSheet';
 import { MenuAdmin } from '../components/restaurantes/MenuAdmin';
 
@@ -10,6 +10,8 @@ export function AliadoDetail() {
   const navigate = useNavigate();
   
   const [restaurante, setRestaurante] = useState<any>(null);
+  const [matrices, setMatrices] = useState<any[]>([]);
+  const [sucursales, setSucursales] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showConfirmPin, setShowConfirmPin] = useState(false);
   
@@ -21,6 +23,17 @@ export function AliadoDetail() {
   const [editingComision, setEditingComision] = useState(false);
   const [newComision, setNewComision] = useState('0');
   const [savingComision, setSavingComision] = useState(false);
+
+  // Email State
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [savingEmail, setSavingEmail] = useState(false);
+
+  // Hierarchy State
+  const [editingHierarchy, setEditingHierarchy] = useState(false);
+  const [selectedMatrizId, setSelectedMatrizId] = useState<string>('none');
+  const [savingHierarchy, setSavingHierarchy] = useState(false);
 
   // Funciones para cargar imagen
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -65,14 +78,16 @@ export function AliadoDetail() {
         setLoading(true);
         if (!id) return;
         
-        const { data, error } = await supabase
-          .from('restaurantes')
-          .select('*')
-          .eq('id', id)
-          .single();
+        const [restRes, matRes, branchesRes] = await Promise.all([
+          supabase.from('restaurantes').select('*').eq('id', id).single(),
+          supabase.from('restaurantes').select('id, nombre').is('matriz_id', null).neq('id', id),
+          supabase.from('restaurantes').select('id, nombre, telefono, direccion, activo, foto_fachada_url').eq('matriz_id', id)
+        ]);
           
-        if (error) throw error;
-        setRestaurante(data);
+        if (restRes.error) throw restRes.error;
+        setRestaurante(restRes.data);
+        if (matRes.data) setMatrices(matRes.data);
+        if (branchesRes.data) setSucursales(branchesRes.data);
       } catch (err) {
         console.error(err);
       } finally {
@@ -145,6 +160,94 @@ export function AliadoDetail() {
     }
   };
 
+  const handleSaveEmail = async () => {
+    if (!newEmail || !newPassword) {
+      alert('Por favor, ingresa el correo y la contraseña.');
+      return;
+    }
+    
+    if (!newEmail.includes('@')) {
+      alert('Por favor, ingresa un correo válido.');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      alert('La contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+
+    setSavingEmail(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No estás autenticado');
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-create-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            type: 'asignar_restaurante',
+            email: newEmail.trim(),
+            password: newPassword,
+            restaurante_id: restaurante.id
+          })
+        }
+      );
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Error al asignar el correo');
+      }
+
+      setRestaurante({ ...restaurante, correo: newEmail.trim(), admin_id: result.user_id });
+      setEditingEmail(false);
+      setNewPassword('');
+      alert('¡Correo y contraseña asignados con éxito!\nYa puede iniciar sesión en la app de aliados.');
+    } catch (e: any) {
+      alert(`Error: ${e.message}`);
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  const handleSaveHierarchy = async () => {
+    setSavingHierarchy(true);
+    try {
+      const isMatriz = selectedMatrizId === 'none';
+      const matrizId = isMatriz ? null : selectedMatrizId;
+      
+      const { error } = await supabase
+        .from('restaurantes')
+        .update({
+          matriz_id: matrizId,
+          es_matriz: isMatriz,
+          // Si lo volvemos sucursal, le quitamos el admin_id
+          ...(isMatriz ? {} : { admin_id: null })
+        })
+        .eq('id', restaurante.id);
+        
+      if (error) throw error;
+      
+      setRestaurante({
+        ...restaurante,
+        matriz_id: matrizId,
+        es_matriz: isMatriz,
+        ...(isMatriz ? {} : { admin_id: null })
+      });
+      setEditingHierarchy(false);
+      alert('Jerarquía actualizada con éxito.');
+    } catch (e: any) {
+      alert(`Error al guardar: ${e.message}`);
+    } finally {
+      setSavingHierarchy(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Top Navigation */}
@@ -208,13 +311,79 @@ export function AliadoDetail() {
                   </div>
                 </div>
                 
-                <div className="flex items-start gap-4">
-                  <div className="p-2.5 bg-zinc-100 rounded-xl text-zinc-600"><Mail size={18} /></div>
-                  <div>
-                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Correo Electrónico</p>
-                    <p className="text-sm font-bold text-zinc-900 mt-1 tracking-tight">{restaurante.correo || 'No registrado'}</p>
+                {!restaurante.matriz_id ? (
+                  <div className="flex items-start gap-4 group/email">
+                    <div className="p-2.5 bg-zinc-100 rounded-xl text-zinc-600"><Mail size={18} /></div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Correo Electrónico</p>
+                        {!editingEmail && (
+                          <button 
+                            onClick={() => {
+                              setNewEmail(restaurante.correo || '');
+                              setNewPassword('');
+                              setEditingEmail(true);
+                            }}
+                            className="text-zinc-400 p-1 hover:bg-zinc-100 hover:text-zinc-900 rounded-md transition-colors"
+                            title="Asignar correo"
+                          >
+                            <Edit3 size={16} />
+                          </button>
+                        )}
+                      </div>
+                      
+                      {editingEmail ? (
+                        <div className="mt-2 space-y-2 bg-zinc-50 p-3 rounded-xl border border-zinc-200">
+                          <input
+                            type="email"
+                            placeholder="Correo del dueño"
+                            value={newEmail}
+                            onChange={(e) => setNewEmail(e.target.value)}
+                            className="w-full bg-white border border-zinc-200 rounded-lg py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Contraseña temporal"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            className="w-full bg-white border border-zinc-200 rounded-lg py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                          />
+                          <div className="flex items-center gap-2 pt-1">
+                            <button 
+                              onClick={handleSaveEmail}
+                              disabled={savingEmail}
+                              className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-white py-1.5 rounded-lg flex items-center justify-center gap-1 text-xs font-bold transition-colors disabled:opacity-50"
+                            >
+                              {savingEmail ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                              Guardar
+                            </button>
+                            <button 
+                              onClick={() => setEditingEmail(false)}
+                              disabled={savingEmail}
+                              className="bg-zinc-200 hover:bg-zinc-300 text-zinc-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm font-bold text-zinc-900 mt-1 tracking-tight break-all">
+                          {restaurante.correo || 'No registrado'}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-start gap-4">
+                    <div className="p-2.5 bg-blue-50 border border-blue-100 rounded-xl text-blue-600"><ShieldCheck size={18} /></div>
+                    <div className="flex-1">
+                      <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Acceso Centralizado</p>
+                      <p className="text-xs text-blue-900 mt-1 font-medium leading-relaxed">
+                        El menú y las credenciales de acceso se administran directamente desde la Matriz.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 
                 <div className="flex items-start gap-4">
                   <div className="p-2.5 bg-zinc-100 rounded-xl text-zinc-600"><MapPin size={18} /></div>
@@ -314,8 +483,123 @@ export function AliadoDetail() {
              </div>
           </div>
           
+          {/* Jerarquía - Oculta temporalmente por requerimiento del cliente
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200">
+             <div className="flex items-center justify-between mb-6">
+               <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Jerarquía de Negocio</h4>
+               {!editingHierarchy && (
+                  <button 
+                    onClick={() => {
+                      setSelectedMatrizId(restaurante.matriz_id || 'none');
+                      setEditingHierarchy(true);
+                    }}
+                    className="text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 p-1.5 rounded-lg transition-colors"
+                  >
+                    <Edit3 size={16} />
+                  </button>
+               )}
+             </div>
+             
+             <div className="flex items-start gap-4">
+               <div className={`p-2.5 rounded-xl ${restaurante.matriz_id ? 'bg-indigo-50 text-indigo-600' : 'bg-amber-50 text-amber-600'}`}>
+                 <Network size={20} />
+               </div>
+               <div className="flex-1 w-full">
+                 {editingHierarchy ? (
+                   <div className="space-y-3">
+                     <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Tipo de Establecimiento</p>
+                     <select 
+                       value={selectedMatrizId}
+                       onChange={(e) => setSelectedMatrizId(e.target.value)}
+                       className="w-full bg-zinc-50 border border-zinc-200 rounded-lg py-2 px-3 text-sm font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                     >
+                       <option value="none">Independiente / Matriz</option>
+                       {matrices.map(m => (
+                         <option key={m.id} value={m.id}>Sucursal de: {m.nombre}</option>
+                       ))}
+                     </select>
+                     <div className="flex gap-2">
+                        <button 
+                          onClick={handleSaveHierarchy}
+                          disabled={savingHierarchy}
+                          className="flex-1 bg-zinc-900 text-white font-bold text-xs py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+                        >
+                          {savingHierarchy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Guardar
+                        </button>
+                        <button 
+                          onClick={() => setEditingHierarchy(false)}
+                          disabled={savingHierarchy}
+                          className="bg-zinc-100 text-zinc-600 font-bold text-xs px-3 rounded-lg hover:bg-zinc-200 disabled:opacity-50 transition-colors"
+                        >
+                          Cancelar
+                        </button>
+                     </div>
+                   </div>
+                 ) : (
+                   <div>
+                     <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Tipo de Establecimiento</p>
+                     {restaurante.matriz_id ? (
+                       <p className="text-sm font-bold text-indigo-900 mt-1 tracking-tight">
+                         Sucursal (Depende de otra Matriz)
+                       </p>
+                     ) : (
+                       <p className="text-sm font-bold text-amber-900 mt-1 tracking-tight">
+                         Independiente / Matriz
+                       </p>
+                     )}
+                   </div>
+                 )}
+               </div>
+             </div>
+          </div>
+          */}
+          
         </div>
       </div>
+      
+      {/* Sección de Sucursales (Oculta temporalmente)
+      {!restaurante.matriz_id && sucursales.length > 0 && (
+        <div className="mt-8 bg-zinc-50 rounded-3xl p-6 border border-zinc-200">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2.5 bg-zinc-200 rounded-xl text-zinc-700">
+              <Network size={20} />
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-zinc-900 tracking-tight">Sucursales de este Negocio</h3>
+              <p className="text-sm text-zinc-500 tracking-tight">Selecciona una sucursal para administrarla individualmente.</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sucursales.map(suc => (
+              <div 
+                key={suc.id} 
+                onClick={() => navigate(`/aliados/${suc.id}`)}
+                className="bg-white p-4 rounded-2xl border border-zinc-200 shadow-sm hover:shadow-md hover:border-zinc-300 transition-all cursor-pointer group flex items-start gap-4"
+              >
+                <div className="w-16 h-16 rounded-xl bg-zinc-100 overflow-hidden shrink-0 border border-zinc-200">
+                  {suc.foto_fachada_url ? (
+                    <img src={suc.foto_fachada_url} alt={suc.nombre} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-zinc-400">
+                      <Store size={24} />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-bold text-zinc-900 text-sm tracking-tight truncate group-hover:text-blue-600 transition-colors">{suc.nombre}</h4>
+                  <p className="text-xs text-zinc-500 mt-1 flex items-center gap-1 truncate"><Phone size={12}/> {suc.telefono || 'Sin teléfono'}</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className={`inline-block w-2 h-2 rounded-full ${suc.activo ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{suc.activo ? 'Abierto' : 'Pausado'}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      */}
       
       {/* Menu Admin Section */}
       <div className="mt-8 bg-zinc-50 rounded-3xl p-6 border border-zinc-200">
