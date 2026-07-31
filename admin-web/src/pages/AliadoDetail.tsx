@@ -35,6 +35,12 @@ export function AliadoDetail() {
   const [selectedMatrizId, setSelectedMatrizId] = useState<string>('none');
   const [savingHierarchy, setSavingHierarchy] = useState(false);
 
+  // Location State
+  const [editingLocation, setEditingLocation] = useState(false);
+  const [newCoordinates, setNewCoordinates] = useState('');
+  const [mapsUrl, setMapsUrl] = useState('');
+  const [savingLocation, setSavingLocation] = useState(false);
+
   // Funciones para cargar imagen
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0 || !restaurante) return;
@@ -133,6 +139,52 @@ export function AliadoDetail() {
       alert(`Hubo un error al intentar resetear el PIN: ${e.message}`);
     } finally {
       setShowConfirmPin(false);
+    }
+  };
+
+  const handleMapsUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const url = e.target.value;
+    setMapsUrl(url);
+    
+    const regexAt = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
+    const matchAt = url.match(regexAt);
+    if (matchAt) {
+      setNewCoordinates(`${matchAt[1]}, ${matchAt[2]}`);
+      return;
+    }
+    
+    const regex3d = /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/;
+    const match3d = url.match(regex3d);
+    if (match3d) {
+      setNewCoordinates(`${match3d[1]}, ${match3d[2]}`);
+    }
+  };
+
+  const handleSaveLocation = async () => {
+    const parts = newCoordinates.split(',').map(p => p.trim());
+    const lat = parseFloat(parts[0]);
+    const lng = parseFloat(parts[1]);
+    
+    if (isNaN(lat) || isNaN(lng) || parts.length < 2) {
+      alert('Por favor ingresa coordenadas válidas en el formato: latitud, longitud (ej. 16.25, -92.13)');
+      return;
+    }
+    
+    setSavingLocation(true);
+    try {
+      const { error } = await supabase
+        .from('restaurantes')
+        .update({ lat, lng })
+        .eq('id', restaurante.id);
+        
+      if (error) throw error;
+      setRestaurante({ ...restaurante, lat, lng });
+      setEditingLocation(false);
+      setMapsUrl('');
+    } catch (e: any) {
+      alert(`Error al guardar la ubicación: ${e.message}`);
+    } finally {
+      setSavingLocation(false);
     }
   };
 
@@ -385,11 +437,63 @@ export function AliadoDetail() {
                   </div>
                 )}
                 
-                <div className="flex items-start gap-4">
+                <div className="flex items-start gap-4 group/loc">
                   <div className="p-2.5 bg-zinc-100 rounded-xl text-zinc-600"><MapPin size={18} /></div>
-                  <div>
-                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Coordenadas GPS</p>
-                    <p className="text-sm font-bold text-zinc-900 mt-1 tracking-tight">Lat: {restaurante.lat}<br/>Lng: {restaurante.lng}</p>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Coordenadas GPS</p>
+                      {!editingLocation && (
+                        <button 
+                          onClick={() => {
+                            setNewCoordinates(restaurante.lat && restaurante.lng ? `${restaurante.lat}, ${restaurante.lng}` : '');
+                            setMapsUrl('');
+                            setEditingLocation(true);
+                          }}
+                          className="text-zinc-400 p-1 hover:bg-zinc-100 hover:text-zinc-900 rounded-md transition-colors"
+                          title="Editar Ubicación"
+                        >
+                          <Edit3 size={16} />
+                        </button>
+                      )}
+                    </div>
+                    
+                    {editingLocation ? (
+                      <div className="mt-2 space-y-2 bg-zinc-50 p-3 rounded-xl border border-zinc-200">
+                        <input
+                          type="text"
+                          placeholder="Pegar URL de Google Maps..."
+                          value={mapsUrl}
+                          onChange={handleMapsUrlChange}
+                          className="w-full bg-white border border-zinc-200 rounded-lg py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Latitud, Longitud (ej. 16.25, -92.13)"
+                          value={newCoordinates}
+                          onChange={(e) => setNewCoordinates(e.target.value)}
+                          className="w-full bg-white border border-zinc-200 rounded-lg py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 font-mono"
+                        />
+                        <div className="flex items-center gap-2 pt-1">
+                          <button 
+                            onClick={handleSaveLocation}
+                            disabled={savingLocation}
+                            className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-white py-1.5 rounded-lg flex items-center justify-center gap-1 text-xs font-bold transition-colors disabled:opacity-50"
+                          >
+                            {savingLocation ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                            Guardar
+                          </button>
+                          <button 
+                            onClick={() => setEditingLocation(false)}
+                            disabled={savingLocation}
+                            className="bg-zinc-200 hover:bg-zinc-300 text-zinc-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm font-bold text-zinc-900 mt-1 tracking-tight">Lat: {restaurante.lat}<br/>Lng: {restaurante.lng}</p>
+                    )}
                   </div>
                 </div>
              </div>
