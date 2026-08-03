@@ -1,15 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Package, MapPin, ChevronRight, CheckCircle2, ChevronLeft, ShoppingCart, Info, ArrowRight, X, Utensils } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { GoogleMap, Marker } from '@react-google-maps/api';
+import {
+  Package, ShoppingCart, ArrowRight, ChevronLeft, X,
+  CheckCircle2, Loader2
+} from 'lucide-react';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store/useAppStore';
 import { useH3Pricing } from '../../hooks/useH3Pricing';
-import { COMPRA_CATEGORIES, ENVIO_TYPES, ENVIO_SIZES } from '../../config/services.config';
+import { COMPRA_CATEGORIES } from '../../config/services.config';
 import { MapLocationPicker } from '../MapLocationPicker';
+import { LocationDetailsScreen } from './LocationDetailsScreen';
+import { ConfirmOrderScreen } from './ConfirmOrderScreen';
 
 interface QuickChip {
   label: string;
@@ -20,71 +24,71 @@ interface QuickChip {
 
 const QUICK_CHIPS: Record<string, QuickChip[]> = {
   comida: [
-    { label: 'Tacos', append: '1x Orden de Tacos', askDetails: '¿De qué carne o guisado?', placeholder: 'Ej. Al pastor, suadero...' },
-    { label: 'Pizza', append: '1x Pizza', askDetails: '¿De qué ingredientes y tamaño?', placeholder: 'Ej. Pepperoni grande...' },
-    { label: 'Burger', append: '1x Hamburguesa', askDetails: '¿Sencilla o con papas?', placeholder: 'Ej. Sencilla sin cebolla...' },
-    { label: 'Sushi', append: '1x Rollo Sushi', askDetails: '¿De qué tipo/ingrediente?', placeholder: 'Ej. California, Empanizado...' },
-    { label: 'Postre', append: '1x Postre', askDetails: '¿Qué postre y de dónde?', placeholder: 'Ej. Rebanada de pastel de chocolate...' },
+    { label: 'Tacos',   append: '1x Orden de Tacos',  askDetails: '¿De qué carne o guisado?',      placeholder: 'Ej. Al pastor, suadero...' },
+    { label: 'Pizza',   append: '1x Pizza',            askDetails: '¿Ingredientes y tamaño?',        placeholder: 'Ej. Pepperoni grande...' },
+    { label: 'Burger',  append: '1x Hamburguesa',      askDetails: '¿Sencilla o con papas?',         placeholder: 'Ej. Sencilla sin cebolla...' },
+    { label: 'Sushi',   append: '1x Rollo Sushi',      askDetails: '¿Qué tipo/ingrediente?',         placeholder: 'Ej. California, Empanizado...' },
+    { label: 'Postre',  append: '1x Postre',           askDetails: '¿Qué postre y de dónde?',        placeholder: 'Ej. Rebanada de pastel...' },
   ],
   super: [
-    { label: 'Leche', append: '1x Leche (1L)', askDetails: '¿Entera, light o deslactosada?', placeholder: 'Ej. Deslactosada Lala...' },
-    { label: 'Huevos', append: '1x Huevo (12 pz)' },
-    { label: 'Pan', append: '1x Pan de caja', askDetails: '¿Blanco o integral?', placeholder: 'Ej. Integral grande...' },
-    { label: 'Papel', append: '1x Papel higiénico' },
-    { label: 'Garrafón', append: '1x Garrafón', askDetails: '¿De qué marca (Ciel, Bonafont, etc)?', placeholder: 'Ej. Ciel...' },
+    { label: 'Leche',    append: '1x Leche (1L)',        askDetails: '¿Entera, light o deslactosada?', placeholder: 'Ej. Deslactosada Lala...' },
+    { label: 'Huevos',   append: '1x Huevo (12 pz)' },
+    { label: 'Pan',      append: '1x Pan de caja',       askDetails: '¿Blanco o integral?',            placeholder: 'Ej. Integral grande...' },
+    { label: 'Papel',    append: '1x Papel higiénico' },
+    { label: 'Garrafón', append: '1x Garrafón',          askDetails: '¿Qué marca?',                    placeholder: 'Ej. Ciel...' },
   ],
   farmacia: [
     { label: 'Paracetamol', append: '1x Paracetamol' },
-    { label: 'Suero', append: '1x Suero', askDetails: '¿De qué sabor y marca?', placeholder: 'Ej. Electrolit de fresa...' },
-    { label: 'Antigripal', append: '1x Antigripal', askDetails: '¿Qué marca (Next, Agrifen...)?', placeholder: 'Ej. Agrifen...' },
-    { label: 'Aspirina', append: '1x Aspirina' },
-    { label: 'Jeringas', append: '1x Jeringas' },
+    { label: 'Suero',       append: '1x Suero',       askDetails: '¿Sabor y marca?',               placeholder: 'Ej. Electrolit fresa...' },
+    { label: 'Antigripal',  append: '1x Antigripal',  askDetails: '¿Marca?',                       placeholder: 'Ej. Agrifen...' },
+    { label: 'Aspirina',    append: '1x Aspirina' },
+    { label: 'Jeringas',    append: '1x Jeringas' },
   ],
   conveniencia: [
-    { label: 'Cerveza', append: '1x Six de Cerveza', askDetails: '¿Qué marca (Tecate, Modelo...)?', placeholder: 'Ej. Tecate Light...' },
-    { label: 'Refresco', append: '1x Refresco', askDetails: '¿De qué sabor y tamaño (Ej. Coca 600ml)?', placeholder: 'Ej. Coca-Cola 600ml...' },
-    { label: 'Botana', append: '1x Botana', askDetails: '¿Qué tipo (Sabritas, Doritos...)?', placeholder: 'Ej. Doritos Nacho...' },
-    { label: 'Hielos', append: '1x Bolsa de Hielos' },
-    { label: 'Cigarros', append: '1x Cajetilla', askDetails: '¿Qué marca y sabor?', placeholder: 'Ej. Marlboro Rojos...' },
+    { label: 'Cerveza',  append: '1x Six de Cerveza', askDetails: '¿Marca?',                       placeholder: 'Ej. Tecate Light...' },
+    { label: 'Refresco', append: '1x Refresco',       askDetails: '¿Sabor y tamaño?',              placeholder: 'Ej. Coca-Cola 600ml...' },
+    { label: 'Botana',   append: '1x Botana',         askDetails: '¿Qué tipo?',                    placeholder: 'Ej. Doritos Nacho...' },
+    { label: 'Hielos',   append: '1x Bolsa de Hielos' },
+    { label: 'Cigarros', append: '1x Cajetilla',      askDetails: '¿Marca y sabor?',               placeholder: 'Ej. Marlboro Rojos...' },
   ],
   licores: [
-    { label: 'Cerveza', append: '1x Six de Cerveza', askDetails: '¿Qué marca?', placeholder: 'Ej. Modelo Especial...' },
-    { label: 'Tequila', append: '1x Botella Tequila', askDetails: '¿Qué marca (Tradicional, Don Julio...)?', placeholder: 'Ej. Maestro Dobel Diamante...' },
-    { label: 'Vino', append: '1x Botella de Vino', askDetails: '¿Tinto o Blanco? ¿Alguna marca?', placeholder: 'Ej. Vino tinto dulce...' },
-    { label: 'Hielos', append: '1x Bolsa de Hielos' },
+    { label: 'Cerveza', append: '1x Six de Cerveza',   askDetails: '¿Marca?',                      placeholder: 'Ej. Modelo Especial...' },
+    { label: 'Tequila', append: '1x Botella Tequila',  askDetails: '¿Marca?',                      placeholder: 'Ej. Maestro Dobel...' },
+    { label: 'Vino',    append: '1x Botella de Vino',  askDetails: '¿Tinto o blanco?',             placeholder: 'Ej. Vino tinto dulce...' },
+    { label: 'Hielos',  append: '1x Bolsa de Hielos' },
     { label: 'Mineral', append: '1x Agua mineral' },
   ],
   mercado: [
-    { label: 'Jitomate', append: '1kg Jitomate' },
-    { label: 'Limón', append: '1kg Limón' },
-    { label: 'Pollo', append: '1kg Pollo', askDetails: '¿Pechuga, pierna, muslo?', placeholder: 'Ej. Pechuga sin hueso...' },
-    { label: 'Cebolla', append: '1kg Cebolla' },
+    { label: 'Jitomate',  append: '1kg Jitomate' },
+    { label: 'Limón',     append: '1kg Limón' },
+    { label: 'Pollo',     append: '1kg Pollo',    askDetails: '¿Pechuga, pierna, muslo?', placeholder: 'Ej. Pechuga sin hueso...' },
+    { label: 'Cebolla',   append: '1kg Cebolla' },
     { label: 'Tortillas', append: '1kg Tortillas' },
   ],
   mascotas: [
-    { label: 'Croq. Perro', append: '1x Croquetas Perro', askDetails: '¿Qué marca y cuántos kilos?', placeholder: 'Ej. Pedigree 2kg...' },
-    { label: 'Croq. Gato', append: '1x Croquetas Gato', askDetails: '¿Qué marca y cuántos kilos?', placeholder: 'Ej. Whiskas 1.5kg...' },
-    { label: 'Sobres', append: '1x Sobrecitos', askDetails: '¿De qué sabor (Pollo, Res)?', placeholder: 'Ej. De res y pollo...' },
-    { label: 'Arena', append: '1x Arena Gato' },
+    { label: 'Croq. Perro', append: '1x Croquetas Perro', askDetails: '¿Marca y kilos?', placeholder: 'Ej. Pedigree 2kg...' },
+    { label: 'Croq. Gato',  append: '1x Croquetas Gato',  askDetails: '¿Marca y kilos?', placeholder: 'Ej. Whiskas 1.5kg...' },
+    { label: 'Sobres',      append: '1x Sobrecitos',       askDetails: '¿Sabor?',         placeholder: 'Ej. De res y pollo...' },
+    { label: 'Arena',       append: '1x Arena Gato' },
   ],
   regalos: [
-    { label: 'Flores', append: '1x Ramo de Flores', askDetails: '¿Qué flores y colores?', placeholder: 'Ej. Rosas rojas...' },
-    { label: 'Chocolates', append: '1x Caja Chocolates', askDetails: '¿Qué marca (Ferrero, Kisses...)?', placeholder: 'Ej. Ferrero Rocher de 16...' },
-    { label: 'Globo', append: '1x Globo helio', askDetails: '¿Con qué mensaje?', placeholder: 'Ej. De feliz cumpleaños...' },
-    { label: 'Pastel', append: '1x Pastel', askDetails: '¿De qué sabor y cuántas personas?', placeholder: 'Ej. Chocolate para 10...' },
+    { label: 'Flores',      append: '1x Ramo de Flores',  askDetails: '¿Flores y colores?', placeholder: 'Ej. Rosas rojas...' },
+    { label: 'Chocolates',  append: '1x Caja Chocolates', askDetails: '¿Marca?',             placeholder: 'Ej. Ferrero Rocher 16...' },
+    { label: 'Globo',       append: '1x Globo helio',     askDetails: '¿Con qué mensaje?',  placeholder: 'Ej. Feliz cumpleaños...' },
+    { label: 'Pastel',      append: '1x Pastel',          askDetails: '¿Sabor y personas?', placeholder: 'Ej. Chocolate para 10...' },
   ],
   ferreteria: [
-    { label: 'Foco', append: '1x Foco LED', askDetails: '¿Luz blanca o cálida?', placeholder: 'Ej. Luz blanca...' },
-    { label: 'Pilas', append: '1x Pilas', askDetails: '¿Tamaño AA o AAA?', placeholder: 'Ej. Alcalinas AA...' },
-    { label: 'Cinta', append: '1x Cinta' },
-    { label: 'Pegamento', append: '1x KolaLoka' },
+    { label: 'Foco',       append: '1x Foco LED',   askDetails: '¿Luz blanca o cálida?', placeholder: 'Ej. Luz blanca...' },
+    { label: 'Pilas',      append: '1x Pilas',       askDetails: '¿Tamaño AA o AAA?',     placeholder: 'Ej. Alcalinas AA...' },
+    { label: 'Cinta',      append: '1x Cinta' },
+    { label: 'Pegamento',  append: '1x KolaLoka' },
   ],
   papeleria: [
-    { label: 'Hojas', append: '100x Hojas Blancas' },
-    { label: 'Pluma', append: '1x Pluma', askDetails: '¿Tinta negra, azul o roja?', placeholder: 'Ej. Tinta negra bic...' },
-    { label: 'Pritt', append: '1x Lápiz Adhesivo' },
-    { label: 'Cuaderno', append: '1x Cuaderno', askDetails: '¿Raya o Cuadro?', placeholder: 'Ej. Profesional de raya...' },
-  ]
+    { label: 'Hojas',     append: '100x Hojas Blancas' },
+    { label: 'Pluma',     append: '1x Pluma',          askDetails: '¿Negra, azul o roja?', placeholder: 'Ej. Negra bic...' },
+    { label: 'Pritt',     append: '1x Lápiz Adhesivo' },
+    { label: 'Cuaderno',  append: '1x Cuaderno',       askDetails: '¿Raya o cuadro?',      placeholder: 'Ej. Profesional de raya...' },
+  ],
 };
 
 interface NewDeliveryFlowProps {
@@ -93,22 +97,23 @@ interface NewDeliveryFlowProps {
 }
 
 export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowProps) {
-  const { user, currentAddress, currentLocation } = useAppStore();
+  const { user, currentAddress, currentLocation, setPedidoActivo } = useAppStore();
   const [orderType, setOrderType] = useState<'envio' | 'compra' | null>(null);
   const [activeStep, setActiveStep] = useState(0);
-  const [mapPickerType, setMapPickerType] = useState<'origin' | 'destination' | null>(null);
   const [distanceKm, setDistanceKm] = useState<number>(0);
-  const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  
-  // OTP States
+
+  const [direction, setDirection] = useState(1);
+  const [isEditingFromSummary, setIsEditingFromSummary] = useState(false);
+
+  // OTP
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otpStep, setOtpStep] = useState<'phone' | 'code'>('phone');
   const [otpPhone, setOtpPhone] = useState(user?.phone !== '525555555555' ? user?.phone || '' : '');
   const [otpCode, setOtpCode] = useState('');
   const [isOtpLoading, setIsOtpLoading] = useState(false);
-  
-  // Chip Prompt States
+
+  // Chip prompt
   const [chipPrompt, setChipPrompt] = useState<{ chipBase: string; question: string; placeholder?: string } | null>(null);
   const [chipAnswer, setChipAnswer] = useState('');
 
@@ -117,909 +122,614 @@ export function NewDeliveryFlow({ setCurrentView, isLoaded }: NewDeliveryFlowPro
   const createOrderMutation = useMutation({
     mutationFn: async (payload: any) => {
       const { data, error } = await supabase.functions.invoke('auth-otp', {
-        body: { 
-          action: 'verify-and-order-mandadito', 
-          telefono: otpPhone, 
-          codigo: otpCode,
-          payload: payload
-        }
+        body: { action: 'verify-and-order-mandadito', telefono: otpPhone, codigo: otpCode, payload },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       return data;
     },
-    onSuccess: () => {
-      toast.success('¡Mandadito solicitado con éxito!');
+    onSuccess: (data) => {
+      toast.success('¡Mandadito solicitado!');
       setShowOtpModal(false);
       queryClient.invalidateQueries({ queryKey: ['pedidoActivo'] });
       queryClient.invalidateQueries({ queryKey: ['historial'] });
+      if (data?.pedido) { setPedidoActivo(data.pedido); setCurrentView('activeTracking'); }
+      else setCurrentView('home');
     },
-    onError: (err: any) => {
-      console.error(err);
-      toast.error(err.message || 'Error al procesar pedido');
-    }
+    onError: (err: any) => toast.error(err.message || 'Error al procesar pedido'),
   });
-  
+
   const [deliveryData, setDeliveryData] = useState({
     origin: currentAddress !== 'Buscando tu ubicación...' && currentAddress !== 'Ubicación desconocida' && currentAddress !== 'Toca para agregar ubicación' ? currentAddress : '',
     originLat: currentLocation?.lat || 0,
     originLng: currentLocation?.lng || 0,
-    destination: '',
-    destinationLat: 0,
-    destinationLng: 0,
-    packageSize: 'medium',
-    packageType: 'otro',
-    description: '',
-    instructions: '',
-    recipientName: '',
-    recipientPhone: '',
-    originReference: ''
-  });
-  
-  const [compraData, setCompraData] = useState({
-    categoria: '',
-    lista: '',
-    presupuesto: ''
+    destination: '', destinationLat: 0, destinationLng: 0,
+    packageSize: 'medium', packageType: 'otro', description: '',
+    instructions: '', recipientName: '', recipientPhone: '',
+    originReference: '', originName: '', originPhone: '', destinationReference: '',
   });
 
+  const [compraData, setCompraData] = useState({ categoria: '', lista: '', presupuesto: '' });
   const { h3Price, calculandoPrecio, calcularPrecioH3 } = useH3Pricing();
 
-  const STEPS = orderType === 'compra' 
-    ? ['Categoría', 'Tu pedido', '¿Dónde?', 'Destino', 'Confirmación']
-    : ['Origen', 'Destino', 'Detalles', 'Confirmación'];
+  const STEPS = orderType === 'compra'
+    ? ['Categoría', 'Lista', 'Recolección', 'Entrega', 'Confirmar']
+    : ['Recolección', 'Entrega', 'Confirmar'];
 
-  const handleInputChange = (field: string, value: any) => {
+  const handleInputChange = (field: string, value: any) =>
     setDeliveryData(prev => ({ ...prev, [field]: value }));
-  };
 
-  const calculateRoute = () => {
-    if (!window.google) return;
-    const directionsService = new window.google.maps.DirectionsService();
-    directionsService.route(
-      {
-        origin: { lat: deliveryData.originLat, lng: deliveryData.originLng },
-        destination: { lat: deliveryData.destinationLat, lng: deliveryData.destinationLng },
-        travelMode: window.google.maps.TravelMode.DRIVING,
-      },
+  const calculateRoute = (oLat: number, oLng: number, dLat: number, dLng: number) => {
+    if (!window.google || !oLat || !dLat) return;
+    new window.google.maps.DirectionsService().route(
+      { origin: { lat: oLat, lng: oLng }, destination: { lat: dLat, lng: dLng }, travelMode: window.google.maps.TravelMode.DRIVING },
       (result, status) => {
         if (status === window.google.maps.DirectionsStatus.OK && result) {
-          setDirections(result);
-          if (result.routes[0].legs[0].distance) {
+          if (result.routes[0].legs[0].distance)
             setDistanceKm(result.routes[0].legs[0].distance.value / 1000);
-          }
         }
       }
     );
   };
 
-  const nextStep = () => {
-    if (activeStep === 1 && deliveryData.originLat && deliveryData.destinationLat) {
-       calculateRoute();
+  const nextStep = async (overrideDest?: { lat: number; lng: number }) => {
+    const confirmationStepIndex = STEPS.length - 1;
+
+    if (isEditingFromSummary) {
+      const dLat = overrideDest?.lat ?? deliveryData.destinationLat;
+      const dLng = overrideDest?.lng ?? deliveryData.destinationLng;
+      if (deliveryData.originLat && dLat) {
+        await calcularPrecioH3(deliveryData.originLat, deliveryData.originLng, dLat, dLng);
+        calculateRoute(deliveryData.originLat, deliveryData.originLng, dLat, dLng);
+      }
+      setIsEditingFromSummary(false);
+      setDirection(1);
+      setActiveStep(confirmationStepIndex);
+      return;
     }
-    if (activeStep < STEPS.length - 1) setActiveStep(prev => prev + 1);
+
+    const isGoingToConfirm = activeStep + 1 === confirmationStepIndex;
+    if (isGoingToConfirm) {
+      const dLat = overrideDest?.lat ?? deliveryData.destinationLat;
+      const dLng = overrideDest?.lng ?? deliveryData.destinationLng;
+      const ok = await calcularPrecioH3(deliveryData.originLat, deliveryData.originLng, dLat, dLng);
+      if (!ok) return;
+      calculateRoute(deliveryData.originLat, deliveryData.originLng, dLat, dLng);
+    }
+    if (activeStep < confirmationStepIndex) {
+      setDirection(1);
+      setActiveStep(p => p + 1);
+    }
   };
 
   const prevStep = () => {
+    if (isEditingFromSummary) {
+      setIsEditingFromSummary(false);
+      setDirection(1);
+      setActiveStep(STEPS.length - 1);
+      return;
+    }
+
+    setDirection(-1);
     if (orderType !== null && activeStep === 0) {
       setOrderType(null);
       return;
     }
-    if (activeStep > 0) setActiveStep(prev => prev - 1);
-    else setCurrentView('home');
+    if (activeStep > 0) {
+      setActiveStep(p => p - 1);
+    } else {
+      setCurrentView('home');
+    }
   };
 
-  const getDynamicPrice = () => {
-    let basePrice = 35;
-    if (deliveryData.packageSize === 'medium') basePrice = 45;
-    if (deliveryData.packageSize === 'large') basePrice = 85;
-    return Math.round(basePrice + (distanceKm * 8));
+  const handleEditOrigin = () => {
+    const originStep = orderType === 'compra' ? 1 : 0;
+    setDirection(-1);
+    setIsEditingFromSummary(true);
+    setActiveStep(originStep);
+  };
+
+  const handleEditDestination = () => {
+    const destinationStep = orderType === 'compra' ? 3 : 1;
+    setDirection(-1);
+    setIsEditingFromSummary(true);
+    setActiveStep(destinationStep);
   };
 
   const handleRequestOtp = async () => {
-    if (otpPhone.length < 10) {
-      toast.error('Ingresa un número válido de 10 dígitos');
-      return;
-    }
+    if (otpPhone.length < 10) { toast.error('Ingresa un número de 10 dígitos'); return; }
     setIsOtpLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('auth-otp', {
-        body: { action: 'request-client-otp', telefono: otpPhone }
+        body: { action: 'request-client-otp', telefono: otpPhone },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      
       setOtpStep('code');
       toast.success('Código enviado por WhatsApp');
-    } catch (err: any) {
-      console.error(err);
-      toast.error('Error al enviar código');
-    } finally {
-      setIsOtpLoading(false);
-    }
+    } catch { toast.error('Error al enviar código'); }
+    finally { setIsOtpLoading(false); }
   };
 
   const verifyAndCreateOrder = async () => {
-    if (otpCode.length < 4) {
-      toast.error('Ingresa el código completo');
-      return;
-    }
+    if (otpCode.length < 4) { toast.error('Ingresa el código completo'); return; }
     setIsOtpLoading(true);
     try {
       let fullDescription = '';
       let extraCompras = 0;
-      let extraPaquete = 0;
-
       if (orderType === 'compra') {
-        extraCompras = compraData.presupuesto.includes('100') ? 100 :
-                       compraData.presupuesto.includes('300') ? 300 :
-                       compraData.presupuesto.includes('500') ? 500 : 0;
+        extraCompras = compraData.presupuesto.includes('Más') ? 600 : compraData.presupuesto.includes('500') ? 500 : compraData.presupuesto.includes('300') ? 300 : 100;
         fullDescription = `[COMPRA - ${compraData.categoria.toUpperCase()}] Presupuesto: ${compraData.presupuesto}. Lista: ${compraData.lista}.`;
       } else {
-        extraPaquete = deliveryData.packageSize === 'medium' ? 10 : 
-                       deliveryData.packageSize === 'large' ? 50 : 0; // Se suman extras al precio base
         fullDescription = `${deliveryData.description}. ${deliveryData.instructions ? 'Instrucciones: ' + deliveryData.instructions : ''} (Paquete ${deliveryData.packageSize})`;
       }
-
-      // El payload solo lleva lo necesario. El backend calculará el total usando H3.
-      const payload = {
-        cliente_tel: otpPhone,
-        cliente_nombre: deliveryData.recipientName || 'Cliente Invitado',
-        descripcion: fullDescription,
-        direccion: deliveryData.origin,
-        referencias_entrega: deliveryData.destination,
-        origen: 'mandadito_app',
-        tipo_pedido: 'mandadito',
-        estado: 'buscando_repartidor',
-        metodo_pago: 'efectivo',
-        lat: deliveryData.originLat,
-        lng: deliveryData.originLng,
-        lat_entrega: deliveryData.destinationLat,
-        lng_entrega: deliveryData.destinationLng,
-        distancia_km: distanceKm,
-        items: [],
-        extra_compras: extraCompras,
-        extra_paquete: extraPaquete
-      };
-
-      createOrderMutation.mutate(payload);
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || 'Error al preparar pedido');
-    }
+      createOrderMutation.mutate({
+        cliente_tel: otpPhone, cliente_nombre: deliveryData.recipientName || 'Cliente Invitado',
+        descripcion: fullDescription, direccion: deliveryData.origin,
+        referencias_entrega: deliveryData.destination, origen: 'mandadito_app',
+        tipo_pedido: 'mandadito', estado: 'buscando_repartidor', metodo_pago: 'efectivo',
+        lat: deliveryData.originLat, lng: deliveryData.originLng,
+        lat_entrega: deliveryData.destinationLat, lng_entrega: deliveryData.destinationLng,
+        distancia_km: distanceKm, items: [], extra_compras: extraCompras, extra_paquete: 0,
+      });
+    } catch (err: any) { toast.error(err.message || 'Error al preparar pedido'); }
   };
 
-  const handleInitialSubmit = () => {
-    setShowOtpModal(true);
-    setOtpStep('phone');
-    setOtpCode('');
+  const isStepCategoriaCompra = orderType === 'compra' && activeStep === 0;
+  const isStepListaCompra     = orderType === 'compra' && activeStep === 1;
+  const isStepOrigin          = (orderType === 'compra' && activeStep === 2) || (orderType === 'envio' && activeStep === 0);
+  const isStepDestination     = (orderType === 'compra' && activeStep === 3) || (orderType === 'envio' && activeStep === 1);
+  const isStepConfirmation    = (orderType === 'compra' && activeStep === 4) || (orderType === 'envio' && activeStep === 2);
+
+  const screenVariants: Variants = {
+    enter: (dir: number) => ({
+      x: dir > 0 ? 36 : -36,
+      opacity: 0,
+      scale: 0.99,
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+      scale: 1,
+      transition: {
+        duration: 0.26,
+        ease: [0.16, 1, 0.3, 1] as const,
+      },
+    },
+    exit: (dir: number) => ({
+      x: dir > 0 ? -36 : 36,
+      opacity: 0,
+      scale: 0.99,
+      transition: {
+        duration: 0.2,
+        ease: [0.16, 1, 0.3, 1] as const,
+      },
+    }),
   };
-
-  const [isScrolled, setIsScrolled] = useState(false);
-
-  const isStepCategoriaCompra = (orderType === 'compra' && activeStep === 0);
-  const isStepListaCompra = (orderType === 'compra' && activeStep === 1);
-  const isStepOrigin = (orderType === 'compra' && activeStep === 2) || (orderType === 'envio' && activeStep === 0);
-  const isStepDestination = (orderType === 'compra' && activeStep === 3) || (orderType === 'envio' && activeStep === 1);
-  const isStepDetailsEnvio = (orderType === 'envio' && activeStep === 2);
-  const isStepConfirmation = (orderType === 'compra' && activeStep === 4) || (orderType === 'envio' && activeStep === 3);
 
   return (
-    <div className="flex flex-col h-full bg-white relative w-full">
-      {orderType === null ? (
-        <div 
-          className="flex-1 overflow-y-auto custom-scrollbar"
-          onScroll={(e) => setIsScrolled(e.currentTarget.scrollTop > 10)}
-        >
-          <header className={`px-5 flex items-center gap-4 sticky top-0 z-20 transition-all duration-300 ${
-            isScrolled ? 'pt-4 pb-3 bg-white/90 backdrop-blur-xl shadow-sm border-b border-gray-100' : 'pt-6 pb-2 bg-transparent border-b border-transparent'
-          }`}>
-            <button 
-              onClick={() => setCurrentView('home')} 
-              className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors border ${
-                isScrolled ? 'bg-gray-50 border-gray-200 hover:bg-gray-100' : 'bg-white/50 border-gray-200/50 hover:bg-white shadow-sm'
-              }`}
-            >
-              <ChevronLeft className="w-6 h-6 text-gray-900" />
-            </button>
-            <h1 className={`text-xl font-black text-gray-900 transition-all duration-300 ${isScrolled ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
-              ¿Qué necesitas hoy?
-            </h1>
-          </header>
-
-          <div className="px-6 py-2">
-            <h1 className="text-3xl font-black text-gray-900 mb-6 mt-1">¿Qué necesitas hoy?</h1>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto mt-4">
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-yellow-400 transition-all group/card overflow-hidden">
-              <button 
-                onClick={() => { setOrderType('envio'); setActiveStep(0); }}
-                className="w-full relative flex items-center p-5 hover:bg-gray-50 transition-colors text-left group"
-              >
-                <div className="w-14 h-14 bg-yellow-50 group-hover:bg-yellow-100 group-hover/card:bg-yellow-100 rounded-2xl flex items-center justify-center shrink-0 transition-colors duration-200">
-                  <Package className="w-7 h-7 text-yellow-600" />
-                </div>
-                <div className="flex-1 min-w-0 ml-5">
-                  <h2 className="text-lg font-bold text-gray-900 tracking-tight leading-none mb-1.5">Enviar un paquete</h2>
-                  <p className="text-sm text-gray-500 leading-snug pr-2">Llevamos documentos o llaves de un punto a otro.</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-300 md:hidden" />
-              </button>
-            </div>
-
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-400 transition-all group/card overflow-hidden">
-              <button 
-                onClick={() => { setOrderType('compra'); setActiveStep(0); }}
-                className="w-full relative flex items-center p-5 hover:bg-gray-50 transition-colors text-left group"
-              >
-                <div className="w-14 h-14 bg-blue-50 group-hover:bg-blue-100 group-hover/card:bg-blue-100 rounded-2xl flex items-center justify-center shrink-0 transition-colors duration-200">
-                  <ShoppingCart className="w-7 h-7 text-blue-600" />
-                </div>
-                <div className="flex-1 min-w-0 ml-5">
-                  <h2 className="text-lg font-bold text-gray-900 tracking-tight leading-none mb-1.5">Ir de compras</h2>
-                  <p className="text-sm text-gray-500 leading-snug pr-2">Farmacia, súper, comida. Te lo llevamos a donde estés.</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-300 md:hidden" />
-              </button>
-            </div>
-
-            <div className="md:col-span-2 bg-gradient-to-br from-white to-orange-50/30 rounded-3xl border border-orange-100 shadow-sm hover:shadow-md hover:border-orange-400 transition-all group/card overflow-hidden">
-              <button 
-                onClick={() => setCurrentView('eatsInfo')}
-                className="w-full relative flex items-center p-5 hover:bg-orange-50/50 transition-colors text-left group"
-              >
-                <div className="w-16 h-16 bg-white shadow-sm rounded-2xl flex items-center justify-center shrink-0 transition-transform duration-300 group-hover:scale-105 border border-orange-100 overflow-hidden p-1">
-                  <img src="/estrella-circle.png" alt="Estrella Eats" className="w-full h-full object-contain" />
-                </div>
-                <div className="flex-1 min-w-0 ml-5">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <h2 className="text-lg font-bold text-gray-900 tracking-tight leading-none">Estrella Eats</h2>
-                    <span className="px-2 py-0.5 bg-gradient-to-r from-orange-500 to-red-500 text-white text-[10px] font-bold rounded-full uppercase tracking-wider shadow-sm">
-                      ¡Antojo!
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600 leading-snug pr-2 font-medium">
-                    Pide de tus restaurantes favoritos calientito hasta tu puerta.
-                  </p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-300 md:hidden" />
-              </button>
-            </div>
-          </div>
-        </div>
-        </div>
-      ) : (
-        <>
-          <header className={`px-5 flex items-center justify-between sticky top-0 z-20 transition-all duration-300 ${
-            isScrolled ? 'pt-4 pb-3 bg-white/90 backdrop-blur-xl shadow-sm border-b border-gray-100' : 'pt-6 pb-2 bg-transparent border-b border-transparent'
-          }`}>
-            <button 
-              onClick={prevStep} 
-              className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors border ${
-                isScrolled ? 'bg-gray-50 border-gray-200 hover:bg-gray-100' : 'bg-white/50 border-gray-200/50 hover:bg-white shadow-sm'
-              }`}
-            >
-              <ChevronLeft className="w-6 h-6 text-gray-900" />
-            </button>
-            <span className={`font-black text-gray-900 transition-all duration-300 ${isScrolled ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
-              {STEPS[activeStep]}
-            </span>
-            <div className="w-10"></div>
-          </header>
-
-          <div className={`px-6 py-4 bg-white z-10 hidden md:block transition-all duration-300 ${isScrolled ? 'border-b border-gray-100' : ''}`}>
-            <div className="max-w-3xl mx-auto flex items-center justify-between relative">
-               <div className="absolute left-0 right-0 top-1/2 h-0.5 bg-gray-100 -z-10 -translate-y-1/2"></div>
-               {STEPS.map((step, idx) => (
-                 <div key={idx} className="flex flex-col items-center gap-1.5 bg-white px-4 md:px-8">
-                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
-                     idx < activeStep ? 'bg-gray-900 text-white' : 
-                     idx === activeStep ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-100' : 
-                     'bg-white border-2 border-gray-200 text-gray-400'
-                   }`}>
-                     {idx < activeStep ? <CheckCircle2 className="w-5 h-5" /> : idx + 1}
-                   </div>
-                   <span className="hidden md:block text-xs font-bold text-gray-500 mt-1">{step}</span>
-                 </div>
-               ))}
-            </div>
-          </div>
-
-          <main 
-            className="flex-1 overflow-y-auto px-6 py-4 pb-32 custom-scrollbar"
-            onScroll={(e) => setIsScrolled(e.currentTarget.scrollTop > 10)}
+    <div className="flex flex-col h-full bg-white overflow-hidden relative">
+      <AnimatePresence mode="wait" custom={direction} initial={false}>
+        {/* ── Screen 0: Service selector ─────────────────────────────────── */}
+        {orderType === null && (
+          <motion.div
+            key="service-selector"
+            custom={direction}
+            variants={screenVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            className="flex flex-col h-full w-full bg-white overflow-hidden"
           >
-            <div className="max-w-2xl mx-auto w-full">
-              <h2 className="text-2xl font-black text-gray-900 mb-6 md:hidden">
-                {STEPS[activeStep]}
-              </h2>
-              <AnimatePresence mode="wait">
-        {isStepCategoriaCompra && (
-          <motion.div key="stepCategoria" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-8">
-            <div>
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Selecciona una categoría</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 md:gap-4 bg-white md:bg-transparent rounded-3xl md:rounded-none overflow-hidden md:overflow-visible border border-gray-200 md:border-none shadow-sm md:shadow-none">
-                {COMPRA_CATEGORIES.map((cat, idx) => (
-                  <div key={cat.id} className="md:bg-white md:rounded-3xl md:border md:border-gray-200 md:shadow-sm md:hover:shadow-md md:hover:border-gray-900 transition-all">
-                    <motion.button
-                      whileTap={{ backgroundColor: '#f3f4f6' }}
-                      onClick={() => {
-                        setCompraData(prev => ({...prev, categoria: cat.id}));
-                        setActiveStep(1);
-                      }}
-                      className="w-full relative flex items-center p-4 bg-white md:bg-transparent hover:bg-gray-50 md:hover:bg-transparent transition-colors text-left group"
-                    >
-                      <div className="w-11 h-11 bg-gray-100 group-hover:bg-gray-200 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200">
-                        <cat.icon className="w-5 h-5 text-gray-700" />
+            {/* Top bar */}
+            <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 px-8 md:px-12 h-14 flex items-center justify-between shrink-0">
+              <button onClick={() => setCurrentView('home')} className="flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-gray-700 transition-colors">
+                <ChevronLeft className="w-4 h-4" /> Inicio
+              </button>
+              <span className="text-sm font-bold text-gray-900">Nuevo pedido</span>
+              <div className="w-20" />
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-8 md:px-12 py-10">
+              <div className="max-w-3xl w-full mx-auto">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Elige un servicio</p>
+                <h2 className="text-3xl font-black text-gray-900 mb-8">¿Qué necesitas hoy?</h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-gray-100 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                  {/* Envío */}
+                  <button
+                    onClick={() => {
+                      setDirection(1);
+                      setOrderType('envio');
+                      setActiveStep(0);
+                    }}
+                    className="group bg-white hover:bg-gray-50 text-left p-7 flex flex-col gap-5 transition-colors duration-150"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center group-hover:bg-yellow-50 transition-colors duration-200">
+                        <Package className="w-5 h-5 text-gray-500 group-hover:text-yellow-600 transition-colors duration-200" />
                       </div>
-                      <div className="flex-1 min-w-0 ml-4">
-                        <h4 className="text-[17px] font-semibold text-gray-900 tracking-tight leading-none mb-1">{cat.label}</h4>
-                        <p className="text-[13px] text-gray-500 truncate md:whitespace-normal md:break-words pr-2">{cat.desc}</p>
+                      <span className="text-[11px] font-bold text-gray-400 bg-gray-50 border border-gray-200 px-2.5 py-1 rounded-full group-hover:border-yellow-200 group-hover:bg-yellow-50 group-hover:text-yellow-600 transition-colors duration-200">~15 min</span>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900 text-base mb-1.5">Enviar un paquete</h3>
+                      <p className="text-sm text-gray-500 leading-relaxed">Documentos, llaves, encargos. Lo llevamos de un punto a otro.</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-gray-300 group-hover:text-yellow-500 text-xs font-semibold transition-colors duration-200">
+                      Seleccionar <ArrowRight className="w-3.5 h-3.5" />
+                    </div>
+                  </button>
+
+                  {/* Compra */}
+                  <button
+                    onClick={() => {
+                      setDirection(1);
+                      setOrderType('compra');
+                      setActiveStep(0);
+                    }}
+                    className="group bg-white hover:bg-gray-50 text-left p-7 flex flex-col gap-5 transition-colors duration-150"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center group-hover:bg-yellow-50 transition-colors duration-200">
+                        <ShoppingCart className="w-5 h-5 text-gray-500 group-hover:text-yellow-600 transition-colors duration-200" />
                       </div>
-                      <ChevronRight className="w-5 h-5 text-gray-300 md:hidden" />
-                    </motion.button>
-                    {idx < COMPRA_CATEGORIES.length - 1 && (
-                      <div className="ml-[72px] border-b border-gray-100 md:hidden"></div>
-                    )}
-                  </div>
-                ))}
+                      <span className="text-[11px] font-bold text-gray-400 bg-gray-50 border border-gray-200 px-2.5 py-1 rounded-full group-hover:border-yellow-200 group-hover:bg-yellow-50 group-hover:text-yellow-600 transition-colors duration-200">~30 min</span>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900 text-base mb-1.5">Ir de compras</h3>
+                      <p className="text-sm text-gray-500 leading-relaxed">Súper, farmacia, comida. Compramos y te entregamos en casa.</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-gray-300 group-hover:text-yellow-500 text-xs font-semibold transition-colors duration-200">
+                      Seleccionar <ArrowRight className="w-3.5 h-3.5" />
+                    </div>
+                  </button>
+                </div>
               </div>
             </div>
           </motion.div>
         )}
 
-        {isStepListaCompra && (
-          <motion.div key="stepLista" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-8">
-            <div>
-              <h3 className="text-lg font-bold text-gray-900 mb-1">¿Qué necesitas que compremos?</h3>
-              <p className="text-sm text-gray-500 mb-4 leading-snug">Puedes escribir tu lista libremente o apoyarte de las sugerencias abajo.</p>
-              <textarea 
-                value={compraData.lista}
-                onChange={(e) => setCompraData(prev => ({...prev, lista: e.target.value}))}
-                placeholder={
-                  compraData.categoria === 'farmacia' ? "Ej. 1 caja de Paracetamol 500mg, 1 Suero oral, 1 jeringa..." :
-                  compraData.categoria === 'super' ? "Ej. 1 kilo de jitomate, 1 leche deslactosada, pan dulce..." :
-                  compraData.categoria === 'comida' ? "Ej. 2 Hamburguesas sencillas sin cebolla, 1 refresco..." :
-                  "Escribe aquí tu lista de compras a detalle..."
-                }
-                className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-base font-medium focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-all min-h-[120px] resize-none shadow-inner"
-              />
-              {QUICK_CHIPS[compraData.categoria] && (
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {QUICK_CHIPS[compraData.categoria].map(chip => (
-                    <button
-                      key={chip.label}
-                      onClick={() => {
-                        if (chip.askDetails) {
-                          setChipPrompt({ chipBase: chip.append, question: chip.askDetails, placeholder: chip.placeholder });
-                        } else {
-                          setCompraData(prev => ({...prev, lista: prev.lista ? `${prev.lista}, ${chip.append}` : chip.append}));
-                        }
-                      }}
-                      className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-bold rounded-full hover:bg-gray-200 hover:text-gray-900 transition-colors shadow-sm"
-                    >
-                      + {chip.label}
-                    </button>
+        {/* ── Compra Step 0: Categoría ──────────────────────────────────── */}
+        {orderType === 'compra' && isStepCategoriaCompra && (
+          <motion.div
+            key="compra-categoria"
+            custom={direction}
+            variants={screenVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            className="flex flex-col h-full w-full bg-white overflow-hidden"
+          >
+            {/* Stepper Top Bar */}
+            <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 shrink-0">
+              <div className="px-8 md:px-12 h-14 flex items-center justify-between">
+                <button onClick={prevStep} className="flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-gray-700 transition-colors">
+                  <ChevronLeft className="w-4 h-4" /> Atrás
+                </button>
+                <div className="hidden md:flex items-center gap-1">
+                  {STEPS.map((step, idx) => (
+                    <div key={idx} className="flex items-center gap-1">
+                      <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors ${
+                        idx < activeStep  ? 'bg-gray-900 text-white' :
+                        idx === activeStep ? 'bg-yellow-400 text-gray-900' :
+                        'bg-gray-100 text-gray-400'
+                      }`}>
+                        {idx < activeStep ? <CheckCircle2 className="w-3 h-3" /> : <span>{idx + 1}</span>}
+                        {step}
+                      </div>
+                      {idx < STEPS.length - 1 && <div className="w-3 h-px bg-gray-200" />}
+                    </div>
                   ))}
                 </div>
-              )}
+                <div className="w-20 md:hidden">
+                  <span className="text-sm font-bold text-gray-500">{activeStep + 1}/{STEPS.length}</span>
+                </div>
+                <div className="hidden md:block w-20" />
+              </div>
             </div>
-            <div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Presupuesto aproximado</h3>
-              <p className="text-sm text-gray-500 mb-4">Para que el repartidor sepa cuánto efectivo llevar.</p>
-              <div className="grid grid-cols-2 gap-3">
-                {['Menos de $100', 'Aprox $300', 'Aprox $500', 'Más de $500'].map((pres) => (
-                  <button
-                    key={pres}
-                    onClick={() => setCompraData(prev => ({...prev, presupuesto: pres}))}
-                    className={`py-3 px-4 rounded-xl font-bold text-sm border-2 transition-all ${
-                      compraData.presupuesto === pres 
-                        ? 'bg-gray-900 border-gray-900 text-white' 
-                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                    }`}
-                  >
-                    {pres}
-                  </button>
-                ))}
+
+            <div className="flex-1 overflow-y-auto px-8 md:px-12 py-10">
+              <div className="max-w-3xl w-full mx-auto">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Paso 1</p>
+                <h2 className="text-3xl font-black text-gray-900 mb-8">¿De dónde compramos?</h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-gray-100 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                  {COMPRA_CATEGORIES.map((cat) => {
+                    const Icon = cat.icon;
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => {
+                          setCompraData(p => ({ ...p, categoria: cat.id }));
+                          setDirection(1);
+                          setActiveStep(1);
+                        }}
+                        className="group bg-white hover:bg-gray-50 text-left p-5 flex items-start gap-4 transition-colors duration-150"
+                      >
+                        <div className="w-9 h-9 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center shrink-0 group-hover:border-yellow-200 group-hover:bg-yellow-50 transition-colors duration-200">
+                          <Icon className="w-4 h-4 text-gray-500 group-hover:text-yellow-600 transition-colors" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-gray-900 text-sm">{cat.label}</p>
+                          <p className="text-xs text-gray-400 mt-0.5 leading-snug truncate">{cat.desc}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </motion.div>
         )}
 
-        {isStepOrigin && (
-          <motion.div key="stepOrigin" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-6">
-               <h3 className="text-lg font-bold text-gray-900 mb-4">{orderType === 'compra' ? '¿Dónde lo compramos?' : '¿Dónde recogemos?'}</h3>
-               <div className="relative group cursor-pointer" onClick={() => setMapPickerType('origin')}>
-                 <div className="absolute left-5 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-blue-500 ring-4 ring-blue-50 group-hover:scale-110 transition-transform"></div>
-                 <div className="w-full pl-12 pr-5 py-4 md:py-5 bg-white group-hover:bg-gray-50 border border-gray-200 group-hover:border-blue-200 rounded-2xl text-gray-900 font-medium transition-all shadow-sm flex items-center min-h-[64px]">
-                    {deliveryData.origin || <span className="text-gray-400">Toca para buscar dirección...</span>}
-                 </div>
-               </div>
-               
-               {isLoaded && deliveryData.originLat !== 0 ? (
-                 <div className="h-32 bg-gray-100 rounded-2xl border border-gray-200 overflow-hidden relative mt-6 shadow-sm">
-                    <GoogleMap
-                      mapContainerStyle={{ width: '100%', height: '100%' }}
-                      center={{ lat: deliveryData.originLat, lng: deliveryData.originLng }}
-                      zoom={16}
-                      options={{ disableDefaultUI: true, gestureHandling: 'none' }}
-                    >
-                      <Marker position={{ lat: deliveryData.originLat, lng: deliveryData.originLng }} />
-                    </GoogleMap>
-                 </div>
-               ) : (
-                 <div className="h-32 bg-white rounded-2xl border border-dashed border-gray-300 overflow-hidden relative mt-6 flex items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setMapPickerType('origin')}>
-                    <div className="text-center relative z-10 text-gray-400 flex flex-col items-center">
-                      <MapPin className="w-8 h-8 mb-3 opacity-50" />
-                      <span className="text-sm font-semibold">Seleccionar en el mapa</span>
-                    </div>
-                 </div>
-               )}
-
-               <div className="mt-6">
-                 <h3 className="text-sm font-bold text-gray-900 mb-2">Referencias del lugar (Opcional)</h3>
-                 <input 
-                   type="text" 
-                   value={deliveryData.originReference || ''}
-                   onChange={(e) => handleInputChange('originReference', e.target.value)}
-                   placeholder="Ej. Casa blanca con zaguán negro"
-                   className="w-full px-5 py-4 bg-white border border-gray-200 rounded-2xl text-sm font-medium focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-all shadow-sm"
-                 />
-               </div>
-          </motion.div>
-        )}
-
-        {isStepDestination && (
-        <motion.div key="stepDestination" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-8">
-           <div className="space-y-4">
-             <h3 className="text-lg font-bold text-gray-900">¿A dónde enviamos?</h3>
-             <div className="relative group cursor-pointer" onClick={() => setMapPickerType('destination')}>
-               <div className="absolute left-4 top-1/2 -translate-y-1/2">
-                  <MapPin className="w-6 h-6 text-yellow-500 group-hover:scale-110 transition-transform" />
-               </div>
-               <div className="w-full pl-12 pr-5 py-4 bg-white group-hover:bg-gray-50 border border-gray-200 group-hover:border-yellow-300 rounded-2xl text-gray-900 font-medium transition-all shadow-sm flex items-center min-h-[56px]">
-                    {deliveryData.destination || <span className="text-gray-400">Toca para buscar dirección...</span>}
-               </div>
-             </div>
-
-             {isLoaded && deliveryData.destinationLat !== 0 && (
-               <div className="h-24 bg-gray-100 rounded-2xl border border-gray-200 overflow-hidden relative shadow-sm">
-                  <GoogleMap
-                    mapContainerStyle={{ width: '100%', height: '100%' }}
-                    center={{ lat: deliveryData.destinationLat, lng: deliveryData.destinationLng }}
-                    zoom={16}
-                    options={{ disableDefaultUI: true, gestureHandling: 'none' }}
-                  >
-                    <Marker position={{ lat: deliveryData.destinationLat, lng: deliveryData.destinationLng }} icon={{url: "http://maps.google.com/mapfiles/ms/icons/yellow-dot.png"}} />
-                  </GoogleMap>
-               </div>
-             )}
-           </div>
-
-           <div className="space-y-4">
-             <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-               Datos de quien recibe <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded uppercase tracking-wider">Obligatorio</span>
-             </h3>
-             <p className="text-xs text-gray-500">Necesarios para enviarle un PIN por WhatsApp y garantizar una entrega segura.</p>
-             <input 
-               type="text" 
-               value={deliveryData.recipientName}
-               onChange={(e) => handleInputChange('recipientName', e.target.value)}
-               placeholder="Nombre completo"
-               className="w-full px-5 py-4 bg-white border border-gray-200 rounded-2xl text-sm font-medium focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-all shadow-sm"
-             />
-             <input 
-               type="tel" 
-               value={deliveryData.recipientPhone}
-               onChange={(e) => handleInputChange('recipientPhone', e.target.value)}
-               placeholder="Teléfono móvil (10 dígitos)"
-               className="w-full px-5 py-4 bg-white border border-gray-200 rounded-2xl text-sm font-medium focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-all shadow-sm"
-             />
-            </div>
-        </motion.div>
-      )}
-
-      {isStepDetailsEnvio && (
-        <motion.div key="stepDetails" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-10">
-           
-           <div>
-             <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-               ¿Qué estás enviando?
-             </h3>
-             
-             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-               {ENVIO_TYPES.map((type) => (
-                 <label 
-                   key={type.id}
-                   className={`relative flex flex-col items-center justify-center p-4 cursor-pointer rounded-2xl border-2 transition-all text-center ${
-                     deliveryData.packageType === type.id 
-                       ? 'border-gray-900 bg-gray-900 text-white shadow-md' 
-                       : 'border-gray-100 bg-white hover:border-gray-200 text-gray-700'
-                   }`}
-                 >
-                   <input 
-                     type="radio" 
-                     name="packageType" 
-                     value={type.id}
-                     checked={deliveryData.packageType === type.id}
-                     onChange={() => handleInputChange('packageType', type.id)}
-                     className="sr-only"
-                   />
-                   <type.icon className={`w-8 h-8 mb-2 ${deliveryData.packageType === type.id ? 'text-white' : 'text-gray-500'}`} />
-                   <span className="font-bold text-xs leading-tight">{type.label}</span>
-                 </label>
-               ))}
-             </div>
-           </div>
-
-           <div>
-             <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-               Selecciona el tamaño
-               <Info className="w-4 h-4 text-gray-400" />
-             </h3>
-             
-             <div className="grid grid-cols-1 gap-3">
-               {ENVIO_SIZES.map((size) => (
-                 <label 
-                   key={size.id}
-                   className={`relative flex items-center p-4 cursor-pointer rounded-2xl border-2 transition-all ${
-                     deliveryData.packageSize === size.id 
-                       ? 'border-gray-900 bg-gray-50' 
-                       : 'border-gray-100 bg-white hover:border-gray-200'
-                   }`}
-                 >
-                   <input 
-                     type="radio" 
-                     name="packageSize" 
-                     value={size.id}
-                     checked={deliveryData.packageSize === size.id}
-                     onChange={() => handleInputChange('packageSize', size.id)}
-                     className="sr-only"
-                   />
-                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center mr-4 shrink-0 transition-colors ${
-                     deliveryData.packageSize === size.id ? 'bg-yellow-400 text-gray-900' : 'bg-gray-50 text-gray-500'
-                   }`}>
-                     <size.icon className="w-6 h-6" />
-                   </div>
-                   <div className="flex-1">
-                     <div className="flex justify-between items-center mb-1">
-                       <span className="font-bold text-gray-900">{size.label}</span>
-                     </div>
-                     <p className="text-xs text-gray-500 leading-tight">{size.desc}</p>
-                   </div>
-                   <div className={`absolute top-4 right-4 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                      deliveryData.packageSize === size.id ? 'border-gray-900 bg-gray-900' : 'border-gray-300'
-                   }`}>
-                     {deliveryData.packageSize === size.id && <div className="w-2 h-2 bg-white rounded-full"></div>}
-                   </div>
-                 </label>
-               ))}
-             </div>
-           </div>
-
-           <div className="space-y-4 pt-4 border-t border-gray-100">         </div>
-
-           <div className="space-y-4">
-              <h3 className="text-sm font-bold text-gray-900">Detalles adicionales</h3>
-              <input 
-                type="text" 
-                value={deliveryData.description}
-                onChange={(e) => handleInputChange('description', e.target.value)}
-                placeholder="¿Qué estás enviando? (Ej. Llaves casa)"
-                className="w-full px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:bg-white focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-all"
-              />
-              <textarea 
-                value={deliveryData.instructions}
-                onChange={(e) => handleInputChange('instructions', e.target.value)}
-                placeholder="Instrucciones para el repartidor (Ej. Tocar timbre 2)"
-                rows={2}
-                className="w-full px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:bg-white focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-all resize-none"
-              />
-           </div>
-        </motion.div>
-      )}
-
-        {isStepConfirmation && (
-          <motion.div key="stepConfirm" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-6">
-              <div className="bg-white rounded-[32px] p-6 border border-gray-100 shadow-xl relative overflow-hidden">
-                 <div className="absolute -top-16 -right-16 w-40 h-40 bg-gray-50 rounded-full blur-3xl"></div>
-                 
-                 <div className="flex items-center justify-between mb-6 relative z-10">
-                   <div className="flex-1 min-w-0 pr-2">
-                     <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Origen</p>
-                     <p className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight">{deliveryData.origin}</p>
-                   </div>
-                   <div className="px-2 text-gray-300 shrink-0"><ArrowRight className="w-5 h-5" /></div>
-                   <div className="flex-1 min-w-0 pl-2 text-right flex flex-col items-end">
-                     <p className="text-[10px] font-black text-yellow-500 uppercase tracking-widest mb-1">Destino</p>
-                     <p className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight">{deliveryData.destination}</p>
-                   </div>
-                 </div>
-
-                 <div className="py-5 border-y border-gray-100 mb-5 relative z-10">
-                   {orderType === 'envio' ? (
-                     <div className="flex items-center gap-4">
-                       <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center shrink-0">
-                         <Package className="w-6 h-6 text-gray-700" />
-                       </div>
-                       <div className="min-w-0 flex-1">
-                         <p className="text-sm font-bold text-gray-900">Paquete {
-                           deliveryData.packageSize === 'small' ? 'Pequeño' : 
-                           deliveryData.packageSize === 'medium' ? 'Mediano' : 'Grande'
-                         }</p>
-                         <p className="text-xs text-gray-500 truncate mt-0.5">{deliveryData.description || 'Sin descripción'}</p>
-                       </div>
-                     </div>
-                   ) : (
-                     <div className="flex items-center gap-4">
-                       <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center shrink-0">
-                         <ShoppingCart className="w-6 h-6 text-blue-600" />
-                       </div>
-                       <div className="min-w-0 flex-1">
-                         <div className="flex justify-between items-center mb-1">
-                           <h3 className="text-sm font-bold text-gray-900 capitalize">{compraData.categoria}</h3>
-                           <span className="text-[10px] font-bold bg-gray-100 text-gray-600 px-2 py-1 rounded-lg shrink-0 ml-2">{compraData.presupuesto}</span>
-                         </div>
-                         <p className="text-xs font-medium text-gray-500 truncate">"{compraData.lista}"</p>
-                       </div>
-                     </div>
-                   )}
-                 </div>
-
-                 <div className="space-y-3 mb-6 relative z-10">
-                   <div className="flex items-center justify-between">
-                     <span className="text-sm font-medium text-gray-500">Tarifa de envío</span>
-                     <span className="text-sm font-bold text-gray-900">${h3Price}.00</span>
-                   </div>
-                   {orderType === 'compra' && (
-                     <div className="flex items-center justify-between">
-                       <span className="text-sm font-medium text-gray-500">Compras (Aprox)</span>
-                       <span className="text-sm font-bold text-gray-900">
-                         {compraData.presupuesto.includes('100') ? '+$100.00' :
-                          compraData.presupuesto.includes('300') ? '+$300.00' :
-                          compraData.presupuesto.includes('500') ? '+$500.00' : ''}
-                       </span>
-                     </div>
-                   )}
-                 </div>
-
-                 <div className="bg-gray-900 rounded-2xl p-5 flex items-center justify-between text-white relative z-10 shadow-lg shadow-gray-900/20">
-                   <div>
-                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1">Total a pagar {orderType === 'compra' && <span className="text-yellow-400">(Aprox)</span>}</p>
-                     <div className="inline-flex items-center gap-1.5 bg-white/20 px-2 py-1 rounded-md">
-                       <span className="text-[10px] text-white font-bold tracking-wider">Efectivo</span>
-                     </div>
-                   </div>
-                   <div className="text-right flex items-start">
-                     <span className="text-xl font-bold mt-1 mr-0.5 text-yellow-400">$</span>
-                     <span className="text-4xl font-black">
-                       {h3Price + (
-                         orderType === 'compra' ? (
-                           compraData.presupuesto.includes('100') ? 100 :
-                           compraData.presupuesto.includes('300') ? 300 :
-                           compraData.presupuesto.includes('500') ? 500 : 0
-                         ) : 0
-                       )}
-                     </span>
-                   </div>
-                 </div>
-              </div>
-          </motion.div>
-        )}
-        </AnimatePresence>
-
-      {/* Map Location Picker Overlay */}
-      <AnimatePresence>
-        {mapPickerType && (
+        {/* ── Compra Step 1: Lista ──────────────────────────────────────── */}
+        {orderType === 'compra' && isStepListaCompra && (
           <motion.div
-            initial={{ opacity: 0, y: "100%" }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: "100%" }}
-            transition={{ type: "spring", bounce: 0, duration: 0.4 }}
-            className="fixed inset-0 z-[100] bg-white flex flex-col"
+            key="compra-lista"
+            custom={direction}
+            variants={screenVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            className="flex flex-col h-full w-full bg-white overflow-hidden"
           >
-            <MapLocationPicker
+            {/* Stepper Top Bar */}
+            <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 shrink-0">
+              <div className="px-8 md:px-12 h-14 flex items-center justify-between">
+                <button onClick={prevStep} className="flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-gray-700 transition-colors">
+                  <ChevronLeft className="w-4 h-4" /> Atrás
+                </button>
+                <div className="hidden md:flex items-center gap-1">
+                  {STEPS.map((step, idx) => (
+                    <div key={idx} className="flex items-center gap-1">
+                      <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors ${
+                        idx < activeStep  ? 'bg-gray-900 text-white' :
+                        idx === activeStep ? 'bg-yellow-400 text-gray-900' :
+                        'bg-gray-100 text-gray-400'
+                      }`}>
+                        {idx < activeStep ? <CheckCircle2 className="w-3 h-3" /> : <span>{idx + 1}</span>}
+                        {step}
+                      </div>
+                      {idx < STEPS.length - 1 && <div className="w-3 h-px bg-gray-200" />}
+                    </div>
+                  ))}
+                </div>
+                <div className="w-20 md:hidden">
+                  <span className="text-sm font-bold text-gray-500">{activeStep + 1}/{STEPS.length}</span>
+                </div>
+                <div className="hidden md:block w-20" />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-8 md:px-12 py-10">
+              <div className="max-w-3xl w-full mx-auto">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Paso 2</p>
+                <h2 className="text-3xl font-black text-gray-900 mb-2">¿Qué compramos?</h2>
+                <p className="text-sm text-gray-500 mb-8">Escribe tu lista libremente o usa los atajos de abajo.</p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Lista */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Tu lista</label>
+                    <textarea
+                      value={compraData.lista}
+                      onChange={(e) => setCompraData(p => ({ ...p, lista: e.target.value }))}
+                      placeholder={
+                        compraData.categoria === 'farmacia' ? 'Ej. 1 caja Paracetamol, 1 Suero oral...' :
+                        compraData.categoria === 'super'    ? 'Ej. 1kg jitomate, 1 leche deslactosada...' :
+                        compraData.categoria === 'comida'   ? 'Ej. 2 Hamburguesas sencillas, 1 refresco...' :
+                        'Escribe tu lista de compras...'
+                      }
+                      className="w-full px-4 py-3.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-all min-h-[160px] resize-none"
+                    />
+                    {QUICK_CHIPS[compraData.categoria] && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {QUICK_CHIPS[compraData.categoria].map(chip => (
+                          <button
+                            key={chip.label}
+                            onClick={() => {
+                              if (chip.askDetails) {
+                                setChipPrompt({ chipBase: chip.append, question: chip.askDetails, placeholder: chip.placeholder });
+                              } else {
+                                setCompraData(p => ({ ...p, lista: p.lista ? `${p.lista}, ${chip.append}` : chip.append }));
+                              }
+                            }}
+                            className="px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-600 text-xs font-bold rounded-full hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                          >
+                            + {chip.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Presupuesto */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Presupuesto aprox.</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['Menos de $100', 'Aprox $300', 'Aprox $500', 'Más de $500'].map((pres) => (
+                        <button
+                          key={pres}
+                          onClick={() => setCompraData(p => ({ ...p, presupuesto: pres }))}
+                          className={`py-3 px-4 rounded-xl font-bold text-sm border transition-all ${
+                            compraData.presupuesto === pres
+                              ? 'bg-gray-900 border-gray-900 text-white'
+                              : 'bg-white border-gray-200 text-gray-600 hover:border-gray-400 hover:text-gray-900'
+                          }`}
+                        >
+                          {pres}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-3 leading-relaxed">Para que el repartidor sepa cuánto efectivo llevar al momento de la compra.</p>
+                  </div>
+                </div>
+
+                {/* Continue button */}
+                <div className="mt-10 flex justify-end">
+                  <button
+                    onClick={() => nextStep()}
+                    disabled={!compraData.lista || !compraData.presupuesto || calculandoPrecio}
+                    className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-bold px-7 py-3.5 rounded-xl transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"
+                  >
+                    {calculandoPrecio ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Continuar <ArrowRight className="w-4 h-4" /></>}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Step: Recolección / Tienda ─────────────────────────────────── */}
+        {isStepOrigin && (
+          <motion.div
+            key="step-origin"
+            custom={direction}
+            variants={screenVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            className="h-full w-full bg-white overflow-hidden"
+          >
+            <LocationDetailsScreen
+              key="location-pickup"
+              title={orderType === 'compra' ? 'Detalles de compra' : 'Detalles de recolección'}
               isLoaded={isLoaded}
-              initialLat={mapPickerType === 'origin' ? deliveryData.originLat || undefined : deliveryData.destinationLat || undefined}
-              initialLng={mapPickerType === 'origin' ? deliveryData.originLng || undefined : deliveryData.destinationLng || undefined}
-              onCancel={() => setMapPickerType(null)}
-              onSelect={(address, lat, lng) => {
-                if (mapPickerType === 'origin') {
-                  handleInputChange('origin', address);
-                  handleInputChange('originLat', lat);
-                  handleInputChange('originLng', lng);
-                } else {
-                  handleInputChange('destination', address);
-                  handleInputChange('destinationLat', lat);
-                  handleInputChange('destinationLng', lng);
-                }
-                setMapPickerType(null);
-              }}
+              type="pickup"
+              address={deliveryData.origin}
+              lat={deliveryData.originLat}
+              lng={deliveryData.originLng}
+              reference={deliveryData.originReference}
+              contactName={deliveryData.originName || ''}
+              contactPhone={deliveryData.originPhone || ''}
+              onChange={handleInputChange}
+              onConfirm={nextStep}
+              onBack={prevStep}
+            />
+          </motion.div>
+        )}
+
+        {/* ── Step: Entrega ──────────────────────────────────────────────── */}
+        {isStepDestination && (
+          <motion.div
+            key="step-destination"
+            custom={direction}
+            variants={screenVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            className="h-full w-full bg-white overflow-hidden"
+          >
+            <LocationDetailsScreen
+              key="location-dropoff"
+              title="Detalles de entrega"
+              isLoaded={isLoaded}
+              type="dropoff"
+              address={deliveryData.destination}
+              lat={deliveryData.destinationLat}
+              lng={deliveryData.destinationLng}
+              reference={deliveryData.destinationReference || ''}
+              contactName={deliveryData.recipientName}
+              contactPhone={deliveryData.recipientPhone}
+              onChange={handleInputChange}
+              onConfirm={nextStep}
+              onBack={prevStep}
+            />
+          </motion.div>
+        )}
+
+        {/* ── Step: Resumen y Confirmación ───────────────────────────────── */}
+        {isStepConfirmation && (
+          <motion.div
+            key="step-confirmation"
+            custom={direction}
+            variants={screenVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            className="h-full w-full bg-white overflow-hidden"
+          >
+            <ConfirmOrderScreen
+              orderType={orderType!}
+              deliveryData={deliveryData}
+              compraData={compraData}
+              h3Price={h3Price}
+              onBack={prevStep}
+              onConfirm={() => { setShowOtpModal(true); setOtpStep('phone'); setOtpCode(''); }}
+              onChange={handleInputChange}
+              isProcessing={isOtpLoading || createOrderMutation.isPending}
+              onEditOrigin={handleEditOrigin}
+              onEditDestination={handleEditDestination}
+              showOtpModal={showOtpModal}
+              otpStep={otpStep}
+              otpPhone={otpPhone}
+              otpCode={otpCode}
+              isOtpLoading={isOtpLoading || createOrderMutation.isPending}
+              onSetOtpPhone={setOtpPhone}
+              onSetOtpCode={setOtpCode}
+              onRequestOtp={handleRequestOtp}
+              onVerifyAndCreate={verifyAndCreateOrder}
+              onCloseOtp={() => setShowOtpModal(false)}
+              onBackOtpStep={() => setOtpStep('phone')}
             />
           </motion.div>
         )}
       </AnimatePresence>
-            </div>
-          </main>
 
-          <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-white via-white to-transparent pt-12 z-20">
-            <div className="max-w-2xl mx-auto">
-              {!isStepConfirmation && !isStepCategoriaCompra && (
-                <button 
-                  onClick={async () => {
-                    const isGoingToConfirm = (orderType === 'envio' && activeStep === 2) || (orderType === 'compra' && activeStep === 3);
-                    if (isGoingToConfirm) {
-                      const success = await calcularPrecioH3(deliveryData.originLat, deliveryData.originLng, deliveryData.destinationLat, deliveryData.destinationLng);
-                      if (success) setActiveStep(p => p + 1);
-                    } else {
-                      setActiveStep(p => p + 1);
-                    }
-                  }}
-                  disabled={
-                    calculandoPrecio ||
-                    (isStepListaCompra && (!compraData.lista || !compraData.presupuesto)) ||
-                    (isStepOrigin && !deliveryData.origin) ||
-                    (isStepDestination && (!deliveryData.destination || !deliveryData.recipientName.trim() || !deliveryData.recipientPhone.trim()))
-                  }
-                  className="w-full bg-gray-900 text-white font-medium py-4 rounded-2xl shadow-xl hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {calculandoPrecio ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  ) : (
-                    <>
-                      Continuar <ArrowRight size={18} />
-                    </>
-                  )}
-                </button>
-              )}
-
-              {isStepConfirmation && (
-                <button 
-                  onClick={handleInitialSubmit}
-                  disabled={isProcessing}
-                  className="w-full bg-gray-900 text-white font-medium py-4 rounded-2xl shadow-xl hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-30 flex items-center justify-center gap-2"
-                >
-                  {isProcessing ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  ) : (
-                    'Confirmar y Solicitar'
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-      {/* OTP Modal Overlay */}
-      {createPortal(
-        <AnimatePresence>
-          {showOtpModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[120] bg-gray-900/60 flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl"
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-gray-900">Validar WhatsApp</h3>
-                <button onClick={() => setShowOtpModal(false)} className="p-2 bg-gray-100 rounded-full text-gray-500 hover:text-gray-900">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {otpStep === 'phone' ? (
-                <div className="space-y-4">
-                  <p className="text-sm text-gray-600">Para confirmar tu pedido, ingresa tu número de WhatsApp. Te enviaremos un código rápido de 4 dígitos.</p>
-                  <input
-                    type="tel"
-                    placeholder="10 dígitos (Ej. 5512345678)"
-                    value={otpPhone}
-                    onChange={(e) => setOtpPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    className="w-full text-center text-xl font-bold tracking-widest px-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none"
-                  />
-                  <button
-                    onClick={handleRequestOtp}
-                    disabled={otpPhone.length < 10 || isOtpLoading}
-                    className="w-full bg-gray-900 text-white font-bold py-4 rounded-2xl flex justify-center disabled:opacity-50"
-                  >
-                    {isOtpLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : 'Enviar Código'}
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-sm text-gray-600">Ingresa el código que acabamos de enviar por WhatsApp al <span className="font-bold">{otpPhone}</span></p>
-                  <input
-                    type="tel"
-                    placeholder="••••"
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    className="w-full text-center text-3xl font-black tracking-[1em] pl-[1em] px-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none"
-                  />
-                  <button
-                    onClick={verifyAndCreateOrder}
-                    disabled={otpCode.length < 4 || createOrderMutation.isPending}
-                    className="w-full bg-yellow-400 text-gray-900 font-bold py-4 rounded-2xl flex justify-center disabled:opacity-50"
-                  >
-                    {createOrderMutation.isPending ? <div className="w-5 h-5 border-2 border-gray-900/30 border-t-gray-900 rounded-full animate-spin"></div> : 'Confirmar Pedido'}
-                  </button>
-                  <button onClick={() => setOtpStep('phone')} className="w-full text-center text-sm text-gray-500 font-medium py-2">
-                    Cambiar número
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-        </AnimatePresence>,
-        document.body
-      )}
-
-      {/* Dynamic Chip Prompt Modal */}
+      {/* Chip Prompt Modal */}
       {createPortal(
         <AnimatePresence>
           {chipPrompt && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[130] bg-gray-900/60 flex items-end md:items-center justify-center p-0 md:p-4"
-          >
             <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="bg-white w-full max-w-md rounded-t-[2rem] md:rounded-[2rem] p-6 shadow-2xl pb-10 md:pb-6 relative"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[130] bg-black/40 backdrop-blur-sm flex items-center justify-center p-6"
             >
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-gray-200 rounded-full md:hidden"></div>
-              
-              <div className="flex justify-between items-center mb-6 mt-4 md:mt-0">
-                <div>
-                   <h3 className="text-xl font-bold text-gray-900 mb-1">{chipPrompt.chipBase}</h3>
-                   <p className="text-sm font-medium text-gray-500">{chipPrompt.question}</p>
+              <motion.div
+                initial={{ scale: 0.96, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.96, opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-xl border border-gray-100"
+              >
+                <div className="flex justify-between items-start mb-5">
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-base">{chipPrompt.chipBase}</h3>
+                    <p className="text-sm text-gray-500 mt-0.5">{chipPrompt.question}</p>
+                  </div>
+                  <button onClick={() => { setChipPrompt(null); setChipAnswer(''); }} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-                <button onClick={() => { setChipPrompt(null); setChipAnswer(''); }} className="p-2 bg-gray-100 rounded-full text-gray-500 hover:text-gray-900 shrink-0">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="space-y-4">
                 <input
-                  type="text"
-                  autoFocus
-                  placeholder={chipPrompt.placeholder || "Escribe aquí..."}
+                  type="text" autoFocus
+                  placeholder={chipPrompt.placeholder || 'Escribe aquí...'}
                   value={chipAnswer}
                   onChange={(e) => setChipAnswer(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && chipAnswer.trim()) {
-                      const textToAppend = `${chipPrompt.chipBase} de ${chipAnswer.trim()}`;
-                      setCompraData(prev => ({...prev, lista: prev.lista ? `${prev.lista}\n- ${textToAppend}` : `- ${textToAppend}`}));
-                      setChipPrompt(null);
-                      setChipAnswer('');
+                      const t = `${chipPrompt.chipBase} (${chipAnswer.trim()})`;
+                      setCompraData(p => ({ ...p, lista: p.lista ? `${p.lista}\n- ${t}` : `- ${t}` }));
+                      setChipPrompt(null); setChipAnswer('');
                     }
                   }}
-                  className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-base font-medium focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-all shadow-inner"
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-all mb-4"
                 />
                 <button
                   onClick={() => {
-                    const textToAppend = `${chipPrompt.chipBase} (${chipAnswer.trim()})`;
-                    setCompraData(prev => ({...prev, lista: prev.lista ? `${prev.lista}\n- ${textToAppend}` : `- ${textToAppend}`}));
-                    setChipPrompt(null);
-                    setChipAnswer('');
+                    const t = `${chipPrompt.chipBase} (${chipAnswer.trim()})`;
+                    setCompraData(p => ({ ...p, lista: p.lista ? `${p.lista}\n- ${t}` : `- ${t}` }));
+                    setChipPrompt(null); setChipAnswer('');
                   }}
                   disabled={!chipAnswer.trim()}
-                  className="w-full bg-gray-900 text-white font-bold py-4 rounded-2xl flex justify-center disabled:opacity-50 hover:bg-gray-800 transition-colors shadow-lg"
+                  className="w-full bg-gray-900 text-white font-bold py-3 rounded-xl text-sm hover:bg-gray-800 transition-colors disabled:opacity-30"
                 >
                   Agregar a la lista
                 </button>
-              </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
+          )}
         </AnimatePresence>,
         document.body
       )}

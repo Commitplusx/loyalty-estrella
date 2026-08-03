@@ -129,25 +129,52 @@ export function MapLocationPicker({ onSelect, onCancel, initialLat, initialLng, 
     onSelect(currentAddress, center.lat, center.lng);
   };
 
-  const handleUseCurrentLocation = () => {
-    if (navigator.geolocation) {
-      toast.loading('Buscando tu ubicación...', { id: 'gps' });
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          setCenter({ lat, lng });
-          if (mapRef.current) {
-            mapRef.current.panTo({ lat, lng });
-            mapRef.current.setZoom(17);
-          }
-          reverseGeocode(lat, lng);
-          toast.success('Ubicación encontrada', { id: 'gps' });
-        },
-        (error) => {
-          toast.error('No pudimos acceder a tu GPS', { id: 'gps' });
+  const handleUseCurrentLocation = async () => {
+    if (!navigator.geolocation) {
+      toast.error('Tu navegador no soporta geolocalización', { id: 'gps' });
+      return;
+    }
+    toast.loading('Buscando tu ubicación...', { id: 'gps' });
+
+    const tryGetPosition = (enableHighAccuracy: boolean, timeout: number): Promise<GeolocationPosition> => {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy,
+          timeout,
+          maximumAge: 120000,
+        });
+      });
+    };
+
+    try {
+      let pos: GeolocationPosition;
+      try {
+        pos = await tryGetPosition(false, 4000);
+      } catch {
+        pos = await tryGetPosition(true, 6000);
+      }
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      setCenter({ lat, lng });
+      if (mapRef.current) {
+        mapRef.current.panTo({ lat, lng });
+        mapRef.current.setZoom(17);
+      }
+      await reverseGeocode(lat, lng);
+      toast.success('Ubicación encontrada', { id: 'gps' });
+    } catch (error: any) {
+      if (error?.code === 1) {
+        toast.error('Permiso de ubicación denegado en tu navegador', { id: 'gps', duration: 4000 });
+      } else {
+        const fallbackPos = defaultCenter;
+        setCenter(fallbackPos);
+        if (mapRef.current) {
+          mapRef.current.panTo(fallbackPos);
+          mapRef.current.setZoom(16);
         }
-      );
+        await reverseGeocode(fallbackPos.lat, fallbackPos.lng);
+        toast('Te ubicamos en Comitán Centro. Mueve el mapa al punto exacto.', { id: 'gps', icon: '📍', duration: 5000 });
+      }
     }
   };
 

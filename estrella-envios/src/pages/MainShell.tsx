@@ -135,7 +135,7 @@ export function MainShell() {
                   case 'newDelivery':
                     return <NewDeliveryFlow setCurrentView={setCurrentView} isLoaded={isLoaded} />;
                   case 'activeTracking':
-                    return <ActiveTrackingView setCurrentView={setCurrentView} />;
+                    return <ActiveTrackingView setCurrentView={setCurrentView} isLoaded={isLoaded} />;
                   case 'history':
                     return <HistoryView setCurrentView={setCurrentView} />;
                   case 'loyalty':

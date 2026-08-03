@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react';
 
 import { Login } from './pages/Login';
 import { MainShell } from './pages/MainShell';
+import { TrackerPage } from './pages/TrackerPage';
 
 export default function App() {
   const { user, setUser } = useAppStore();
@@ -28,6 +29,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Ruta de Tracking en Tiempo Real (Pública para WhatsApp y clientes) */}
+        <Route path="/tracker" element={<TrackerPage />} />
+        
         <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
         <Route path="/" element={user ? <MainShell /> : <Navigate to="/login" replace />} />
         {/* Fallback route */}

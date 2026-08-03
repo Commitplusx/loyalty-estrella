@@ -1,16 +1,34 @@
 import { supabase } from '../../lib/supabase';
 import { useQuery } from '@tanstack/react-query';
 import { useAppStore } from '../../store/useAppStore';
-import { ChevronLeft, Package, ShoppingCart, Loader2, ArrowRight } from 'lucide-react';
+import { Package, ShoppingCart, Loader2, ArrowRight, Clock } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface HistoryViewProps {
   setCurrentView: (view: string) => void;
 }
 
+const STATUS_MAP: Record<string, { label: string; dot: string }> = {
+  entregado:           { label: 'Completado',   dot: 'bg-emerald-400' },
+  cancelado:           { label: 'Cancelado',    dot: 'bg-red-400'     },
+  buscando_repartidor: { label: 'Buscando',     dot: 'bg-yellow-400'  },
+  en_camino_origen:    { label: 'En camino',    dot: 'bg-blue-400'    },
+  en_camino_destino:   { label: 'En ruta',      dot: 'bg-blue-400'    },
+};
+
+const getStatus = (estado: string) =>
+  STATUS_MAP[estado] ?? { label: 'En proceso', dot: 'bg-blue-400' };
+
+const formatDate = (dateStr: string) =>
+  new Intl.DateTimeFormat('es-MX', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  }).format(new Date(dateStr));
+
 export function HistoryView({ setCurrentView }: HistoryViewProps) {
   const { user } = useAppStore();
-  const { data: pedidos = [], isLoading: loading } = useQuery({
+
+  const { data: pedidos = [], isLoading } = useQuery({
     queryKey: ['historial', user?.phone],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -18,135 +36,111 @@ export function HistoryView({ setCurrentView }: HistoryViewProps) {
         .select('*')
         .eq('cliente_tel', user!.phone)
         .order('created_at', { ascending: false });
-
       if (error) throw error;
-      return data || [];
+      return data ?? [];
     },
     enabled: !!user?.phone,
   });
 
-  const getStatusColor = (estado: string) => {
-    switch (estado) {
-      case 'entregado': return 'bg-green-100 text-green-700 border-green-200';
-      case 'cancelado': return 'bg-red-100 text-red-700 border-red-200';
-      case 'buscando_repartidor': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
-      default: return 'bg-blue-100 text-blue-700 border-blue-200'; // en_camino...
-    }
-  };
-
-  const getStatusText = (estado: string) => {
-    switch (estado) {
-      case 'entregado': return 'Completado';
-      case 'cancelado': return 'Cancelado';
-      case 'buscando_repartidor': return 'Buscando';
-      case 'en_camino_origen': return 'En camino (Origen)';
-      case 'en_camino_destino': return 'En ruta (Destino)';
-      default: return 'En proceso';
-    }
-  };
-
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return new Intl.DateTimeFormat('es-MX', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(d);
-  };
-
   return (
-    <div className="flex flex-col h-full bg-gray-50 relative w-full">
-      <header className="px-6 pt-6 sm:pt-8 pb-4 flex items-center gap-4 bg-white sticky top-0 z-20 border-b border-gray-100 shadow-sm">
-        <button onClick={() => setCurrentView('home')} className="p-2 -ml-2 rounded-full hover:bg-gray-50 transition-colors">
-          <ChevronLeft className="w-6 h-6 text-gray-800" />
-        </button>
-        <h1 className="text-2xl font-bold text-gray-900">Mis Envíos</h1>
-      </header>
+    <div className="flex flex-col h-full bg-white overflow-hidden">
 
-      <main className="flex-1 overflow-y-auto px-4 py-6 md:px-6 custom-scrollbar">
-        <div className="max-w-2xl mx-auto w-full">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-20">
-              <Loader2 className="w-8 h-8 text-yellow-500 animate-spin mb-4" />
-              <p className="text-gray-500 font-medium">Cargando tu historial...</p>
+      {/* Top bar — mismo alto que HomeView */}
+      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 px-8 md:px-12 h-14 flex items-center shrink-0">
+        <h1 className="text-sm font-bold text-gray-900">Mis Envíos</h1>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-8 md:px-12 py-10">
+        <div className="max-w-3xl w-full mx-auto">
+
+          {/* Header text */}
+          <div className="mb-8">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Historial</p>
+            <h2 className="text-3xl font-black text-gray-900">Tus pedidos</h2>
+          </div>
+
+          {/* States */}
+          {isLoading ? (
+            <div className="flex items-center gap-3 py-16 text-gray-400">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span className="text-sm font-medium">Cargando historial…</span>
             </div>
+
           ) : pedidos.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-6">
-                <Package className="w-10 h-10 text-gray-400" />
+            <div className="py-20 flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-gray-50 border border-gray-100 rounded-2xl flex items-center justify-center mb-5">
+                <Package className="w-7 h-7 text-gray-300" />
               </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-2">Aún no tienes envíos</h2>
-              <p className="text-gray-500 max-w-xs mb-8">Tus pedidos recientes aparecerán aquí una vez que realices tu primer envío o compra.</p>
-              <button 
+              <p className="font-bold text-gray-900 mb-1">Sin envíos aún</p>
+              <p className="text-sm text-gray-400 max-w-xs mb-7">
+                Tus pedidos aparecerán aquí en cuanto realices tu primer envío o compra.
+              </p>
+              <button
                 onClick={() => setCurrentView('newDelivery')}
-                className="bg-gray-900 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-gray-800 active:scale-95 transition-all"
+                className="inline-flex items-center gap-2 bg-gray-900 text-white text-sm font-bold px-5 py-2.5 rounded-xl hover:bg-gray-800 active:scale-95 transition-all"
               >
-                Solicitar ahora
+                Solicitar ahora <ArrowRight className="w-4 h-4" />
               </button>
             </div>
+
           ) : (
-            <div className="space-y-4">
+            /* Table-style list */
+            <div className="border border-gray-100 rounded-2xl overflow-hidden divide-y divide-gray-100">
               {pedidos.map((pedido, idx) => {
                 const isCompra = pedido.descripcion?.includes('[COMPRA');
-                const shortId = pedido.id.split('-')[0];
-                
+                const shortId  = pedido.id.split('-')[0].toUpperCase();
+                const active   = !['entregado', 'cancelado'].includes(pedido.estado);
+                const status   = getStatus(pedido.estado);
+
                 return (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
+                  <motion.button
                     key={pedido.id}
-                    className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group cursor-pointer"
-                    onClick={() => {
-                       // Si está activo, llevar al tracking
-                       if (!['entregado', 'cancelado'].includes(pedido.estado)) {
-                         setCurrentView('activeTracking');
-                       }
-                    }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: idx * 0.04 }}
+                    onClick={() => active && setCurrentView('activeTracking')}
+                    className={`w-full text-left flex items-center gap-4 px-5 py-4 bg-white transition-colors duration-150 ${active ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                   >
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${isCompra ? 'bg-blue-50' : 'bg-yellow-50'}`}>
-                          {isCompra ? (
-                            <ShoppingCart className={`w-6 h-6 ${isCompra ? 'text-blue-600' : 'text-yellow-600'}`} />
-                          ) : (
-                            <Package className={`w-6 h-6 ${isCompra ? 'text-blue-600' : 'text-yellow-600'}`} />
-                          )}
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-0.5">Orden #{shortId}</p>
-                          <h3 className="text-sm font-bold text-gray-900 line-clamp-1">{pedido.descripcion || 'Envío de paquete'}</h3>
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0 ml-4">
-                        <span className="text-lg font-black text-gray-900">${pedido.total}</span>
+                    {/* Icon */}
+                    <div className="w-9 h-9 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center shrink-0">
+                      {isCompra
+                        ? <ShoppingCart className="w-4 h-4 text-gray-500" />
+                        : <Package      className="w-4 h-4 text-gray-500" />
+                      }
+                    </div>
+
+                    {/* Main info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-900 truncate">
+                        {pedido.descripcion || 'Envío de paquete'}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <Clock className="w-3 h-3 text-gray-300 shrink-0" />
+                        <span className="text-xs text-gray-400">{formatDate(pedido.created_at)}</span>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between border-t border-gray-50 pt-4">
-                      <span className="text-[13px] font-medium text-gray-500">
-                        {formatDate(pedido.created_at)}
-                      </span>
-                      <div className="flex items-center gap-3">
-                        <div className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusColor(pedido.estado)}`}>
-                          {getStatusText(pedido.estado)}
-                        </div>
-                        {!['entregado', 'cancelado'].includes(pedido.estado) && (
-                          <div className="w-8 h-8 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center group-hover:bg-gray-900 group-hover:border-gray-900 group-hover:text-white transition-colors">
-                            <ArrowRight className="w-4 h-4" />
-                          </div>
-                        )}
-                      </div>
+                    {/* Status pill */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                      <span className="text-xs font-semibold text-gray-500">{status.label}</span>
                     </div>
-                  </motion.div>
+
+                    {/* Price + arrow */}
+                    <div className="text-right shrink-0 flex items-center gap-3">
+                      <span className="text-sm font-bold text-gray-900">${pedido.total}</span>
+                      {active && (
+                        <ArrowRight className="w-4 h-4 text-gray-300" />
+                      )}
+                    </div>
+                  </motion.button>
                 );
               })}
             </div>
           )}
         </div>
-      </main>
+      </div>
     </div>
   );
 }

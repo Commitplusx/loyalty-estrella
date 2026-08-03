@@ -52,6 +52,5 @@ export const ENVIO_TYPES: ServiceCategory[] = [
 
 export const ENVIO_SIZES: ServiceCategory[] = [
   { id: 'small', icon: Package, label: 'Pequeño', desc: 'Cabe en una mochila (Sobres, llaves)' },
-  { id: 'medium', icon: Package, label: 'Mediano', desc: 'Cajas chicas, bolsas de súper' },
-  { id: 'large', icon: Package, label: 'Grande', desc: 'Electrodomésticos pequeños, cajas' }
+  { id: 'medium', icon: Package, label: 'Mediano', desc: 'Cajas chicas, bolsas de súper' }
 ];
