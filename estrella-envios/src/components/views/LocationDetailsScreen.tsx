@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { GoogleMap, Autocomplete } from '@react-google-maps/api';
-import { ChevronLeft, MapPin, Navigation, ArrowRight, Search, Loader2 } from 'lucide-react';
+import { ChevronLeft, MapPin, Navigation, ArrowRight, Search, Loader2, Check, Edit3 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const mapContainerStyle = { width: '100%', height: '100%' };
 const defaultCenter     = { lat: 16.2516, lng: -92.1341 };
@@ -95,7 +95,8 @@ export function LocationDetailsScreen({
     mapRef.current = map;
   }, []);
 
-  const applyNewLocation = (latitude: number, longitude: number, addr: string) => {
+  // collapseSheet=true only when user picks from search or GPS (not map drag)
+  const applyNewLocation = (latitude: number, longitude: number, addr: string, collapseSheet = false) => {
     setCenter({ lat: latitude, lng: longitude });
     setCurrentAddress(addr);
     if (desktopInputRef.current) desktopInputRef.current.value = addr;
@@ -103,23 +104,22 @@ export function LocationDetailsScreen({
     onChange(type === 'pickup' ? 'origin'    : 'destination',    addr);
     onChange(type === 'pickup' ? 'originLat' : 'destinationLat', latitude);
     onChange(type === 'pickup' ? 'originLng' : 'destinationLng', longitude);
-    if (mapRef.current) {
+    if (collapseSheet && mapRef.current) {
       mapRef.current.panTo({ lat: latitude, lng: longitude });
       mapRef.current.setZoom(17);
     }
-    setMapExpanded(false);
+    if (collapseSheet) setMapExpanded(false);
   };
 
+  // Called on drag-end → does NOT collapse the sheet
   const reverseGeocode = async (latitude: number, longitude: number) => {
     if (!window.google) return;
     try {
       const res = await new window.google.maps.Geocoder().geocode({ location: { lat: latitude, lng: longitude } });
       if (res.results && res.results[0]) {
-        const addr = res.results[0].formatted_address;
-        applyNewLocation(latitude, longitude, addr);
+        applyNewLocation(latitude, longitude, res.results[0].formatted_address, false);
       } else {
-        const fallback = `Ubicación (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
-        applyNewLocation(latitude, longitude, fallback);
+        applyNewLocation(latitude, longitude, `Ubicación (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`, false);
       }
     } catch (e) {
       console.error('Error reverse geocoding:', e);
@@ -148,7 +148,7 @@ export function LocationDetailsScreen({
       const latitude  = place.geometry.location.lat();
       const longitude = place.geometry.location.lng();
       const addr      = place.formatted_address || place.name || '';
-      applyNewLocation(latitude, longitude, addr);
+      applyNewLocation(latitude, longitude, addr, true); // collapse sheet on search select
       return;
     }
 
@@ -162,7 +162,7 @@ export function LocationDetailsScreen({
         if (res.results && res.results[0]?.geometry?.location) {
           const loc = res.results[0].geometry.location;
           const addr = res.results[0].formatted_address || query;
-          applyNewLocation(loc.lat(), loc.lng(), addr);
+          applyNewLocation(loc.lat(), loc.lng(), addr, true);
         }
       } catch (err) {
         console.warn('Geocoding search query failed:', err);
@@ -188,37 +188,33 @@ export function LocationDetailsScreen({
       });
     };
 
+    const geocodeAndApply = async (lat: number, lng: number) => {
+      if (!window.google) return;
+      try {
+        const res = await new window.google.maps.Geocoder().geocode({ location: { lat, lng } });
+        const addr = res.results?.[0]?.formatted_address || `Ubicación (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+        applyNewLocation(lat, lng, addr, true); // GPS always collapses sheet
+      } catch {
+        applyNewLocation(lat, lng, `Ubicación (${lat.toFixed(4)}, ${lng.toFixed(4)})`, true);
+      }
+    };
+
     try {
       let pos: GeolocationPosition;
       try {
-        // Intento 1: Rápido por WiFi / Red / Caché (funciona al instante en laptops y PCs)
         pos = await tryGetPosition(false, 4000);
       } catch {
-        // Intento 2: Alta precisión por hardware GPS (móviles)
         pos = await tryGetPosition(true, 6000);
       }
-
       const { latitude, longitude } = pos.coords;
-      setCenter({ lat: latitude, lng: longitude });
-      if (mapRef.current) {
-        mapRef.current.panTo({ lat: latitude, lng: longitude });
-        mapRef.current.setZoom(17);
-      }
-      await reverseGeocode(latitude, longitude);
+      await geocodeAndApply(latitude, longitude);
       toast.success('Ubicación encontrada', { id: 'gps' });
     } catch (error: any) {
       console.warn('Geolocation error:', error);
       if (error?.code === 1) {
         toast.error('Permiso de ubicación bloqueado. Actívalo en la barra del navegador.', { id: 'gps', duration: 4000 });
       } else {
-        // Fallback: centrar en Comitán Centro para no dejar al usuario varado
-        const fallbackPos = defaultCenter;
-        setCenter(fallbackPos);
-        if (mapRef.current) {
-          mapRef.current.panTo(fallbackPos);
-          mapRef.current.setZoom(16);
-        }
-        await reverseGeocode(fallbackPos.lat, fallbackPos.lng);
+        await geocodeAndApply(defaultCenter.lat, defaultCenter.lng);
         toast('Te ubicamos en Comitán Centro. Mueve el mapa a tu ubicación exacta.', {
           id: 'gps',
           icon: '📍',
@@ -444,7 +440,6 @@ export function LocationDetailsScreen({
           onLoad={onMapLoad}
           onDragStart={() => {
             setIsDragging(true);
-            setMapExpanded(true);
           }}
           onDragEnd={handleDragEnd}
           options={{ disableDefaultUI: true, clickableIcons: false }}
@@ -470,64 +465,135 @@ export function LocationDetailsScreen({
           )}
         </button>
 
-        {/* Mobile GPS button */}
-        <button
-          onClick={handleGPS}
-          disabled={isLocating}
-          className={`md:hidden absolute right-4 w-12 h-12 flex items-center justify-center rounded-full shadow-lg bg-white border border-gray-100 z-10 active:scale-95 transition-all disabled:opacity-60 ${mapExpanded ? 'bottom-[calc(20vh+64px)]' : 'bottom-[calc(max(55vh,350px))]'}`}
-        >
-          {isLocating ? (
-            <Loader2 className="w-5 h-5 text-gray-700 animate-spin" />
-          ) : (
-            <Navigation className="w-5 h-5 text-gray-700" />
-          )}
-        </button>
+        {/* Mobile GPS button (Visible only when sheet is collapsed / picking on map) */}
+        {mapExpanded && (
+          <button
+            onClick={handleGPS}
+            disabled={isLocating}
+            className="md:hidden absolute right-4 bottom-[200px] w-12 h-12 flex items-center justify-center rounded-full shadow-xl bg-white border border-gray-200 z-10 active:scale-95 transition-all disabled:opacity-60"
+          >
+            {isLocating ? (
+              <Loader2 className="w-5 h-5 text-gray-700 animate-spin" />
+            ) : (
+              <Navigation className="w-5 h-5 text-amber-600 fill-amber-500" />
+            )}
+          </button>
+        )}
       </div>
 
-      {/* ── MOBILE BOTTOM SHEET FORM ─────────────────────────────────── */}
+      {/* ── MOBILE BOTTOM SHEET (25% collapsed on map, full when confirmed) ── */}
       <motion.div
-        animate={{ y: mapExpanded ? '75%' : '0%' }}
-        transition={{ type: 'spring', bounce: 0, duration: 0.4 }}
-        className="md:hidden absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-[0_-15px_40px_rgba(0,0,0,0.12)] z-20 flex flex-col max-h-[60vh]"
+        animate={{ y: mapExpanded ? 'calc(100% - 170px)' : '0%' }}
+        transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+        className="md:hidden absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-[0_-12px_35px_rgba(0,0,0,0.15)] z-20 flex flex-col max-h-[82vh] border-t border-gray-100"
       >
+        {/* Drag handle */}
         <div
           onClick={() => setMapExpanded(!mapExpanded)}
-          className="w-full py-2 cursor-pointer flex justify-center shrink-0"
+          className="w-full pt-3 pb-2 cursor-pointer flex justify-center shrink-0"
         >
-          <div className="w-12 h-1.5 bg-gray-200 rounded-full" />
+          <div className="w-12 h-1.5 bg-gray-300 rounded-full" />
         </div>
-        <div className="p-5 overflow-y-auto h-full space-y-4">
-          <div className="flex gap-4 items-center">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${hasAddress ? 'bg-emerald-500' : 'bg-gray-900'}`}>
-              <MapPin className="w-5 h-5 text-white" />
+
+        {/* Top Header / Address Bar */}
+        <div className="px-5 pb-3 pt-1 shrink-0 border-b border-gray-100">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 shadow-sm ${hasAddress ? (type === 'pickup' ? 'bg-emerald-500 text-white' : 'bg-yellow-400 text-gray-900') : 'bg-gray-900 text-white'}`}>
+                <MapPin className="w-4 h-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                  {type === 'pickup' ? 'Punto de recolección' : 'Punto de entrega'}
+                </p>
+                <p className={`text-sm truncate leading-tight ${hasAddress ? 'font-bold text-gray-900' : 'text-gray-400 italic'}`}>
+                  {hasAddress ? currentAddress : defaultPrompt}
+                </p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              {!hasAddress
-                ? <div className="inline-block bg-gray-900 text-white px-3.5 py-1.5 rounded-lg text-sm font-bold">{defaultPrompt}</div>
-                : <h2 className="text-base font-bold text-gray-900 leading-tight pr-2">{currentAddress}</h2>
-              }
-            </div>
+
+            {/* When sheet is fully open, show a button to adjust back on the map */}
+            {!mapExpanded && (
+              <button
+                onClick={() => setMapExpanded(true)}
+                className="shrink-0 px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-xs font-bold flex items-center gap-1.5 active:scale-95 transition-all"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-gray-500" />
+                <span>Mover</span>
+              </button>
+            )}
           </div>
-          <input type="text" value={reference}
-            onChange={(e) => onChange(type === 'pickup' ? 'originReference' : 'destinationReference', e.target.value)}
-            placeholder="Referencia (opcional)"
-            className="w-full px-4 py-3.5 bg-gray-50 border border-gray-100 rounded-xl text-[15px] font-medium text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-gray-900 outline-none transition-all"
-          />
-          <input type="text" value={contactName}
-            onChange={(e) => onChange(type === 'pickup' ? 'originName' : 'recipientName', e.target.value)}
-            placeholder={`Nombre de quien ${type === 'pickup' ? 'envía' : 'recibe'}`}
-            className="w-full px-4 py-3.5 bg-gray-50 border border-gray-100 rounded-xl text-[15px] font-medium text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-gray-900 outline-none transition-all"
-          />
-          <input type="tel" value={contactPhone}
-            onChange={(e) => onChange(type === 'pickup' ? 'originPhone' : 'recipientPhone', e.target.value.replace(/\D/g, ''))}
-            placeholder={`Teléfono de quien ${type === 'pickup' ? 'envía' : 'recibe'}`}
-            maxLength={10}
-            className="w-full px-4 py-3.5 bg-gray-50 border border-gray-100 rounded-xl text-[15px] font-medium text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-gray-900 outline-none transition-all"
-          />
-          <button onClick={handleNext}
-            className="w-full mt-2 bg-gray-900 text-white font-bold py-4 rounded-xl hover:bg-gray-800 active:scale-[0.98] transition-all mb-4 flex items-center justify-center gap-2"
+
+          {/* When collapsed at 25%: Show prominent 'Listo / Confirmar ubicación' button */}
+          {mapExpanded && (
+            <div className="mt-3">
+              <button
+                onClick={() => {
+                  if (!hasAddress) {
+                    toast.error('Mueve el mapa o busca una dirección para continuar', { icon: '📍' });
+                    return;
+                  }
+                  setMapExpanded(false);
+                }}
+                className="w-full bg-gray-900 hover:bg-gray-800 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2.5 shadow-lg active:scale-[0.98] transition-all"
+              >
+                <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-white">
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                </div>
+                <span className="text-sm">Listo, confirmar ubicación</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Expanded Form Fields (Visible when sheet is opened) */}
+        <div className={`p-5 overflow-y-auto space-y-4 flex-1 ${mapExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+          <div>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">
+              Referencia (opcional)
+            </label>
+            <input
+              type="text"
+              value={reference}
+              onChange={(e) => onChange(type === 'pickup' ? 'originReference' : 'destinationReference', e.target.value)}
+              placeholder="Ej. Casa blanca con portón negro..."
+              className="w-full px-4 py-3.5 bg-gray-50 border border-gray-100 rounded-xl text-[15px] font-medium text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-gray-900 outline-none transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">
+              {type === 'pickup' ? 'Nombre de quien envía' : 'Nombre de quien recibe'}
+            </label>
+            <input
+              type="text"
+              value={contactName}
+              onChange={(e) => onChange(type === 'pickup' ? 'originName' : 'recipientName', e.target.value)}
+              placeholder="Nombre completo"
+              className="w-full px-4 py-3.5 bg-gray-50 border border-gray-100 rounded-xl text-[15px] font-medium text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-gray-900 outline-none transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">
+              Teléfono de contacto
+            </label>
+            <input
+              type="tel"
+              value={contactPhone}
+              onChange={(e) => onChange(type === 'pickup' ? 'originPhone' : 'recipientPhone', e.target.value.replace(/\D/g, ''))}
+              placeholder="10 dígitos"
+              maxLength={10}
+              className="w-full px-4 py-3.5 bg-gray-50 border border-gray-100 rounded-xl text-[15px] font-medium text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-gray-900 outline-none transition-all"
+            />
+          </div>
+
+          <button
+            onClick={handleNext}
+            className="w-full mt-3 bg-gray-900 text-white font-bold py-4 rounded-xl hover:bg-gray-800 active:scale-[0.98] transition-all mb-4 flex items-center justify-center gap-2 shadow-sm"
           >
-            Continuar <ArrowRight className="w-4 h-4" />
+            <span>Continuar</span>
+            <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </motion.div>
