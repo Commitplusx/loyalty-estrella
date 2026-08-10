@@ -970,3 +970,15 @@ function BannersView() {
     </div>
   );
 }
+
+// ------------------------------------------------------------------
+// COMPONENTE: CAMPAÑAS IA (Placeholder)
+// ------------------------------------------------------------------
+function CampanasIAView() {
+  return (
+    <div className="p-8 text-center text-zinc-500 bg-white rounded-2xl border border-zinc-200">
+      <h3 className="text-xl font-bold text-indigo-600 mb-2">Campañas Inteligentes (IA)</h3>
+      <p>Próximamente: Generación automática de campañas de marketing impulsadas por IA.</p>
+    </div>
+  );
+}
