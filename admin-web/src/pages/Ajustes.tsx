@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Settings, Bike, Map, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Settings, Bike, Map, ChevronRight, ArrowLeft, MessageCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ConfirmSheet } from '../components/ui/ConfirmSheet';
 import { SystemLogsView } from '../components/views/SystemLogsView';
+import { WhatsAppSetupView } from '../components/views/WhatsAppSetupView';
 
 export function Ajustes() {
-  const [activeView, setActiveView] = useState<'menu' | 'motos' | 'excepciones' | 'promociones' | 'logs'>('menu');
+  const [activeView, setActiveView] = useState<'menu' | 'motos' | 'excepciones' | 'promociones' | 'logs' | 'whatsapp'>('menu');
 
   if (activeView !== 'menu') {
     return (
@@ -20,6 +21,7 @@ export function Ajustes() {
         {activeView === 'motos' && <MotosView />}
         {activeView === 'excepciones' && <ExcepcionesView />}
         {activeView === 'logs' && <SystemLogsView />}
+        {activeView === 'whatsapp' && <WhatsAppSetupView />}
       </div>
     );
   }
@@ -63,6 +65,21 @@ export function Ajustes() {
             <p className="text-sm text-zinc-500 mt-0.5">Colonias con tarifa fija o zonas de alta dificultad.</p>
           </div>
           <ChevronRight size={20} className="text-zinc-400 group-hover:text-amber-600 group-hover:translate-x-1 transition-all" />
+        </button>
+
+        {/* WhatsApp Setup */}
+        <button 
+          onClick={() => setActiveView('whatsapp')}
+          className="w-full bg-white p-5 rounded-2xl shadow-sm border border-zinc-200 hover:border-emerald-300 hover:shadow-md transition-all flex items-center group text-left"
+        >
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl mr-4 group-hover:scale-110 transition-transform">
+            <MessageCircle size={24} />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold text-zinc-900">Configuración WhatsApp API</h3>
+            <p className="text-sm text-zinc-500 mt-0.5">Gestión del Meta Business Manager y Coexistencia (QR).</p>
+          </div>
+          <ChevronRight size={20} className="text-zinc-400 group-hover:text-emerald-600 group-hover:translate-x-1 transition-all" />
         </button>
 
         {/* System Logs */}
