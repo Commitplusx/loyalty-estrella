@@ -1,21 +1,21 @@
-// ══════════════════════════════════════════════════════════════════════════════
-// whatsapp.ts — Helpers para enviar mensajes via WhatsApp Cloud API
-// ══════════════════════════════════════════════════════════════════════════════
+// â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• 
+// whatsapp.ts â€” Helpers para enviar mensajes via WhatsApp Cloud API
+// â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• 
 
-import { syncOutgoingToChatwoot } from './chatwoot-sync.ts'
 import { logError } from '../_shared/utils.ts'
-const WA_TOKEN    = Deno.env.get('WHATSAPP_TOKEN')!
-const WA_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_ID')!
+import { encodeBase64 } from 'https://deno.land/std@0.224.0/encoding/base64.ts'
+export const WA_TOKEN = Deno.env.get('YCLOUD_API_KEY') || Deno.env.get('WHATSAPP_TOKEN')!
+export const WA_PHONE_ID = Deno.env.get('YCLOUD_SENDER_PHONE') || Deno.env.get('WHATSAPP_PHONE_ID')!
 
 const WA_VERSION = Deno.env.get('WA_API_VERSION') || 'v22.0'
-const WA_BASE = `https://graph.facebook.com/${WA_VERSION}/${WA_PHONE_ID}/messages`
+const WA_BASE = `https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`
 const WA_HEADERS = () => ({
-  Authorization: `Bearer ${WA_TOKEN}`,
+  'X-API-Key': WA_TOKEN,
   'Content-Type': 'application/json',
 })
 
 // ── Realizamos la petición con reintentos para manejar fallos temporales de la red ──
-export async function fetchConReintento(url: string, options: RequestInit, retries = 3): Promise<Response> {
+export async function fetchConReintento(url: string, options: RequestInit, retries = 5): Promise<Response> {
   for (let i = 0; i < retries; i++) {
     try {
       const controller = new AbortController()
@@ -26,28 +26,150 @@ export async function fetchConReintento(url: string, options: RequestInit, retri
       if (res.ok) return res
       if (res.status >= 500 || res.status === 429) {
         console.warn(`⚠️ [REINTENTO ${i + 1}/${retries}] WA API HTTP ${res.status}`)
-        await new Promise(r => setTimeout(r, 1000 * (i + 1)))
+        // Backoff exponencial: 1s, 2s, 4s, 8s, 10s
+        const delay = Math.min(1000 * Math.pow(2, i), 10000)
+        await new Promise(r => setTimeout(r, delay))
         continue
       }
       return res
     } catch (err: any) {
-      console.warn(`⚠️ [REINTENTO ${i + 1}/${retries}] Network error: ${err.message}`)
+      console.warn(`âš ï¸ [REINTENTO ${i + 1}/${retries}] Network error: ${err.message}`)
       if (i === retries - 1) throw err
       await new Promise(r => setTimeout(r, 1000 * (i + 1)))
     }
   }
   throw new Error('Agotado máximo de reintentos WA')
 }
+// ── Descarga media de YCloud (usa la URL directa que YCloud incluye en el webhook) ──
+export async function downloadYCloudMedia(mediaUrl: string): Promise<{ base64: string; mimeType: string } | null> {
+  try {
+    // YCloud provee una URL temporal directa en msg.image.link / msg.audio.link
+    // Intento 1: con X-API-Key header
+    let res = await fetch(mediaUrl, {
+      headers: { 'X-API-Key': WA_TOKEN },
+      redirect: 'follow'
+    })
+    // Intento 2: sin auth (algunas URLs de YCloud son pre-firmadas y no necesitan header)
+    if (!res.ok) {
+      console.warn(`[downloadYCloudMedia] Intento 1 HTTP ${res.status}, reintentando sin auth header...`)
+      res = await fetch(mediaUrl, { redirect: 'follow' })
+    }
+    if (!res.ok) {
+      const body = await res.text()
+      console.error(`[downloadYCloudMedia] HTTP ${res.status} - Body: ${body.slice(0, 200)}`)
+      return null
+    }
+    const contentType = res.headers.get('content-type') || 'application/octet-stream'
+    console.log(`[downloadYCloudMedia] ✅ OK content-type=${contentType}`)
+    const mimeType = contentType.split(';')[0].trim()
+    // Si YCloud devuelve JSON en lugar de binario, significa que hay un error
+    if (mimeType === 'application/json' || mimeType === 'text/plain') {
+      const text = await res.text()
+      console.error(`[downloadYCloudMedia] YCloud devolvio texto/JSON en vez de binario: ${text.slice(0, 200)}`)
+      return null
+    }
+    const buffer = await res.arrayBuffer()
+    console.log(`[downloadYCloudMedia] Descargados ${buffer.byteLength} bytes, mimeType=${mimeType}`)
+    if (buffer.byteLength === 0) {
+      console.error('[downloadYCloudMedia] Archivo descargado esta vacio')
+      return null
+    }
+    // encodeBase64 de Deno std es confiable y rápido
+    const base64 = encodeBase64(new Uint8Array(buffer))
+    console.log(`[downloadYCloudMedia] base64 generado: ${base64.length} chars`)
+    return { base64, mimeType }
+  } catch (e) {
+    console.error('[downloadYCloudMedia] Error:', e)
+    return null
+  }
+}
 
-// ── Texto simple ──────────────────────────────────────────────────────────────
+// ── Typing Indicator ──
+export async function sendTypingIndicator(messageId: string): Promise<boolean> {
+  try {
+    const url = `https://api.ycloud.com/v2/whatsapp/inboundMessages/${messageId}/typingIndicator`
+    console.log(`[sendTypingIndicator] Intentando para ID: ${messageId}`)
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-API-Key': WA_TOKEN,
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (!res.ok) {
+      const errText = await res.text()
+      console.error(`[sendTypingIndicator] Fallo HTTP ${res.status}: ${errText}`)
+      return false
+    }
+    
+    console.log(`[sendTypingIndicator] ✅ Exitoso para ${messageId}`)
+    return true
+  } catch (e) {
+    console.error('[sendTypingIndicator] Error:', e)
+    return false
+  }
+}
+
+// ── QA INTERCEPTOR ──
+function logQAInterceptor(to: string, bodyText: string, type: string) {
+  if (to === '5215659515982') {
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+    const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+      const promise = fetch(`${SUPABASE_URL}/rest/v1/bot_memory?on_conflict=phone`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_SERVICE_KEY,
+          'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify({
+          phone: 'qa_logs_5215659515982',
+          history: [{ timestamp: Date.now(), from: 'bot', text: bodyText, type }]
+        })
+      }).catch(err => console.error('QA Interceptor Fetch Error:', err));
+      
+      try {
+        // @ts-ignore
+        if (typeof EdgeRuntime !== 'undefined') EdgeRuntime.waitUntil(promise);
+        else promise;
+      } catch(e) {}
+    }
+  }
+}
+
+// ── Mark as Read ──
+export async function markAsRead(messageId: string): Promise<boolean> {
+  try {
+    const url = `https://api.ycloud.com/v2/whatsapp/inboundMessages/${messageId}/markAsRead`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-API-Key': WA_TOKEN,
+        'Content-Type': 'application/json'
+      }
+    })
+    if (!res.ok) {
+      console.error(`[markAsRead] Fallo HTTP ${res.status}: ${await res.text()}`)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.error('[markAsRead] Error:', e)
+    return false
+  }
+}
+
+// ── Enviar Mensaje de Texto Simple ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 export async function sendWA(to: string, body: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await fetchConReintento(WA_BASE, {
       method: 'POST',
       headers: WA_HEADERS(),
       body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
+        from: WA_PHONE_ID,
         to,
         type: 'text',
         text: { preview_url: true, body },
@@ -60,7 +182,7 @@ export async function sendWA(to: string, body: string): Promise<{ ok: boolean; e
       return { ok: false, error: errText }
     }
     else {
-      syncOutgoingToChatwoot(to, body).catch(e => console.error(e))
+      logQAInterceptor(to, body, 'text');
       return { ok: true }
     }
   } catch (e: any) {
@@ -71,15 +193,14 @@ export async function sendWA(to: string, body: string): Promise<{ ok: boolean; e
 }
 
 
-// ── Imagen con caption ────────────────────────────────────────────────────────
+// ── Imagen con caption ────────────────────────────────────────────────────────────────────────────────────────────────────
 export async function sendWAImage(to: string, url: string, caption?: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await fetchConReintento(WA_BASE, {
       method: 'POST',
       headers: WA_HEADERS(),
       body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
+        from: WA_PHONE_ID,
         to,
         type: 'image',
         image: { link: url, caption: caption?.substring(0, 1000) },
@@ -91,7 +212,6 @@ export async function sendWAImage(to: string, url: string, caption?: string): Pr
       return { ok: false, error: errText }
     }
     else {
-      syncOutgoingToChatwoot(to, `📷 [Imagen enviada] ${caption || ''}`).catch(e => console.error(e))
       return { ok: true }
     }
   } catch (e) {
@@ -100,36 +220,35 @@ export async function sendWAImage(to: string, url: string, caption?: string): Pr
   }
 }
 
-// ── Documento (PDF) ───────────────────────────────────────────────────────────
+
+
+// ── Documento (PDF) ───────────────────────────────────────────────────────────────────────────────────────────────────────
 export async function sendWADocument(to: string, url: string, filename: string, caption: string = ''): Promise<void> {
   try {
     const res = await fetchConReintento(WA_BASE, {
       method: 'POST',
       headers: WA_HEADERS(),
       body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
+        from: WA_PHONE_ID,
         to,
         type: 'document',
         document: { link: url, caption: caption.substring(0, 1024), filename }
       })
     })
     if (!res.ok) console.error('WA Document Error:', await res.text())
-    else syncOutgoingToChatwoot(to, `📄 [Documento enviado: ${filename}] ${caption}`).catch(e => console.error(e))
   } catch (e) {
     console.error('WA Fatal Net Error (Document):', e)
   }
 }
 
-// ── Ubicación GPS ─────────────────────────────────────────────────────────────
+// ── Ubicación GPS ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 export async function sendWALocation(to: string, lat: number, lng: number, name: string, address: string): Promise<void> {
   try {
     const res = await fetchConReintento(WA_BASE, {
       method: 'POST',
       headers: WA_HEADERS(),
       body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
+        from: WA_PHONE_ID,
         to,
         type: 'location',
         location: {
@@ -141,21 +260,19 @@ export async function sendWALocation(to: string, lat: number, lng: number, name:
       }),
     })
     if (!res.ok) console.error('WA Location Error:', await res.text())
-    else syncOutgoingToChatwoot(to, `📍 [Ubicación enviada] ${name}`).catch(e => console.error(e))
   } catch (e) {
     console.error('WA Fatal Net Error (Location):', e)
   }
 }
 
-// ── Pedir Ubicación (Location Request Message) ─────────────────────────────────
+// ── Pedir Ubicación (Location Request Message) ────────────────────────────────────────────────────────────────────────────
 export async function sendLocationRequest(to: string, text: string): Promise<void> {
   try {
     const res = await fetchConReintento(WA_BASE, {
       method: 'POST',
       headers: WA_HEADERS(),
       body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
+        from: WA_PHONE_ID,
         to,
         type: 'interactive',
         interactive: {
@@ -166,13 +283,13 @@ export async function sendLocationRequest(to: string, text: string): Promise<voi
       }),
     })
     if (!res.ok) console.error('WA Location Request Error:', await res.text())
-    else syncOutgoingToChatwoot(to, `${text}\n[Botón: 📍 Enviar Ubicación]`).catch(e => console.error(e))
+    else logQAInterceptor(to, text, 'location_request')
   } catch (e) {
     console.error('WA Fatal Net Error (Location Request):', e)
   }
 }
 
-// ── Botón interactivo ─────────────────────────────────────────────────────────
+// ── Botón interactivo ─────────────────────────────────────────────────────────────────────────────────────────────────────
 export async function sendInteractiveButton(
   to: string,
   text: string,
@@ -184,8 +301,7 @@ export async function sendInteractiveButton(
       method: 'POST',
       headers: WA_HEADERS(),
       body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
+        from: WA_PHONE_ID,
         to,
         type: 'interactive',
         interactive: {
@@ -196,13 +312,12 @@ export async function sendInteractiveButton(
       }),
     })
     if (!res.ok) console.error('WA Interactive Error:', await res.text())
-    else syncOutgoingToChatwoot(to, `${text}\n[Botón] ${buttonTitle}`).catch(e => console.error(e))
   } catch (e) {
     console.error('WA Fatal Net Error (Interactive):', e)
   }
 }
 
-// ── Botón CTA URL (Abrir Navegador dentro de WA) ─────────────────────────────
+// ── Botón CTA URL (Abrir Navegador dentro de WA) ──────────────────────────────────────────────────────────────────────────
 export async function sendInteractiveCTAUrl(
   to: string,
   text: string,
@@ -214,8 +329,7 @@ export async function sendInteractiveCTAUrl(
       method: 'POST',
       headers: WA_HEADERS(),
       body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
+        from: WA_PHONE_ID,
         to,
         type: 'interactive',
         interactive: {
@@ -232,13 +346,12 @@ export async function sendInteractiveCTAUrl(
       }),
     })
     if (!res.ok) console.error('WA CTA URL Error:', await res.text())
-    else syncOutgoingToChatwoot(to, `${text}\n[Link: ${buttonTitle}]`).catch(e => console.error(e))
   } catch (e) {
     console.error('WA Fatal Net Error (Interactive):', e)
   }
 }
 
-// ── Múltiples botones interactivos (hasta 3) ──────────────────────────────────
+// ── Múltiples botones interactivos (hasta 3) ──────────────────────────────────────────────────────────────────────────────
 // Intento 1: con imagen en header (si aplica)
 // Intento 2: sin imagen en header
 // Intento 3: texto plano con las opciones escritas
@@ -261,8 +374,7 @@ export async function sendInteractiveButtons(
 
   const buildPayload = (withImage: boolean): any => {
     const payload: any = {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
+      from: WA_PHONE_ID,
       to,
       type: 'interactive',
       interactive: {
@@ -282,7 +394,7 @@ export async function sendInteractiveButtons(
     try {
       const res = await fetchConReintento(WA_BASE, { method: 'POST', headers: WA_HEADERS(), body: JSON.stringify(buildPayload(true)) })
       if (res.ok) {
-        syncOutgoingToChatwoot(to, `${text}\n[Botones+Imagen] ${buttons.map(b => b.title).join(' | ')}`).catch(console.error)
+        logQAInterceptor(to, text, 'interactive_buttons')
         return true
       }
       console.warn('WA Buttons+Image failed:', await res.text())
@@ -293,10 +405,10 @@ export async function sendInteractiveButtons(
   try {
     const res = await fetchConReintento(WA_BASE, { method: 'POST', headers: WA_HEADERS(), body: JSON.stringify(buildPayload(false)) })
     if (res.ok) {
-      syncOutgoingToChatwoot(to, `${text}\n[Botones] ${buttons.map(b => b.title).join(' | ')}`).catch(console.error)
+      logQAInterceptor(to, text, 'interactive_buttons')
       return true
     }
-    console.warn('WA Buttons (no image) failed:', await res.text())
+    console.warn('WA Buttons failed:', await res.text())
   } catch (e) { console.error('WA Buttons exception:', e) }
 
   // Intento 3: texto plano con las opciones
@@ -311,7 +423,7 @@ export async function sendInteractiveButtons(
   }
 }
 
-// ── Lista interactiva (hasta 10 opciones) ─────────────────────────────────────
+// ── Lista interactiva (hasta 10 opciones) ─────────────────────────────────────────────────────────────────────────────────
 export async function sendInteractiveList(
   to: string,
   text: string,
@@ -323,8 +435,7 @@ export async function sendInteractiveList(
       method: 'POST',
       headers: WA_HEADERS(),
       body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
+        from: WA_PHONE_ID,
         to,
         type: 'interactive',
         interactive: {
@@ -345,13 +456,13 @@ export async function sendInteractiveList(
       }),
     })
     if (!res.ok) console.error('WA InteractiveList Error:', await res.text())
-    else syncOutgoingToChatwoot(to, `${text}\n[Lista] ${buttonText}`).catch(e => console.error(e))
+    else logQAInterceptor(to, text, 'interactive_list')
   } catch (e) {
     console.error('WA Fatal Net Error (InteractiveList):', e)
   }
 }
 
-// ── CTA URL Button (Abrir enlace) ─────────────────────────────────────────────
+// ── CTA URL Button (Abrir enlace) ─────────────────────────────────────────────────────────────────────────────────────────
 export async function sendInteractiveCtaUrl(
   to: string,
   text: string,
@@ -361,8 +472,7 @@ export async function sendInteractiveCtaUrl(
 ): Promise<void> {
   try {
     const payload: any = {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
+      from: WA_PHONE_ID,
       to,
       type: 'interactive',
       interactive: {
@@ -391,13 +501,12 @@ export async function sendInteractiveCtaUrl(
       body: JSON.stringify(payload),
     })
     if (!res.ok) console.error('WA CTA URL Error:', await res.text())
-    else syncOutgoingToChatwoot(to, `${text}\n[Enlace: ${url}]`).catch(e => console.error(e))
   } catch (e) {
     console.error('WA Fatal Net Error (CTA URL):', e)
   }
 }
 
-// ── Flow Button (Abrir Formulario Nativo) ─────────────────────────────────────
+// ── Flow Button (Abrir Formulario Nativo) ─────────────────────────────────────────────────────────────────────────────────
 export async function sendInteractiveFlow(
   to: string,
   text: string,
@@ -409,8 +518,7 @@ export async function sendInteractiveFlow(
 ): Promise<void> {
   try {
     const payload: any = {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
+      from: WA_PHONE_ID,
       to,
       type: 'interactive',
       interactive: {
@@ -445,13 +553,12 @@ export async function sendInteractiveFlow(
       body: JSON.stringify(payload),
     })
     if (!res.ok) console.error('WA Flow Error:', await res.text())
-    else syncOutgoingToChatwoot(to, `${text}\n[Formulario: ${buttonText}]`).catch(e => console.error(e))
   } catch (e) {
     console.error('WA Fatal Net Error (Flow):', e)
   }
 }
 
-// ── Plantilla Meta (WhatsApp Template) ────────────────────────────────────────
+// ── Plantilla Meta (WhatsApp Template) ────────────────────────────────────────────────────────────────────────────────────
 export async function sendWATemplate(
   to: string,
   templateName: string,
@@ -479,7 +586,7 @@ export async function sendWATemplate(
       })
     }
 
-    // Botón URL dinámico (Opcional)
+    // BotÃ³n URL dinÃ¡mico (Opcional)
     if (buttonParam) {
       components.push({
         type: 'button',
@@ -490,7 +597,7 @@ export async function sendWATemplate(
     }
 
     const payload = {
-      messaging_product: 'whatsapp',
+      from: WA_PHONE_ID,
       to,
       type: 'template',
       template: { name: templateName, language: { code: language }, components }
@@ -505,21 +612,20 @@ export async function sendWATemplate(
 
     const respText = await res.text()
     if (!res.ok) {
-      console.error(`[TEMPLATE] ❌ '${templateName}' HTTP ${res.status} → ${respText}`)
+      console.error(`[TEMPLATE] âŒ '${templateName}' HTTP ${res.status} â†’ ${respText}`)
       await logError('whatsapp-bot', `WhatsApp Template Error: ${templateName}`, { phone: to, error: respText }, 'critical');
       return { ok: false, error: respText }
     }
-    console.log(`[TEMPLATE] ✅ '${templateName}' enviada → ${respText.substring(0, 120)}`)
-    syncOutgoingToChatwoot(to, `📲 [Plantilla] ${templateName}\n${params.join(' | ')}`).catch(e => console.error(e))
+    console.log(`[TEMPLATE] âœ… '${templateName}' enviada â†’ ${respText.substring(0, 120)}`)
     return { ok: true }
   } catch (e: any) {
-    console.error(`[TEMPLATE] 💥 Error fatal '${templateName}':`, e)
+    console.error(`[TEMPLATE] ðŸ’¥ Error fatal '${templateName}':`, e)
     await logError('whatsapp-bot', `WhatsApp Template Fatal Error: ${templateName}`, { phone: to, error: String(e) }, 'critical');
     return { ok: false, error: e.message }
   }
 }
 
-// ── Smart VIP Card Sender (Try Free-Form, Fallback to Template) ───────────────
+// â”€â”€ Smart VIP Card Sender (Try Free-Form, Fallback to Template) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function sendVIPCardSmart(
   to: string, // format 529631444160
   qrImageUrl: string,
@@ -529,17 +635,17 @@ export async function sendVIPCardSmart(
 ): Promise<{ ok: boolean; error?: string }> {
   // 1. Try sending as Free-Form Image message first (Requires 24h window open)
   const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${cTel}`
-  const caption = `🌟 *¡Hola, ${nombre}!* Aquí tienes tu *Tarjeta VIP Digital* actualizada.\n\n⭐ Puntos actuales: *${puntos}*\n\n🔗 *Abre tu Tarjeta VIP interactiva aquí:* ${loyaltyUrl}`
+  const caption = `ðŸŒŸ *Â¡Hola, ${nombre}!* AquÃ­ tienes tu *Tarjeta VIP Digital* actualizada.\n\nâ­ Puntos actuales: *${puntos}*\n\nðŸ”— *Abre tu Tarjeta VIP interactiva aquÃ­:* ${loyaltyUrl}`
   
   const freeFormResult = await sendWAImage(to, qrImageUrl, caption)
   
   if (freeFormResult.ok) {
-    console.log(`[VIP_SMART] ✅ Imagen VIP enviada como texto libre a ${to}. (Ventana 24h abierta)`)
+    console.log(`[VIP_SMART] âœ… Imagen VIP enviada como texto libre a ${to}. (Ventana 24h abierta)`)
     return { ok: true }
   }
 
   // 2. If it fails (probably due to 24h window, error 131047), fallback to Template
-  console.warn(`[VIP_SMART] ⚠️ Envío libre falló. Intentando con plantilla estrella_loyalty_welcome...`)
+  console.warn(`[VIP_SMART] âš ï¸ EnvÃ­o libre fallÃ³. Intentando con plantilla estrella_loyalty_welcome...`)
   const templateResult = await sendWATemplate(
     to,
     'estrella_loyalty_welcome',
@@ -551,15 +657,16 @@ export async function sendVIPCardSmart(
   return templateResult
 }
 
-// ── Marcar mensaje como leído (Double Blue Ticks) ────────────────────────────
-export async function markMessageAsRead(messageId: string): Promise<void> {
+// â”€â”€ Marcar mensaje como leÃ­do (Double Blue Ticks) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+export async function markMessageAsRead(messageId: string, to: string): Promise<void> {
   try {
     const res = await fetchConReintento(WA_BASE, {
       method: 'POST',
       headers: WA_HEADERS(),
       body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        status: 'read',
+        from: WA_PHONE_ID,
+        to,
+        type: 'read',
         message_id: messageId,
       }),
     })
@@ -569,13 +676,13 @@ export async function markMessageAsRead(messageId: string): Promise<void> {
   }
 }
 
-// ── Notificar al Admin (Alertas de B2B y Críticas) ──────────────────────────
+// â”€â”€ Notificar al Admin (Alertas de B2B y CrÃ­ticas) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function notifyAdmin(message: string): Promise<void> {
   const adminPhonesStr = Deno.env.get('ADMIN_PHONES') || Deno.env.get('ADMIN_PHONE') || ''
   const adminPhones = adminPhonesStr.split(',').map(p => p.trim()).filter(Boolean)
   
   if (adminPhones.length === 0) {
-    console.warn('⚠️ No hay ADMIN_PHONES/ADMIN_PHONE configurados para notifyAdmin')
+    console.warn('âš ï¸ No hay ADMIN_PHONES/ADMIN_PHONE configurados para notifyAdmin')
     return
   }
 
@@ -585,8 +692,44 @@ export async function notifyAdmin(message: string): Promise<void> {
   if (primaryAdmin.length > 10) admin10 = primaryAdmin.slice(-10)
 
   try {
-    await sendWA(`52${admin10}`, `🚨 *ALERTA DEL SISTEMA*\n\n${message}`)
+    await sendWA(`52${admin10}`, `ðŸš¨ *ALERTA DEL SISTEMA*\n\n${message}`)
   } catch (e) {
     console.error('Error enviando notifyAdmin:', e)
   }
 }
+
+// â”€â”€ Mensaje de CatÃ¡logo Nativo (Ver CatÃ¡logo) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+export async function sendCatalogMessage(
+  to: string,
+  text: string,
+  thumbnailUrl?: string
+): Promise<void> {
+  try {
+    const payload: any = {
+      from: WA_PHONE_ID,
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'catalog_message',
+        body: { text: text.substring(0, 1024) },
+        action: {
+          name: 'catalog_message',
+          parameters: {
+            thumbnail_product_retailer_id: 'jmc2srsjum'
+          }
+        }
+      }
+    };
+    
+    const res = await fetchConReintento(WA_BASE, {
+      method: 'POST',
+      headers: WA_HEADERS(),
+      body: JSON.stringify(payload),
+    });
+    
+    if (!res.ok) console.error('WA Catalog Message Error:', await res.text());
+  } catch (e) {
+    console.error('WA Fatal Net Error (Catalog Message):', e);
+  }
+}
+

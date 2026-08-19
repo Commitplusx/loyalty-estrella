@@ -5,6 +5,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { extract10Digits, PedidoData, limpiarMemoria } from './db.ts'
 import { logError } from '../_shared/utils.ts'
+import { callGemini } from '../_shared/gemini.ts'
 
 type SupabaseClient = ReturnType<typeof createClient>
 
@@ -37,12 +38,12 @@ const VALID_ACTIONS: AIRespuesta['accion'][] = [
   'ENTREGAR_TODOS', 'CANCELAR_TODOS', 'ENVIAR_QR', 'VER_RESTAURANTES',
   'AGREGAR_CLIENTE', 'ENVIAR_TERMINOS', 'REGISTRAR_RESTAURANTE',
   'USAR_CUPON', 'CANCELAR_CUPON', 'SOLICITAR_REGISTRO', 'ACTUALIZAR_DIRECCION', 'CALIFICAR_CLIENTE',
-  'VER_RESTAURANTES_CLIENTE', 'GUARDAR_RUTA', 'COTIZAR_MANDADITO', 'GUARDAR_DIRECCION_FAVORITA'
+  'VER_RESTAURANTES_CLIENTE', 'GUARDAR_RUTA', 'COTIZAR_MANDADITO', 'GUARDAR_DIRECCION_FAVORITA', 'INICIAR_MANDADITO'
 ]
 
 // ── System prompts ────────────────────────────────────────────────────────────
 function buildAdminPrompt(): string {
-  return `Eres el "Asistente Virtual de Estrella Delivery". Tu usuario es el Administrador de la plataforma.
+  return `Eres el "Asistente Virtual de Estrella Envíos" (y Estrella Eats para comida). Tu usuario es el Administrador de la plataforma.
 Eres una Inteligencia Artificial profesional, proactiva y altamente eficiente diseñada para asistir en la gestión logística y administrativa de la empresa.
 
 ⚠️ REGLA ABSOLUTA — FORMATO DE SALIDA:
@@ -92,7 +93,7 @@ FORMATO JSON DE SALIDA (responde SOLO con esto, sin nada más):
 }
 
 function buildRepartidorPrompt(repartidorInfo: any): string {
-  return `Eres el asistente de Estrella Delivery exclusivo para el Repartidor: ${repartidorInfo?.nombre || 'de nuestro equipo'}.
+  return `Eres el asistente de Estrella Envíos exclusivo para el Repartidor: ${repartidorInfo?.nombre || 'de nuestro equipo'}.
 Tienes acceso completo a todas las herramientas de administración, gestión logística y de lealtad (billetera, puntos, etc.). Eres una Inteligencia Artificial profesional, proactiva y altamente eficiente.
 
 ⚠️ REGLA ABSOLUTA — FORMATO DE SALIDA:
@@ -142,7 +143,7 @@ FORMATO JSON DE SALIDA (responde SOLO con esto, sin nada más):
 {"accion":"UNA_ACCION_LISTADA","mensajeUsuario":"Texto breve y profesional.","datosAExtraer":{"clienteTel":"10 dígitos o null","puntosASumar":null,"diasAtras":null,"clienteNombre":null,"colonia":null,"restaurante":null,"descripcion":null,"direccion":null,"repartidorAlias":"${repartidorInfo?.alias || ''}","montoSaldo":null,"nombre_restaurante":null,"correo":null,"codigoCupon":null}}`
 }
 
-function buildClientPrompt(callerPhone10: string, clienteCtx?: { nombre?: string; puntos?: number; esVip?: boolean; reputacion?: string; saldo?: number; envios?: number; rango?: string; notasCrm?: string; ubicaciones?: any[] } | null, regState?: { nombre?: string; tel?: string; colonia?: string }): string {
+function buildClientPrompt(callerPhone10: string, clienteCtx?: { nombre?: string; puntos?: number; esVip?: boolean; reputacion?: string; saldo?: number; envios?: number; rango?: string; notasCrm?: string; ubicaciones?: any[]; historialPedidos?: any[] } | null, regState?: { nombre?: string; tel?: string; colonia?: string }, esFirstContact = false): string {
   const ctx = clienteCtx
   const esRegistrado = !!ctx?.nombre
 
@@ -153,7 +154,66 @@ function buildClientPrompt(callerPhone10: string, clienteCtx?: { nombre?: string
       const ustr = ctx!.ubicaciones.map(u => `- [${u.tipo}] ${u.colonia_nombre} (Lat: ${u.lat}, Lng: ${u.lng})`).join('\n')
       libDir = `\nLIBRETA DE DIRECCIONES GUARDADAS (Úsalas cuando pida ir a su "casa", "trabajo", etc):\n${ustr}\nSi te dice "ve a mi casa", en origen o destino enviarás EXÁCTAMENTE las coordenadas completas de la libreta en lugar de texto.\n`
     }
-    const notasAdmin = ctx!.notasCrm ? `\n\n⚠️ INSTRUCCIONES DEL ADMINISTRADOR (CRM): "${ctx!.notasCrm}"\nREGLA: Debes obedecer ESTRICTAMENTE estas instrucciones antes de responder cualquier otra cosa.\n` : ''
+
+    // ── Historial de pedidos (personalización inteligente) ──
+    let historialBlock = ''
+    if (ctx!.historialPedidos && ctx!.historialPedidos.length > 0) {
+      const pedidos = ctx!.historialPedidos
+      const resumen = pedidos.map(p => {
+        const fecha = new Date(p.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })
+        return `- ${fecha}: ${p.restaurante || 'Mandadito'} → "${(p.descripcion || '').substring(0, 60)}" ($${p.total || 0}) [${p.tipo_pedido}]`
+      }).join('\n')
+
+      // Detectar patrones automáticamente
+      const restCount: Record<string, number> = {}
+      let totalGastado = 0
+      let mandaditos = 0
+      for (const p of pedidos) {
+        if (p.restaurante) restCount[p.restaurante] = (restCount[p.restaurante] || 0) + 1
+        totalGastado += (p.total || 0)
+        if (p.tipo_pedido === 'mandadito' || !p.restaurante) mandaditos++
+      }
+      const favRest = Object.entries(restCount).sort((a, b) => b[1] - a[1])[0]
+      const esMandaditero = mandaditos > pedidos.length / 2
+
+      let patronesTexto = ''
+      if (favRest && favRest[1] >= 2) patronesTexto += `\n🍕 RESTAURANTE FAVORITO: "${favRest[0]}" (pidió ${favRest[1]} veces). Menciónalo naturalmente si dice que tiene hambre.`
+      if (esMandaditero) patronesTexto += `\n📦 CLIENTE FRECUENTE DE ENVÍOS: Suele pedir servicios de mensajería/recados. Si saluda, ofrécele cotizar un envío.`
+      if (totalGastado > 500) patronesTexto += `\n💰 CLIENTE DE ALTO VALOR: Ha gastado $${totalGastado.toFixed(0)} en total. Trátalo con atención premium.`
+
+      historialBlock = `\n📋 HISTORIAL DE PEDIDOS RECIENTES (úsalo para personalizar tu trato):\n${resumen}${patronesTexto}\n\nREGLA: Usa este historial para ser proactivo. Por ejemplo: "¿Quieres repetir tu pedido de [restaurante favorito]?" o "¿Otro envío hoy?". NO recites la lista completa, solo úsala como contexto.\n`
+    }
+
+    let notasAdmin = ''
+    if (ctx!.notasCrm) {
+      try {
+        const crmData = JSON.parse(ctx!.notasCrm)
+        notasAdmin = `\n\n🧠 CEREBRO IA (PERFIL DEL CLIENTE ESTABLECIDO POR EL ADMIN):
+${crmData.apodo ? `- APODO: ${crmData.apodo} (Úsalo para saludarlo o referirte a él)\n` : ''}${crmData.tono && !crmData.tono.includes('Neutral') ? `- TONO REQUERIDO: ${crmData.tono}\n` : ''}${crmData.preferencias ? `- PREFERENCIAS: ${crmData.preferencias}\n` : ''}${crmData.alergias ? `- ⚠️ ALERGIAS/PRECAUCIONES: ${crmData.alergias} (CRÍTICO: Nunca ofrezcas nada que viole esto)\n` : ''}${crmData.instrucciones ? `- REGLAS ESTRICTAS: ${crmData.instrucciones}\n` : ''}
+REGLA: DEBES OBEDECER ESTRICTAMENTE ESTE PERFIL. Moldea tu personalidad y respuestas basándote en esta configuración antes de responder cualquier cosa.\n`
+      } catch (e) {
+        // Legacy plain text fallback
+        notasAdmin = `\n\n⚠️ PERSONALIZACIÓN DEL ADMINISTRADOR (CRM): "${ctx!.notasCrm}"\nREGLA: Debes obedecer ESTRICTAMENTE estas instrucciones. Son indicaciones sobre cómo tratar a este cliente, sus preferencias, alergias, apodos, o instrucciones especiales.\n`
+      }
+    }
+
+    // ── PERFIL INTELIGENTE (JSON EXTRAÍDO) ──
+    let perfilAI = ''
+    // @ts-ignore
+    if (ctx!.perfilInteligente) {
+      // @ts-ignore
+      const p = ctx!.perfilInteligente
+      const aliasGraph = p.ubicaciones_semanticas ? JSON.stringify(p.ubicaciones_semanticas) : '{}'
+      const rutinasStr = p.rutinas && p.rutinas.length > 0 ? JSON.stringify(p.rutinas) : 'Ninguna rutina detectada'
+      
+      perfilAI = `\n\n🔮 PERFIL PROFUNDO DE IA (Aprendido históricamente):
+- Tono preferido: ${p.tono_preferido || 'amigable'}
+- Alergias/Gustos: ${(p.alergias_gustos || []).join(', ')}
+- Resumen Memoria: ${p.resumen_memoria || ''}
+- Rutinas: ${rutinasStr}
+- 🗺️ MAPA SEMÁNTICO DE ALIAS (JSON): ${aliasGraph}
+CRÍTICO: Si el cliente menciona un alias de ubicación en su mapa (ej. "mi negocio", "casa de mi abuela"), EXTRAE el texto de 'nombre_oficial' o la 'referencia' de este JSON en lugar de preguntarle dónde es.`
+    }
 
     contextBlock = `
 CONTEXTO DEL CLIENTE (datos reales — NO inventes):
@@ -163,7 +223,7 @@ CONTEXTO DEL CLIENTE (datos reales — NO inventes):
 - VIP: ${ctx!.esVip ? 'Sí' : 'No'}
 - Saldo: $${ctx!.saldo ?? 0}
 - Entregas: ${ctx!.envios ?? 0}
-${ctx!.reputacion === 'excelente' ? '- ⭐ CLIENTE EXCELENTE: Trátalo con calidez especial.\n' : ''}${ctx!.esVip ? '- 👑 ES VIP: Trato preferencial.\n' : ''}${libDir}${notasAdmin}`
+${ctx!.reputacion === 'excelente' ? '- ⭐ CLIENTE EXCELENTE: Trátalo con calidez especial.\n' : ''}${ctx!.esVip ? '- 👑 ES VIP: Trato preferencial.\n' : ''}${libDir}${historialBlock}${notasAdmin}${perfilAI}`
   }
 
   // Build registration state block — server-confirmed data
@@ -177,7 +237,7 @@ ${ctx!.reputacion === 'excelente' ? '- ⭐ CLIENTE EXCELENTE: Trátalo con calid
 Solo pide el PRIMER campo que diga PENDIENTE (ignorando clienteTel ya que se detectó solo). Si solo falta clienteTel, pasa al resumen.`
   }
 
-  return `Eres el asistente virtual VIP de *Estrella Delivery* 🌟 atendiendo a un cliente por WhatsApp.
+  return `Eres el asistente virtual VIP de *Estrella Envíos* 🌟 (nuestra división de comida se llama *Estrella Eats*) atendiendo a un cliente por WhatsApp.
 Eres súper amigable, relajado y servicial (estilo Uber Eats / Rappi). Usas emojis atractivos. Hablas en español mexicano informal.
 ${contextBlock}${regStateBlock}
 ⚠️ REGLA DE FORMATO: Escribe mensajes CORTOS (máximo 2-3 líneas cada uno). Si necesitas decir más, separa con ||| para crear múltiples burbujas de texto.
@@ -185,42 +245,155 @@ Ejemplo: "¡Qué onda Juan! 👋 Qué gusto verte por aquí|||Tienes 12 puntos a
 
 REGLAS:
 1. ${esRegistrado ? `SALUDA a "${ctx!.nombre}" con cariño. Usa emojis.` : 'El cliente NO está registrado. IMPORTANTE: NO te presentes más de una vez. Si ya saludaste en el historial, PASA DIRECTO a pedir el siguiente dato.'}
-2. ${esRegistrado ? 'Si pregunta por puntos, dile los datos reales. Invítalo a la web.' : `REGISTRO — solo necesitas recopilar 2 datos (el teléfono ya lo tenemos de WhatsApp):
-   a) Nombre completo
-   b) Colonia o dirección
-   ⚠️ TELÉFONO: Ya fue detectado automáticamente. Cuando le pidas el nombre por primera vez, menciónale su número, ejemplo: "Veo que tu número es ${regState?.tel || 'tu WhatsApp'} 📱 ¿Me dices tu nombre completo para registrarte?". NUNCA le pidas el teléfono como dato aparte. Solo confírmalo de nuevo en el resumen final.
-   PASO CRÍTICO (STATE TRACKING): En tu respuesta JSON, DEBES llenar "clienteNombre", "clienteTel" y "colonia" con los datos que ya tengas.
-   Si "clienteNombre" ya tiene un valor, NO preguntes por el nombre, pide la colonia directamente.
-   REGLA DE ORO: DEBES terminar obligatoriamente tu mensaje con una pregunta pidiendo el ÚNICO dato que falta. NUNCA repitas una pregunta.
+${esFirstContact ? `
+⚠️ PRIMER CONTACTO — REGLA OBLIGATORIA: En este mensaje DEBES incluir una presentación breve que diga que eres una inteligencia artificial. Hazlo de forma natural y amigable, por ejemplo:
+"¡Hola! 👋 Soy el asistente virtual de *Estrella Envíos* 🤖🌟. Soy una inteligencia artificial, así que puedo cometer errores, ¡pero haré todo lo posible para ayudarte con tu envío! 😊"
+Adáptala libremente, pero SIEMPRE menciona que eres IA y que puedes cometer errores en ese primer mensaje. NO repitas esto en mensajes posteriores.` : ''}
+2. TONO Y PERSONALIDAD: Eres un asistente extremadamente amable, servicial y carismático. Tu comunicación nunca debe ser "seca". Debes usar emojis en tus mensajes para transmitir calidez y buena vibra, pero manteniendo los textos cortos, naturales y al grano. ¡Haz que el cliente se sienta especial!
+3. ${esRegistrado ? 'Si pregunta por puntos, dile los datos reales. Invítalo a la web.' : `NUEVOS CLIENTES (NO REGISTRADOS):
+   - Si el cliente saluda, devuélvele el saludo de forma CORTA, AMIGABLE y NATURAL. Ejemplo: "¡Hola! Bienvenido a Estrella Envíos 🌟 ¿En qué te puedo ayudar hoy?". NO seas robótico, varía tu saludo, y NO le pidas su nombre de inmediato.
+   - Si el cliente pide un envío o comida, atiéndelo directo con las herramientas (VER_RESTAURANTES_CLIENTE o INICIAR_MANDADITO). NO lo obligues a registrarse.
+   - SÓLO si el cliente explícitamente pide registrarse, o si la conversación avanza sin que pida envíos/comida, ENTONCES invítalo a registrarse pidiendo su nombre. Si accede a registrarse, recopila: a) Nombre completo b) Colonia.
+   ⚠️ TELÉFONO: Ya detectado automáticamente. Si lo registras, menciónalo: "Veo que tu número es ${regState?.tel || 'tu WhatsApp'} 📱 ¿Me dices tu nombre completo?". Solo confírmalo en el resumen final.
+   PASO CRÍTICO (STATE TRACKING): En tu respuesta JSON, DEBES llenar "clienteNombre", "clienteTel" y "colonia" con los datos que ya tengas. Si "clienteNombre" ya tiene un valor, pide la colonia. No repitas preguntas.
    
    ⚠️ PROCESO DE CONFIRMACIÓN (MUY IMPORTANTE):
    PASO 1: Cuando ya tengas nombre Y colonia, usa la acción RESPONDER para mostrarle el resumen completo (incluyendo el teléfono auto-detectado) y preguntarle si todo está bien:
    "¿Confirmo tus datos?|||👤 Nombre: [nombre]|||📱 Tel: [tel auto-detectado]|||🏠 Colonia: [colonia]|||¿Todo correcto? 😊"
    PASO 2: SOLAMENTE cuando el cliente responda "sí", "correcto", o afirmativamente a tu resumen, puedes usar la acción SOLICITAR_REGISTRO. 
    ¡NUNCA uses SOLICITAR_REGISTRO en el mismo mensaje donde le muestras el resumen! Debes esperar su respuesta afirmativa.`}
-3. MANDADITOS: Si el cliente quiere un MANDADITO (llevar algo de un lugar a otro, servicio de mensajería, paquetería, encomienda), usa la acción COTIZAR_MANDADITO y extrae el origen y destino. Ejemplos de mandadito: "llévame esto", "recoge un paquete en X y entrégalo en Y", "necesito que vayan del centro a la pila", "cotiza un envío", "cuánto cobran de X a Y".
+3. SERVICIOS (MANDADITOS): Si el cliente quiere un envío, mandar a traer algo, servicio de mensajería, comprar algo, recoger encomienda, usa la acción INICIAR_MANDADITO y extrae origen y destino. (Pero en tus mensajes llámalo "envío", no mandadito). 
 4. Invita a visitar: https://www.app-estrella.shop/loyalty/${callerPhone10}
 5. ${ctx?.reputacion === 'malo' || ctx?.reputacion === 'regular' ? 'NO menciones su reputación. Atiéndelo normal.' : ctx?.reputacion === 'excelente' ? 'Hazle saber que es un cliente muy valorado 🌟' : 'Sé amable con todos.'}
-6. ESTRELLA EATS (PEDIDOS): Si el cliente quiere ver el menú de comida, restaurantes aliados, dice que tiene hambre, o quiere hacer un pedido a domicilio, usa la herramienta VER_RESTAURANTES_CLIENTE inmediatamente. Esta herramienta abrirá el menú interactivo en su WhatsApp.
+6. ESTRELLA EATS (VENTAS PROACTIVAS): ¡ERES UN AGENTE DE VENTAS ESTRELLA! Si el cliente dice que tiene hambre, menciona "pedir comida", pregunta por el menú o qué hay de comer:
+   a) Sé persuasivo y antojadizo. (Ej: "¡Qué rico! 🍔 Estás en el lugar indicado para matar ese antojo.", "¡Uy, te va a encantar lo que tenemos! 🍕")
+   b) SIEMPRE usa la herramienta VER_RESTAURANTES_CLIENTE inmediatamente en tu respuesta. Esta herramienta disparará automáticamente el Catálogo Nativo de WhatsApp al cliente.
+   c) En el 'mensajeUsuario' incluye tu frase persuasiva e invita al cliente a explorar el menú que le aparecerá abajo.
+   🚨 EXCEPCIÓN CRÍTICA: Si ya estás a la mitad de pedir datos para un "envío/mandadito" (ej. acabas de preguntar en qué negocio comprar o a qué dirección entregar), y el cliente responde con un restaurante (ej. "Pollo Sinaloa"), ¡NO uses VER_RESTAURANTES_CLIENTE! Debes procesarlo como el "origen" del mandadito y continuar preguntando el destino con RESPONDER.
 7. Si quieren registrar un restaurante, usa REGISTRAR_RESTAURANTE.
 8. SOLICITAR_REGISTRO SOLO cuando tengas los 3 datos Y el cliente los haya confirmado.
 9. POLÍTICA DE PRIVACIDAD: Si el cliente pregunta por sus datos o por qué le toman foto a su casa, explícale que: "Por seguridad de nuestros repartidores y agilidad logística tomamos fotos 100% EXTERIORES de la fachada (sin rostros). Si no eres VIP, tus datos jamás se usan para enviarte publicidad. Todo esto en cumplimiento con la LFPDPPP."
+10. PROTOCOLO ANTI-TROLLS: Si el usuario usa lenguaje obsceno, insulta, falta al respeto, o hace peticiones troll/ilegales, NO intentes ayudarlo ni seguirle el juego. Responde ÚNICA Y EXACTAMENTE CON ESTA FRASE: "Por favor mantén el respeto. ¿En qué puedo apoyarte?". Si el usuario ya fue advertido y sigue insultando, córtalo diciendo "Entendido. Si necesitas servicio más tarde, aquí estaré. Que tengas buen día." y despídete amablemente pero firme.
+
+11. TERMINOLOGÍA VIP: Al interactuar con el cliente en tus mensajes, NUNCA uses la palabra "mandadito" o "mandaditos". SIEMPRE refiérete a este servicio como "envío", "entregas" o "servicio de mensajería" (ej: "cotizar un envío", "¿otro envío hoy?", "vamos por tu paquete"). Mantenlo premium.
+
+12. 🖼️ MULTIMEDIA — PUEDES VER IMÁGENES Y ESCUCHAR AUDIOS: Cuando el cliente envíe una foto o un audio, la IA los recibe y puede analizarlos directamente. NUNCA digas que "no puedes ver imágenes" o "no puedo escuchar audios", porque sí puedes.
+   - 📸 IMÁGENES: Si el cliente manda una foto (ej. de una fachada, un paquete, un menú, un código QR), descríbela y úsala de contexto. Si es una fachada para un envío, extrae referencias visibles (color, número, calle). Si es un paquete, menciona su tamaño o contenido si se ve.
+   - 🎤 AUDIOS: Si el cliente manda una nota de voz, ya fue transcrita a texto automáticamente y la recibirás en el mensaje de texto. Procésala igual que un mensaje escrito.
+   - Si la imagen no es relevante para un servicio, responde de forma natural sobre lo que ves y redirige amablemente al servicio.
 
 HERRAMIENTAS:
 - RESPONDER: Chatear, saludar, informar puntos, pedir datos.
-- VER_RESTAURANTES_CLIENTE: Enviar el directorio de restaurantes para que el cliente pida comida.
+- VER_RESTAURANTES_CLIENTE: Enviar el menú nativo y visual de restaurantes para que el cliente pida comida (Estrella Eats). Úsalo siempre que el cliente muestre intención de comer o ver el menú.
 - REGISTRAR_RESTAURANTE: Afiliar restaurante. Requiere "nombre_restaurante" y "correo".
 - SOLICITAR_REGISTRO: Solo con los 3 datos confirmados. DEBES incluir "clienteNombre", "clienteTel" y "colonia" en datosAExtraer, extrayéndolos del historial de la conversación.
 - APLICAR_REFERIDO: Cuando el cliente mencione un código de referido (ej. ESTRELLA-XXXX), usar esta acción y poner el código en datosAExtraer.codigoReferido.
 - GUARDAR_DIRECCION_FAVORITA: Si el cliente pide un viaje a una dirección nueva (ej. "Mándalo a mi escuela: Cobach 10"), pregúntale "¿Quieres que guarde esta dirección como 'Escuela' para la próxima?". Si dice que SÍ o pide explícitamente guardar una dirección, usa esta acción. Extrae: "etiqueta_direccion" (ej. "casa", "trabajo", "escuela") y "direccion" (texto completo de la colonia/calle o coordenadas si mandó un pin).
-- INICIAR_MANDADITO: Úsalo cuando el cliente pida un servicio de mensajería (mandadito), ir a recoger algo, etc. Si menciona origen y destino, extráelos. Si menciona "mi casa", usa las coordenadas exactas de la LIBRETA DE DIRECCIONES en lugar de poner "mi casa". Si no tienes la dirección guardada, pregúntasela normalmente (el sistema preguntará paso a paso).
+- INICIAR_MANDADITO: Úsalo cuando el cliente pida un servicio, mensajería, ir a recoger/comprar algo.
+  🛵 DISPARA ESTO INCLUSO SI EL CLIENTE SOLO DICE "Ocupo un servicio".
+
+  🧠 PASO 1 — INFERIR EL ROL (razona ANTES de extraer paradas):
+  Antes de extraer cualquier parada, determina mentalmente quién tiene el paquete y quién lo recibe.
+  Usa estas señales lingüísticas para inferir el rol del cliente:
+
+  📤 CLIENTE ES EMISOR (él tiene el paquete, quiere enviarlo):
+  - "recoge aquí", "recoge en mi local/casa", "lleva esto/aquí a...", "manda esto a..."
+  - "te dejo algo para que lleves a...", "pasa por algo conmigo", "recógeme en..."
+  - Menciona su propio alias como ORIGEN: "de mi local", "desde mi casa"
+
+  📥 CLIENTE ES RECEPTOR (alguien más tiene el paquete, quiere recibirlo):
+  - "tráeme", "me puedes traer", "ve a recoger y tráelo aquí/a mí"
+  - "recoge con [persona/lugar] y llévamelo", "hay algo en [lugar] para mí"
+  - Menciona su propio alias como DESTINO implícito: "de la farmacia a mi casa"
+
+  📦 CLIENTE ES INTERMEDIARIO (recoge en un lugar, entrega en otro sin ser parte):
+  - "recoge en X y lleva a Daniela en Y", "ve por el pedido de X y entrégalo en Y"
+  - Ambos extremos son terceros
+
+  ❓ AMBIGUO — Usa RESPONDER para preguntar el rol SOLO si no puedes inferirlo:
+  "Claro 😊 ¿Tú tienes el paquete y quieres enviarlo, o necesitas que vayamos a recogerlo?"
+
+  🧠 MEMORIA CRM: Si el cliente tiene alias guardados (mi casa, mi local) en su MAPA SEMÁNTICO,
+  úsalos proactivamente. Si dice "recoge aquí" y tiene "mi local" con GPS, propón: "¿Paso a tu local de siempre?"
+
+  🗣️ PASO 2 — EXTRAER PARADAS con criterio:
+   - Si ya inferiste el rol Y tienes al menos un lugar → dispara INICIAR_MANDADITO con las paradas que tengas (con null donde falte).
+   - Si el cliente ya dice qué quiere (ej. "recoger unos documentos en el ISSSTE"), dispara INICIAR_MANDADITO con esa parada y null en el destino.
+   - 🚨 SI EL CLIENTE SOLO DICE "quiero un servicio" O "ocupo un mandadito", SIN MENCIONAR NINGÚN LUGAR REAL, DEBES ENVIAR EL ARRAY "paradas" COMPLETAMENTE VACÍO: []. NO INVENTES NADA.
+
+  EXTRAE "paradas": un array con cada lugar mencionado explícitamente. Cada parada tiene: "tipo" ("recoger", "comprar" o "entregar"), "ubicacion" (el lugar exacto que dijo el cliente), e "instruccion".
+  🚨 REGLA DE ORO 1: ¡NO INVENTES UBICACIONES! Si el cliente NO dio un nombre propio exacto para alguna parada, DEBES usar null en la ubicacion.texto de esa parada. NUNCA uses "aquí", "mi ubicación", "conmigo".
+  🚨 REGLA DE ORO 2 (ALUCINACIÓN CERO): ¡NUNCA USES LOS MENSAJES ANTERIORES DEL CLIENTE COMO UBICACIONES! (Ej. no uses "hola", "están laborando", "quiero un servicio"). Las ubicaciones DEBEN ser lugares físicos, direcciones, comercios o alias semánticos (ej. "mi casa"). Si extraes saludos o preguntas como ubicaciones, el sistema se ROMPERÁ por completo. Si no hay lugares reales en el mensaje, usa un array vacío [].
+  INTELIGENCIA: Si el cliente menciona un alias de su CRM (ej. "a mi casa", "en mi local"), pon ese texto EXACTO en ubicacion.texto (ej. "mi casa") — el sistema lo resolverá a GPS automáticamente.
+
+
+  --- EJEMPLOS DE EXTRACCIÓN (FEW-SHOT) ---
+  Ejemplo 1:
+  Cliente: "Puedes recoger un pedido por favor? En antojitos Yoli a nombre de Irma Campos (3 órdenes) y traerlo aquí a al 7ma avenida oriente norte número 8. Barrio Pilita seca."
+  Extrae: {"paradas": [
+    { "tipo": "recoger", "ubicacion": {"texto": "antojitos Yoli"}, "instruccion": "A nombre de Irma Campos (3 órdenes)" },
+    { "tipo": "entregar", "ubicacion": {"texto": "7ma avenida oriente norte número 8. Barrio Pilita seca"}, "instruccion": "Traerlo aquí" }
+  ]}
+  
+  Ejemplo 2:
+  Cliente: "Se recoge ahi en mi local porfis. Se lleva a Daniela Es en el fraccionamiento el laurel última entrada De referencia es casi frente a la tortilleria es una puerta gris Tel 9631871673"
+  Extrae: {"paradas": [
+    { "tipo": "recoger", "ubicacion": {"texto": "mi local"}, "instruccion": "Recoger en mi local" },
+    { "tipo": "entregar", "ubicacion": {"texto": "fraccionamiento el laurel última entrada"}, "instruccion": "Para Daniela. Referencia: casi frente a la tortilleria es una puerta gris. Tel 9631871673" }
+  ]}
+  
+  Ejemplo 3 (Sin destino especificado):
+  Cliente: "Me puedes realizar un servicio? De las quesadillas yulimoni. Serían 4 quesadillas de adobada combinadas porfis"
+  Extrae: {"paradas": [
+    { "tipo": "comprar", "ubicacion": {"texto": "quesadillas yulimoni"}, "instruccion": "4 quesadillas de adobada combinadas" },
+    { "tipo": "entregar", "ubicacion": {"texto": null}, "instruccion": "" }
+  ]}
+
+  Ejemplo 4 (Ubicaciones complejas con mucha basura y errores ortográficos):
+  Cliente: "Buenas tardes le puedo encargar 3 ordenes de pollo campero ( 1 ordenes que se de pierna y muslo y 2 ordenes de pechuga y ala) ke esta entre la iglesia de jesucito y la iglesia de san jose, por favor y traerlo aqui en 10a calle sur oriente num 65 barrio de microondas a lado del bar el. Bebedero en la tiendita ke esta. Lado a nombre concepcion lopez perez, xfis"
+  Extrae: {"paradas": [
+    { "tipo": "comprar", "ubicacion": {"texto": "pollo campero ke esta entre la iglesia de jesucito y la iglesia de san jose"}, "instruccion": "3 ordenes (1 pierna y muslo, 2 pechuga y ala)" },
+    { "tipo": "entregar", "ubicacion": {"texto": "10a calle sur oriente num 65 barrio de microondas a lado del bar el. Bebedero en la tiendita"}, "instruccion": "A nombre concepcion lopez perez" }
+  ]}
+
+  Ejemplo 5 (Multi-compras y referencias implícitas):
+  Cliente: "Necesito dos tintas de impresoras en SISCOM, una NEGRA y una ROSA"
+  Extrae: {"paradas": [
+    { "tipo": "comprar", "ubicacion": {"texto": "SISCOM"}, "instruccion": "Dos tintas de impresoras, una NEGRA y una ROSA" },
+    { "tipo": "entregar", "ubicacion": {"texto": null}, "instruccion": "" }
+  ]}
+
+  Ejemplo 6 (Extracción de medicinas y ubicaciones con nombres de pila):
+  Cliente: "Gracias, es comprar una medicina en la farmacia dan caralampio que está en la pila Y entregarlo por favor en la casa de mi abuelita Laxis 40mg con 20 tabletas"
+  Extrae: {"paradas": [
+    { "tipo": "comprar", "ubicacion": {"texto": "farmacia dan caralampio que está en la pila"}, "instruccion": "Laxis 40mg con 20 tabletas" },
+    { "tipo": "entregar", "ubicacion": {"texto": "casa de mi abuelita"}, "instruccion": "" }
+  ]}
+
+  Ejemplo 7 (El cliente quiere ENVIAR un OBJETO a un destino — el objeto NO es una ubicación):
+  Cliente: "quiero enviar unas cosas al centro, al parque central"
+  🚨 "unas cosas" es el CONTENIDO DEL PAQUETE, NO un lugar. El origen no fue especificado → ubicacion null.
+  Extrae: {"paradas": [
+    { "tipo": "recoger", "ubicacion": {"texto": null}, "instruccion": "Enviar unas cosas" },
+    { "tipo": "entregar", "ubicacion": {"texto": "centro, parque central"}, "instruccion": "" }
+  ]}
+
+  Ejemplo 8 (Envío genérico sin origen claro):
+  Cliente: "me ayudas a llevar un paquete a la clínica IMSS"
+  Extrae: {"paradas": [
+    { "tipo": "recoger", "ubicacion": {"texto": null}, "instruccion": "Llevar un paquete" },
+    { "tipo": "entregar", "ubicacion": {"texto": "clínica IMSS"}, "instruccion": "" }
+  ]}
+
+  🚨 REGLA CRÍTICA: Palabras como "unas cosas", "un paquete", "una encomienda", "unos documentos", "algo", "comida" etc. son el CONTENIDO/OBJETO a transportar — van siempre en "instruccion", NUNCA en "ubicacion.texto". Una ubicación es SIEMPRE un lugar geográfico (negocio, colonia, calle, barrio, edificio).
+  -----------------------------------------
 
 ANÁLISIS DE SENTIMIENTO (obligatorio en cada respuesta):
 Analiza el tono del mensaje del cliente y clasifícalo en: "positivo", "neutro", "molesto", "furioso".
 Señales de molestia: quejas, insultos, mayúsculas excesivas, signos de exclamación múltiples, palabras como "horrible", "tardaron", "pésimo", "inaceptable", "exijo".
 
 FORMATO JSON (responde SOLO esto):
-{"datosAExtraer":{"clienteNombre":null,"clienteTel":null,"colonia":null,"nombre_restaurante":null,"correo":null,"codigoReferido":null,"origen":null,"destino":null,"etiqueta_direccion":null,"direccion":null},"accion":"UNA_ACCION","mensajeUsuario":"Mensaje corto|||Otro mensaje corto 😊","sentimiento":"neutro"}`
+{"datosAExtraer":{"clienteNombre":null,"clienteTel":null,"colonia":null,"nombre_restaurante":null,"correo":null,"codigoReferido":null,"etiqueta_direccion":null,"direccion":null,"paradas":[]},"accion":"UNA_ACCION","mensajeUsuario":"Mensaje corto|||Otro mensaje corto 😊","sentimiento":"neutro"}`
 }
 
 // ── Validador de Seguridad (evita datos incorrectos de la IA) ──────────────────
@@ -347,8 +520,85 @@ async function _cbSuccess(supabase: SupabaseClient): Promise<void> {
 }
 
 // ── Modelos disponibles ─────────────────────────────────────────────────────
-const MODEL_FLASH = 'deepseek-chat'      // Rápido y económico — para clientes
-const MODEL_PRO   = 'deepseek-v4-pro'   // Preciso y potente — para admin/repartidor
+const MODEL_FLASH    = 'gemini-3.6-flash'        // Rápido — chat simple, mid-conversation
+const MODEL_FLASH_25 = 'gemini-3.6-flash'        // Balanceado - primer contacto
+const MODEL_PRO      = 'gemini-3.1-pro-preview'  // Potente + thinking — servicios complejos
+
+// ── Palabras clave que indican intención de SERVICIO (mandadito/envío) ───────
+const SERVICE_INTENT_RE = /\b(enviar|envia|env[ií]o|recoger|recoge|recolect|llevar|lleva|llevar|mandar|manda|traer|trae|servicio|mandadito|paquete|encomienda|comprar|compra|ir a traer|pasar por|mensajer[ií]a|domicilio|entregar|entrega|ruta|parada|quiero enviar|necesito enviar|me puedes recoger|me llevas|me traes|quiero que vayas|quiero un servicio|hambre|comida|comer|antojo|menu|menú|restaurante|pizza|hamburguesa|tacos)\b/i
+
+/**
+ * Selecciona el modelo de IA según la intención detectada en el texto y el historial.
+ * - Sin historial (primer contacto) → gemini-2.5-flash
+ * - Intención de servicio detectada → gemini-3.1-pro-preview (con thinking)
+ * - Conversación simple / pregunta básica → gemini-3.6-flash
+ */
+function selectModel(texto: string, historia: any[]): { model: string; useThinking: boolean } {
+  const isFirstContact = historia.length === 0
+  const isServiceRequest = SERVICE_INTENT_RE.test(texto)
+
+  if (isServiceRequest) {
+    console.log(`🧠 [MODEL] Intención de servicio detectada → ${MODEL_PRO} + thinking`)
+    return { model: MODEL_PRO, useThinking: true }
+  }
+  if (isFirstContact) {
+    console.log(`🌟 [MODEL] Primer contacto → ${MODEL_FLASH_25}`)
+    return { model: MODEL_FLASH_25, useThinking: false }
+  }
+  console.log(`⚡ [MODEL] Conversación simple → ${MODEL_FLASH}`)
+  return { model: MODEL_FLASH, useThinking: false }
+}
+
+// ── PALABRAS QUE NUNCA SON UNA UBICACIÓN GEOGRÁFICA ─────────────────────────
+const NON_LOCATION_WORDS = new Set([
+  'unas cosas', 'un paquete', 'algo', 'unos documentos', 'una encomienda',
+  'esto', 'eso', 'lo mio', 'mis cosas', 'una cosa', 'unos paquetes',
+  'ropa', 'zapatos', 'medicina', 'medicamento', 'medicamentos', 'dinero',
+  'efectivo', 'llaves', 'celular', 'computadora', 'laptop', 'documentos',
+  'papeles', 'cartas', 'carta', 'comida', 'alimentos', 'mercancia', 'mercancía'
+])
+
+/**
+ * Valida y sanitiza una ubicación extraída por la IA.
+ * Si no parece un lugar geográfico real, devuelve texto: null para que el
+ * flujo le pregunte al cliente correctamente en lugar de usar datos inválidos.
+ */
+export function sanitizeUbicacion(ubi: any): any {
+  if (!ubi) return ubi
+  const rawTexto = ubi.texto
+  if (rawTexto === null || rawTexto === undefined) return ubi
+
+  // Si ubi.texto llegó como objeto anidado (bug defensivo)
+  if (typeof rawTexto === 'object') {
+    const nested = (rawTexto as any)?.texto
+    ubi = { ...ubi, texto: nested || null }
+  }
+
+  const txt = String(ubi.texto || '').trim().toLowerCase()
+
+  // Rechazar si está vacío o muy corto
+  if (!txt || txt.length < 3) return { ...ubi, texto: null }
+
+  // Rechazar si es una palabra genérica conocida
+  if (NON_LOCATION_WORDS.has(txt)) {
+    console.log(`🛡️ [SANITIZE] Rechazada ubicación no-geográfica: "${txt}"`)
+    return { ...ubi, texto: null }
+  }
+
+  // Rechazar frases tipo "un/una/unos/unas + objeto común"
+  if (/^(un|una|unos|unas)\s+(cosa|paquete|encomienda|documento|papel|carta|bolsa|caja|llave|ropa|medicina|medicamento|objeto|artículo|articulo)s?\b/i.test(txt)) {
+    console.log(`🛡️ [SANITIZE] Rechazada frase objeto: "${txt}"`)
+    return { ...ubi, texto: null }
+  }
+
+  // Rechazar si empieza con verbo de acción (no es un lugar)
+  if (/^(enviar|recoger|llevar|mandar|traer|comprar|ir a|pasar)\b/i.test(txt)) {
+    console.log(`🛡️ [SANITIZE] Rechazada frase de acción: "${txt}"`)
+    return { ...ubi, texto: null }
+  }
+
+  return { ...ubi, texto: String(ubi.texto).trim() }
+}
 
 // ── Llamar a DeepSeek R1 ──────────────────────────────────────────────────────
 export async function conversacionDeepSeek(
@@ -358,8 +608,9 @@ export async function conversacionDeepSeek(
   isRepartidor = false,
   repartidorInfo: any = null,
   isClient = false,
-  clienteCtx: { nombre?: string; puntos?: number; esVip?: boolean; reputacion?: string; saldo?: number; envios?: number; rango?: string } | null = null,
-  regState?: { nombre?: string; tel?: string; colonia?: string }
+  clienteCtx: { nombre?: string; puntos?: number; esVip?: boolean; reputacion?: string; saldo?: number; envios?: number; rango?: string; notasCrm?: string; ubicaciones?: any[]; historialPedidos?: any[] } | null = null,
+  regState?: { nombre?: string; tel?: string; colonia?: string },
+  mediaData?: { base64: string; mimeType: string } | null
 ): Promise<{ respuesta?: AIRespuesta; nuevoHistorial?: any[]; errorObj?: string } | null> {
   try {
     // Circuit breaker: si está abierto, rechazar inmediatamente sin llamar a DeepSeek
@@ -393,7 +644,7 @@ export async function conversacionDeepSeek(
 
     let systemInstruction = buildAdminPrompt()
     if (isRepartidor) systemInstruction = buildRepartidorPrompt(repartidorInfo)
-    else if (isClient) systemInstruction = buildClientPrompt(callerPhone10, clienteCtx, regState)
+    else if (isClient) systemInstruction = buildClientPrompt(callerPhone10, clienteCtx, regState, historia.length === 0)
 
     const formattedHistory = historia
       .filter((h: any) => h.content && String(h.content).trim().length > 0)
@@ -408,26 +659,91 @@ export async function conversacionDeepSeek(
       { role: 'user', content: String(nuevoTexto).substring(0, 500) },
     ]
 
-    const API_KEY = Deno.env.get('DEEPSEEK_API_KEY')!
+    const API_KEY = Deno.env.get('GEMINI_API_KEY')!
 
-    const callDeepSeek = async (): Promise<Response> => {
+    const callDeepSeek = async (isRetry = false): Promise<Response> => {
       const controller = new AbortController()
-      // Tiempo de espera de 12 segundos para evitar retrasos excesivos.
-      const timeout = setTimeout(() => controller.abort(), 12000)
+      const timeout = setTimeout(() => controller.abort(), 18000) // +6s para modelos con thinking
+
+      const { model: selectedModel, useThinking } = isRetry
+        ? { model: MODEL_FLASH, useThinking: false }
+        : (isClient
+            ? selectModel(String(nuevoTexto), historia)
+            : { model: MODEL_PRO, useThinking: false })
+      const modelToUse = selectedModel
+      
+      // Adaptar a Gemini — con normalización estricta de alternancia user/model
+      const rawGemini = (isRetry ? messages.slice(-1) : messages)
+        .filter(m => m.role !== 'system' && m.content && String(m.content).trim().length > 0)
+        .map(m => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: String(m.content).trim() }]
+        }))
+
+      // Normalizar alternancia: eliminar turnos consecutivos del mismo rol (quedarse con el último)
+      const geminiContents: { role: string; parts: { text: string }[] }[] = []
+      for (const turn of rawGemini) {
+        if (geminiContents.length > 0 && geminiContents[geminiContents.length - 1].role === turn.role) {
+          // Mismo rol consecutivo: reemplazar (el más reciente es más relevante)
+          geminiContents[geminiContents.length - 1] = turn
+        } else {
+          geminiContents.push(turn)
+        }
+      }
+
+      // Garantizar que el array nunca termine en 'model' (Gemini lo rechaza)
+      if (geminiContents.length > 0 && geminiContents[geminiContents.length - 1].role === 'model') {
+        geminiContents.pop()
+      }
+
+      // Si quedó vacío o el último turno ya no es user, asegurar un turno user final
+      const nuevoTextoStr = String(nuevoTexto).trim() || 'Hola'
+      if (geminiContents.length === 0 || geminiContents[geminiContents.length - 1].role !== 'user') {
+        geminiContents.push({ role: 'user', parts: [{ text: nuevoTextoStr }] })
+      }
+
+      // Si hay media adjunta, enriquecemos el último turno user con inlineData
+      if (mediaData?.base64 && !isRetry) {
+        console.log(`[callDeepSeek] \ud83d\uddbc\ufe0f Inyectando media en Gemini: mimeType=${mediaData.mimeType} base64len=${mediaData.base64.length}`)
+        const lastTurn = geminiContents[geminiContents.length - 1]
+        if (lastTurn.role === 'user') {
+          lastTurn.parts = [
+            { text: `El usuario adjunt\u00f3 este archivo multimedia. Por favor an\u00e1lizalo y responde en consecuencia. ${nuevoTextoStr}` },
+            { inlineData: { mimeType: mediaData.mimeType, data: mediaData.base64 } }
+          ] as any
+          console.log(`[callDeepSeek] \u2705 inlineData inyectado en lastTurn`)
+        } else {
+          console.warn(`[callDeepSeek] \u26a0\ufe0f lastTurn.role=${lastTurn.role}, no se inyect\u00f3 imagen`)
+        }
+      } else if (mediaData?.base64 && isRetry) {
+        console.warn('[callDeepSeek] \u26a0\ufe0f isRetry=true, imagen NO incluida en retry')
+      }
+
+      const hasMedia = !!(mediaData?.base64 && !isRetry)
+
+      const payload: any = {
+        contents: geminiContents,
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        generationConfig: {
+          // ⚠️ Cuando hay media (imagen/audio), NO usamos responseMimeType JSON porque algunos
+          // modelos de Gemini devuelven contenido vacío al combinar inlineData + JSON mode.
+          // Con media, dejamos que Gemini responda en texto libre (igual cumple el formato JSON
+          // porque el systemInstruction lo pide explícitamente).
+          ...(hasMedia ? {} : { responseMimeType: 'application/json' }),
+          temperature: 0.7,
+          maxOutputTokens: 2048
+        }
+      }
+      if (hasMedia) console.log('[callDeepSeek] 🖼️ Modo texto (sin responseMimeType JSON) para procesar media')
+
+
       try {
-        return await fetch('https://api.deepseek.com/chat/completions', {
+        return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${API_KEY}`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${API_KEY}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            model: isClient ? MODEL_FLASH : MODEL_PRO,  // Flash para clientes, Pro para admin/rep
-            response_format: { type: 'json_object' },
-            messages,
-            max_tokens: 2048,
-            temperature: 0.0,
-          }),
+          body: JSON.stringify(payload),
           signal: controller.signal,
         })
       } finally {
@@ -439,64 +755,52 @@ export async function conversacionDeepSeek(
     try {
       res = await callDeepSeek()
       if (res.status >= 500 && res.status < 600) {
-        console.warn(`⚠️ DeepSeek API ${res.status}, reintentando inmediatamente...`)
+        console.warn(`⚠️ Gemini API ${res.status}, reintentando inmediatamente...`)
         res = await callDeepSeek()
       }
     } catch (fetchErr: any) {
       const isTimeout = fetchErr?.name === 'AbortError'
       const msg = isTimeout ? '⏱️ Timeout 12s alcanzado, usando fallback' : '🌐 Fetch error: ' + String(fetchErr);
       console.error(msg)
-      await logError('whatsapp-bot', `DeepSeek Fetch Failure: ${msg}`, { error: String(fetchErr), callerPhone10 }, 'critical');
+      await logError('whatsapp-bot', `Gemini Fetch Failure: ${msg}`, { error: String(fetchErr), callerPhone10 }, 'critical');
       await _cbFail(supabase)
-      return { errorObj: isTimeout ? 'DeepSeek no respondió a tiempo. Intente de nuevo.' : String(fetchErr) }
+      return { errorObj: isTimeout ? 'Gemini no respondió a tiempo. Intente de nuevo.' : String(fetchErr) }
     }
 
     if (!res.ok) {
       const errText = await res.text()
-      console.error('DeepSeek API Error:', errText)
-      await logError('whatsapp-bot', `DeepSeek HTTP Error ${res.status}`, { response: errText, callerPhone10 }, 'critical');
+      console.error('Gemini API Error:', errText)
+      await logError('whatsapp-bot', `Gemini HTTP Error ${res.status}`, { response: errText, callerPhone10 }, 'critical');
       await _cbFail(supabase)
       return { errorObj: `HTTP ${res.status} - ${errText}` }
     }
 
     const data = await res.json()
-    console.log(`🤖 [DeepSeek] Tokens usados — input: ${data.usage?.prompt_tokens} | output: ${data.usage?.completion_tokens}`)
+    console.log(`🤖 [Gemini] Tokens usados — input: ${data.usageMetadata?.promptTokenCount} | output: ${data.usageMetadata?.candidatesTokenCount}`)
 
-    // El formato es compatible con el estándar de OpenAI.
-    let rawContent = (data.choices?.[0]?.message?.content || '').trim()
+    let rawContent = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim()
 
     // Manejo de respuestas vacías (ocurre cuando el historial acumula demasiados tokens).
     // Fix: reintentar SIN historial para liberar contexto y obtener respuesta válida.
     if (!rawContent || rawContent.length < 10) {
-      console.warn(`⚠️ DeepSeek respuesta muy corta (${rawContent.length} chars, ${data.usage?.completion_tokens} tokens). Reintentando sin historial...`)
-      const messagesNoHistory = [
-        { role: 'system', content: systemInstruction },
-        { role: 'user', content: String(nuevoTexto).substring(0, 500) },
-      ]
+      console.warn(`⚠️ Gemini respuesta muy corta (${rawContent.length} chars). Reintentando sin historial...`)
+      
       let res2: Response
       try {
-        const ctrl2 = new AbortController()
-        const tmr2 = setTimeout(() => ctrl2.abort(), 12000)
-        res2 = await fetch('https://api.deepseek.com/chat/completions', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: MODEL_FLASH, response_format: { type: 'json_object' }, messages: messagesNoHistory, max_tokens: 2048, temperature: 0.0 }),  // Siempre flash en retry
-          signal: ctrl2.signal,
-        })
-        clearTimeout(tmr2)
+        res2 = await callDeepSeek(true) // Llama con isRetry = true
       } catch (e2) {
-        const msg = '❌ DeepSeek devolvió contenido vacío. Finish reason: ' + (data.choices?.[0]?.finish_reason || 'unknown')
+        const msg = '❌ Gemini devolvió contenido vacío.'
         console.error(msg)
         await _cbFail(supabase)
         return { errorObj: msg }
       }
       const data2 = await res2.json()
-      rawContent = (data2.choices?.[0]?.message?.content || '').trim()
-      console.log(`🔄 [Retry sin historial] Tokens — input: ${data2.usage?.prompt_tokens} | output: ${data2.usage?.completion_tokens}`)
+      rawContent = (data2.candidates?.[0]?.content?.parts?.[0]?.text || '').trim()
+      console.log(`🔄 [Retry sin historial] Tokens — input: ${data2.usageMetadata?.promptTokenCount} | output: ${data2.usageMetadata?.candidatesTokenCount}`)
       if (!rawContent || rawContent.length < 10) {
-        const msg = '❌ DeepSeek devolvió contenido vacío incluso sin historial. Finish reason: ' + (data2.choices?.[0]?.finish_reason || 'unknown')
+        const msg = '❌ Gemini devolvió contenido vacío incluso sin historial.'
         console.error(msg)
-        await logError('whatsapp-bot', 'DeepSeek Empty Response (retry)', { finish_reason: data2.choices?.[0]?.finish_reason, callerPhone10 }, 'error')
+        await logError('whatsapp-bot', 'Gemini Empty Response (retry)', { callerPhone10 }, 'error')
         await _cbFail(supabase)
         return { errorObj: msg }
       }
@@ -572,65 +876,49 @@ export async function validarDatosMandaditoIA(origenInfo: string, destinoInfo: s
     datosEstructurados: { nombreRemitente: null, nombreReceptor: null, numeroOrden: null, telefonoContacto: null }
   }
 
-  const key = Deno.env.get('DEEPSEEK_API_KEY') || Deno.env.get('OPENAI_API_KEY')
-  if (!key) return defaultFallback
-
-  const url = Deno.env.get('DEEPSEEK_API_KEY') ? 'https://api.deepseek.com/chat/completions' : 'https://api.openai.com/v1/chat/completions'
-  const model = Deno.env.get('DEEPSEEK_API_KEY') ? 'deepseek-chat' : 'gpt-4o-mini'
-
-  const roleInstruction = role === 'envio' 
-    ? `3. El cliente (cuyo número es ${telefonoCliente}) YA NOS INDICÓ QUE ÉL ES EL REMITENTE (EL QUE ENVÍA). Por lo tanto, OBLIGATORIAMENTE debes pedirle el nombre y número de teléfono de la persona que RECIBE el paquete en el destino (si no lo ha dado).`
+  const roleInstruction = role === 'envio'
+    ? `3. El cliente (cuyo número es ${telefonoCliente}) YA NOS INDICÓ QUE ÉL ES EL REMITENTE (EL QUE ENVÍA). Obligatoriamente pide nombre y teléfono del RECEPTOR si no se han dado.`
     : role === 'recibo'
-    ? `3. El cliente (cuyo número es ${telefonoCliente}) YA NOS INDICÓ QUE ÉL ES EL DESTINATARIO (EL QUE RECIBE). Por lo tanto, OBLIGATORIAMENTE debes pedirle el nombre y número de teléfono de la persona que ENVÍA el paquete desde el origen (si no lo ha dado).`
-    : `3. ENVÍOS ENTRE PERSONAS/CASAS: Es vital saber quién es el remitente y quién el destinatario. Si el usuario no ha aclarado quién envía y quién recibe, pregúntale: "📱 Detectamos tu número. Para este mandadito, ¿tú ERES EL QUE ENVÍA o ERES EL QUE RECIBE?".`
+    ? `3. El cliente (cuyo número es ${telefonoCliente}) YA NOS INDICÓ QUE ÉL ES EL DESTINATARIO (EL QUE RECIBE). Obligatoriamente pide nombre y teléfono del REMITENTE si no se han dado.`
+    : `3. ENVÍOS ENTRE PERSONAS: Si no está claro quién envía y quién recibe, pregúntale: "📱 ¿tú ERES EL QUE ENVÍA o ERES EL QUE RECIBE?".`
 
-  const prompt = `Eres un auditor logístico experto para una app de entregas (Estrella Delivery).
-Analiza el Origen y el Destino de un pedido de mandadito y decide si falta información crucial para el repartidor.
+  const prompt = `Eres un auditor logístico para Estrella Envíos (Comitán, Chiapas).
+Decide si falta información crucial para ejecutar el mandadito.
 
-Teléfono de WhatsApp del cliente: ${telefonoCliente}
+Teléfono del cliente: ${telefonoCliente}
 Origen: ${origenInfo}
 Destino: ${destinoInfo}
 
-REGLAS DE DEDUCCIÓN:
-1. RESTAURANTES/COMERCIOS: Si el origen o destino es un comercio (ej. Domino's, Farmacia), se requiere saber a nombre de quién está el pedido (si no lo han dicho), Y OBLIGATORIAMENTE preguntar el número de orden/ticket, y si el repartidor debe pagarlo.
-2. REFERENCIAS DE FACHADA: Si el origen o destino es una casa, siempre pide referencias (color de fachada, portón, entre qué calles). Si falta esto, NO pongas estaCompleto=true.
+REGLAS:
+1. COMERCIOS: Pide número de orden/ticket y si el repartidor debe pagar.
+2. CASAS: Pide referencias (color de fachada, entre qué calles). Sin esto, estaCompleto=false.
 ${roleInstruction}
-4. LUGARES PÚBLICOS: Se requiere saber a quién buscar o cómo va vestida la persona.
+4. LUGARES PÚBLICOS: Pide a quién buscar o cómo va vestida la persona.
+5. TONO: Eres Estrella, amigable y chiapaneco. La pregunta debe sonar humana y con emojis.
 
-INSTRUCCIONES DE SALIDA:
-Devuelve ÚNICAMENTE un objeto JSON con la siguiente estructura:
+Devuelve JSON:
 {
-  "estaCompleto": boolean, // true si ya hay suficientes datos para hacer el mandadito, false si falta algo crítico.
-  "datosFaltantes": string[], // Lista de datos faltantes (ej. ["numero_ticket", "referencias"]) o array vacío [].
-  "preguntaAlCliente": string | null, // Si estaCompleto es false, formula UNA SOLA pregunta MUY CORTA, amable y con emojis. (Si no aplica, agrega 'escribe no').
+  "estaCompleto": boolean,
+  "datosFaltantes": string[],
+  "preguntaAlCliente": string|null,
   "datosEstructurados": {
-    "nombreRemitente": string | null, // Nombre de quien envía o a nombre de quién está el pedido (ej. "Caleb")
-    "nombreReceptor": string | null,  // Nombre de quien recibe en el destino
-    "numeroOrden": string | null,     // Número de ticket u orden (ej. "55", "A-12")
-    "telefonoContacto": string | null // Teléfono explícito que haya dado el cliente, o usa ${telefonoCliente} por defecto si dice "a mi numero".
+    "nombreRemitente": string|null,
+    "nombreReceptor": string|null,
+    "numeroOrden": string|null,
+    "telefonoContacto": string|null
   }
 }`
 
+  const content = await callGemini(
+    [{ role: 'user', content: prompt }],
+    'gemini-3.1-pro-preview',
+    400,
+    true
+  )
+
+  if (!content) return defaultFallback
+
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify({
-        model,
-        response_format: { type: 'json_object' },
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 400,
-        temperature: 0.1
-      })
-    })
-
-    if (!res.ok) return defaultFallback
-    const json = await res.json()
-    let content = json.choices?.[0]?.message?.content?.trim()
-    if (!content) return defaultFallback
-
-    content = content.replace(/```json/gi, '').replace(/```/g, '')
-
     const parsed = JSON.parse(content)
     return {
       estaCompleto: !!parsed.estaCompleto,
@@ -650,10 +938,6 @@ export async function extraerResumenFinalIA(origenInfo: string, destinoInfo: str
     remitente: null, receptor: null, telefono: null, orden: null, detalles: referenciasInfo
   }
   
-  const key = Deno.env.get('DEEPSEEK_API_KEY') || Deno.env.get('OPENAI_API_KEY')
-  if (!key) return defaultFallback
-  const url = Deno.env.get('DEEPSEEK_API_KEY') ? 'https://api.deepseek.com/chat/completions' : 'https://api.openai.com/v1/chat/completions'
-  const model = Deno.env.get('DEEPSEEK_API_KEY') ? 'deepseek-chat' : 'gpt-4o-mini'
 
   const prompt = `Eres un asistente que resume pedidos de envío.
 Extrae la información final basándote en estos textos:
@@ -673,16 +957,14 @@ Devuelve UN JSON con esta estructura:
   "detalles": "Cualquier otra referencia visual (color de casa, portón, indicaciones) que no sea el teléfono ni la orden."
 }`
 
+  const content = await callGemini(
+    [{ role: 'user', content: prompt }],
+    'gemini-3.1-pro-preview',
+    300,
+    true
+  )
+  if (!content) return defaultFallback
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify({ model, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }], max_tokens: 300, temperature: 0.1 })
-    })
-    const json = await res.json()
-    let content = json.choices?.[0]?.message?.content?.trim()
-    if (!content) return defaultFallback
-    content = content.replace(/```json/gi, '').replace(/```/g, '')
     return JSON.parse(content)
   } catch (e) {
     return defaultFallback

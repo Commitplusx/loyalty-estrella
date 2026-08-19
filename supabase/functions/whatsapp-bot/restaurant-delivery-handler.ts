@@ -492,9 +492,17 @@ export async function confirmarRestaurantDelivery(
     updated_at:     new Date().toISOString(),
   }).select('id').maybeSingle()
 
+  // Si la BD falla, conservamos el draft para que el restaurante pueda reintentar
+  // sin tener que dictar todos los datos del cliente de nuevo.
+  if (error) {
+    await sendWA(fromPhone, `❌ Error al crear el pedido: ${error.message}`)
+    return new Response('OK', { status: 200 })
+  }
+
+  // Solo borramos el draft una vez que el pedido quedó confirmado en BD
   await clearConfirm(supabase, from10)
 
-  // Guardar última dirección en notas_crm
+  // Guardar última dirección en notas_crm para autocompletado futuro
   if (draft.destinoTexto) {
     const { data: cliInfo } = await supabase.from('clientes').select('notas_crm').eq('telefono', draft.clienteTel).maybeSingle()
     if (cliInfo) {
@@ -502,11 +510,6 @@ export async function confirmarRestaurantDelivery(
       const nuevasNotas = `${notasSinDir}\n\n📍 Última entrega: ${draft.destinoTexto}`.trim()
       await supabase.from('clientes').update({ notas_crm: nuevasNotas }).eq('telefono', draft.clienteTel)
     }
-  }
-
-  if (error) {
-    await sendWA(fromPhone, `❌ Error al crear el pedido: ${error.message}`)
-    return new Response('OK', { status: 200 })
   }
 
   await sendWA(fromPhone,
@@ -572,14 +575,14 @@ export async function handleEstrellaEatsLocation(
     return new Response('OK', { status: 200 });
   }
 
-  await sendWA(fromPhone, `⏳ Calculando tarifa de envío...`);
+  await sendWA(fromPhone, `🛵 *Calculando la mejor ruta de entrega para tu comida...* ⚡`);
 
   // Calcular tarifa del cliente
   const resolvedCustomer = await resolveH3Location(supabase, lat, lng);
   let costoEnvio = resolvedCustomer?.precio || 45;
 
   // Calcular tarifa del restaurante y quedarse con la mayor
-  const { data: rest } = await supabase.from('restaurantes').select('lat, lng').eq('id', draft.restaurante_id).maybeSingle();
+  const { data: rest } = await supabase.from('restaurantes').select('lat, lng, mp_access_token').eq('id', draft.restaurante_id).maybeSingle();
   if (rest?.lat && rest?.lng) {
     const resolvedRest = await resolveH3Location(supabase, rest.lat, rest.lng);
     const costoRest = resolvedRest?.precio || 45;
@@ -603,25 +606,203 @@ export async function handleEstrellaEatsLocation(
     updated_at: new Date().toISOString()
   });
 
-  const confirmText = `¡Ubicación recibida con éxito! 📍\n\n` +
+  const tieneMP = !!rest?.mp_access_token;
+
+  let confirmText = `¡Ubicación recibida con éxito! 📍\n\n` +
     `🧾 *Resumen de tu Orden*\n\n` +
     `🏪 *Restaurante:* ${draft.restaurante_nombre || 'N/A'}\n` +
     `🛒 *Pedido:*\n${draft.resumen_pedido}\n\n` +
     `💵 Subtotal: $${draft.subtotal.toFixed(2)}\n` +
     `🛵 Envío: $${costoEnvio.toFixed(2)}\n` +
     `=================\n` +
-    `*TOTAL: $${granTotal.toFixed(2)}*\n\n` +
-    `¿Cómo deseas pagar?`;
+    `*TOTAL: $${granTotal.toFixed(2)}*\n\n`;
+
+  let buttons = [];
+
+  if (tieneMP) {
+    confirmText += `¿Cómo deseas pagar?`;
+    buttons = [
+      { id: `CONFIRM_EATS_EFECTIVO`, title: '💵 Efectivo' },
+      { id: `CONFIRM_EATS_TRANSF`, title: '💳 Tarjeta/Transf' },
+      { id: `CANCELAR_EATS`, title: '❌ Cancelar' }
+    ];
+  } else {
+    confirmText += `Este restaurante solo acepta pagos en efectivo al recibir tu pedido. ¿Deseas confirmar?`;
+    buttons = [
+      { id: `CONFIRM_EATS_EFECTIVO`, title: '✅ Sí, en Efectivo' },
+      { id: `CANCELAR_EATS`, title: '❌ Cancelar' }
+    ];
+  }
 
   await sendInteractiveButtons(
     fromPhone,
     confirmText,
-    [
-      { id: `CONFIRM_EATS_EFECTIVO`, title: '💵 Efectivo' },
-      { id: `CONFIRM_EATS_TRANSF`, title: '🏦 Transferencia' },
-      { id: `CANCELAR_EATS`, title: '❌ Cancelar' }
-    ]
+    buttons
   );
 
   return new Response('OK', { status: 200 });
 }
+
+// ── Carrito Nativo del Catálogo (type: "order") ───────────────────────────────
+// Llamado desde index.ts cuando msgType === 'order'.
+// El cliente presionó "Enviar a la empresa" en el catálogo de WhatsApp.
+// Flujo: Leer carrito → buscar en BD → guardar draft → pedir ubicación GPS.
+// La confirmación final y creación del pedido ocurre en:
+//   handleEstrellaEatsLocation → button-handler.ts (CONFIRM_EATS_EFECTIVO)
+
+export async function handleOrderMessage(
+  supabase: any,
+  fromPhone: string,
+  from10: string,
+  msg: any
+): Promise<Response | null> {
+  const order = msg.order;
+
+  // ── Validación de estructura ───────────────────────────────────────────────
+  if (!order?.product_items?.length) {
+    console.warn(`[ORDER] Carrito vacío o mal formado de ${from10}`);
+    return null;
+  }
+
+  const { sendWA, sendLocationRequest } = await import('./whatsapp.ts');
+
+  // ── Idempotencia: evitar doble-procesamiento ───────────────────────────────
+  // Si ya existe un draft activo y es reciente (<5 min), ignorar duplicado
+  const { data: existingDraft } = await supabase
+    .from('bot_memory')
+    .select('history, updated_at')
+    .eq('phone', `estrella_eats_draft_${from10}`)
+    .maybeSingle();
+
+  if (existingDraft?.updated_at) {
+    const ageSec = (Date.now() - new Date(existingDraft.updated_at).getTime()) / 1000;
+    if (ageSec < 300) {
+      // Ya se está procesando un pedido — recordarle al cliente
+      await sendWA(fromPhone, `⏳ Ya tienes un pedido en proceso. Por favor envíame tu ubicación o usa los botones anteriores para confirmarlo o cancelarlo.`);
+      return new Response('OK', { status: 200 });
+    }
+  }
+
+  // ── Obtener IDs únicos de productos ───────────────────────────────────────
+  const itemIds: string[] = [...new Set(
+    order.product_items
+      .map((i: any) => String(i.product_retailer_id || '').trim())
+      .filter(Boolean)
+  )];
+
+  if (itemIds.length === 0) {
+    await sendWA(fromPhone, `❌ Tu carrito no tiene productos válidos. Por favor intenta de nuevo desde el catálogo.`);
+    return new Response('OK', { status: 200 });
+  }
+
+  // ── Buscar platillos en Supabase ──────────────────────────────────────────
+  // Primero buscamos en menu_items (tabla de catálogo sincronizado a Meta)
+  // con fallback a platillos (tabla legacy)
+  let platillos: any[] = [];
+
+  const { data: menuItems } = await supabase
+    .from('menu_items')
+    .select('id, nombre, descripcion, precio, restaurante_id, restaurantes(id, nombre, telefono)')
+    .in('id', itemIds);
+
+  if (menuItems?.length) {
+    platillos = menuItems;
+  } else {
+    // Fallback a tabla platillos
+    const { data: legacyItems } = await supabase
+      .from('platillos')
+      .select('id, nombre, descripcion, precio, restaurante_id, restaurantes(id, nombre, telefono)')
+      .in('id', itemIds);
+    if (legacyItems?.length) platillos = legacyItems;
+  }
+
+  if (!platillos.length) {
+    console.error(`[ORDER] No se encontraron productos en BD para IDs: ${itemIds.join(', ')}`);
+    await sendWA(fromPhone, `❌ No pude encontrar los productos de tu carrito en el sistema. Por favor contáctanos directamente.`);
+    return new Response('OK', { status: 200 });
+  }
+
+  // ── Agrupar por restaurante (escalable para multi-restaurante futuro) ──────
+  const grupos: Record<string, {
+    restaurante_id: string;
+    restaurante_nombre: string;
+    restaurante_tel: string | null;
+    lineas: string[];
+    subtotal: number;
+  }> = {};
+
+  for (const orderItem of order.product_items) {
+    const id = String(orderItem.product_retailer_id || '').trim();
+    const dbItem = platillos.find((p: any) => String(p.id) === id);
+    if (!dbItem) {
+      console.warn(`[ORDER] Producto ${id} en carrito pero no en BD — omitido`);
+      continue;
+    }
+
+    const restId    = String(dbItem.restaurante_id || dbItem.restaurantes?.id || 'unknown');
+    const restNombre = dbItem.restaurantes?.nombre || 'Restaurante';
+    const restTel    = dbItem.restaurantes?.telefono || null;
+
+    if (!grupos[restId]) {
+      grupos[restId] = { restaurante_id: restId, restaurante_nombre: restNombre, restaurante_tel: restTel, lineas: [], subtotal: 0 };
+    }
+
+    const qty      = Math.max(1, parseInt(orderItem.quantity) || 1);
+    const precio   = parseFloat(dbItem.precio) || 0;
+    const total    = qty * precio;
+    grupos[restId].subtotal += total;
+    grupos[restId].lineas.push(`• ${qty}x ${dbItem.nombre} — $${total.toFixed(2)}`);
+  }
+
+  const gruposArr = Object.values(grupos);
+  if (!gruposArr.length) {
+    await sendWA(fromPhone, `❌ No pude procesar ningún producto de tu carrito. Intenta de nuevo.`);
+    return new Response('OK', { status: 200 });
+  }
+
+  // ── Por ahora usamos el primer restaurante como principal ─────────────────
+  // (En el futuro se puede extender a multi-pedido paralelo)
+  const grupoActivo = gruposArr[0];
+  const resumenPedido = grupoActivo.lineas.join('\n');
+  const subtotal      = grupoActivo.subtotal;
+  const notas         = order.text?.trim() ? `\n\n📝 *Nota del cliente:* ${order.text.trim()}` : '';
+
+  // Si hay más restaurantes, avisarle al cliente
+  if (gruposArr.length > 1) {
+    const nombresExtras = gruposArr.slice(1).map(g => g.restaurante_nombre).join(', ');
+    await sendWA(fromPhone, `⚠️ Nota: tu carrito tiene productos de varios restaurantes. Por el momento procesaremos primero *${grupoActivo.restaurante_nombre}*.\nLos productos de *${nombresExtras}* deberás pedirlos en un carrito separado.`);
+  }
+
+  // ── Guardar draft en bot_memory ───────────────────────────────────────────
+  await supabase.from('bot_memory').upsert({
+    phone: `estrella_eats_draft_${from10}`,
+    history: [{
+      restaurante_id:     grupoActivo.restaurante_id,
+      restaurante_nombre: grupoActivo.restaurante_nombre,
+      restaurante_tel:    grupoActivo.restaurante_tel,
+      resumen_pedido:     resumenPedido,
+      subtotal:           subtotal,
+      notas:              notas,
+      origen:             'catalogo_nativo',   // para distinguir de flow
+      catalog_id:         order.catalog_id || null,
+    }],
+    updated_at: new Date().toISOString()
+  });
+
+  console.log(`[ORDER] ✅ Draft guardado | ${from10} | ${grupoActivo.restaurante_nombre} | $${subtotal.toFixed(2)}`);
+
+  // ── Pedir ubicación al cliente ────────────────────────────────────────────
+  await sendWA(fromPhone,
+    `🛒 *¡Pedido recibido!*\n\n` +
+    `🏪 *${grupoActivo.restaurante_nombre}*\n` +
+    `${resumenPedido}\n` +
+    `${notas}\n\n` +
+    `💰 Subtotal: *$${subtotal.toFixed(2)}*\n\n` +
+    `Para calcular el costo de envío y confirmar, compártenos tu ubicación GPS. 📍`
+  );
+  await sendLocationRequest(fromPhone, 'Toca aquí para enviar tu ubicación 📍');
+
+  return new Response('OK', { status: 200 });
+}
+
+

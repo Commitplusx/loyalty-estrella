@@ -1,7 +1,6 @@
 import { CommandContext } from './command-router.ts'
 import { extract10Digits } from '../db.ts'
 import { sendWA } from '../whatsapp.ts'
-import { syncBotImageByPhone } from '../chatwoot-sync.ts'
 import { generateCloudinaryVIPCard } from '../../_shared/utils.ts'
 
 export async function handleQrCommand(ctx: CommandContext): Promise<Response | null> {
@@ -43,7 +42,6 @@ export async function handleQrCommand(ctx: CommandContext): Promise<Response | n
     await sendWA(fromPhone, `❌ Hubo un error al enviar la plantilla: ${result.error}`)
   } else {
     await sendWA(fromPhone, `✅ ¡Tarjeta QR enviada exitosamente a ${cli.nombre || cTel}!`)
-    syncBotImageByPhone(`52${cTel}`, qrImageUrl, `🎟️ Tarjeta QR enviada a ${cli.nombre || cTel}`).catch(console.error)
   }
 
   return new Response('OK', { status: 200 })

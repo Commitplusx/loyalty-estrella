@@ -1,7 +1,6 @@
-import { sendWA, sendInteractiveList, sendInteractiveButton } from './whatsapp.ts'
+import { sendWA, sendInteractiveList, sendInteractiveButton, sendWADocument } from './whatsapp.ts'
 import { extract10Digits, crearPedidoDesdeBot } from './db.ts'
 import { pedidoLink, logError, generateCloudinaryVIPCard } from '../_shared/utils.ts'
-import { syncBotImageByPhone } from './chatwoot-sync.ts'
 
 export async function handleSlashCommands(
   supabase: any,
@@ -16,9 +15,9 @@ export async function handleSlashCommands(
     if (!esAdmin) return null
     const { error } = await supabase.from('restaurantes').update({ programa_lealtad_activo: true }).neq('id', '00000000-0000-0000-0000-000000000000')
     if (error) {
-      await sendWA(fromPhone, `❌ Error: ${error.message}`)
+      await sendWA(fromPhone, `âŒ Error: ${error.message}`)
     } else {
-      await sendWA(fromPhone, `✅ Programa de lealtad activado para TODOS los restaurantes en la base de datos.`)
+      await sendWA(fromPhone, `âœ… Programa de lealtad activado para TODOS los restaurantes en la base de datos.`)
     }
     return new Response('OK', { status: 200 })
   }
@@ -45,9 +44,9 @@ export async function handleSlashCommands(
         })
       })
       const text = await res.text()
-      await sendWA(fromPhone, `📡 *Meta Typing Response:*\n\nHTTP ${res.status}\n${text}`)
+      await sendWA(fromPhone, `ðŸ“¡ *Meta Typing Response:*\n\nHTTP ${res.status}\n${text}`)
     } catch (e: any) {
-      await sendWA(fromPhone, `❌ Error: ${e.message}`)
+      await sendWA(fromPhone, `âŒ Error: ${e.message}`)
     }
     return new Response('OK', { status: 200 })
   }
@@ -69,9 +68,9 @@ export async function handleSlashCommands(
         body: data
       })
       const text = await res.text()
-      await sendWA(fromPhone, `📡 *Meta API Response (Key):*\n\nHTTP ${res.status}\n${text}`)
+      await sendWA(fromPhone, `ðŸ“¡ *Meta API Response (Key):*\n\nHTTP ${res.status}\n${text}`)
     } catch (e: any) {
-      await sendWA(fromPhone, `❌ Error: ${e.message}`)
+      await sendWA(fromPhone, `âŒ Error: ${e.message}`)
     }
     return new Response('OK', { status: 200 })
   }
@@ -96,9 +95,9 @@ export async function handleSlashCommands(
         })
       })
       const text = await res.text()
-      await sendWA(fromPhone, `📡 *Meta API Response:*\n\n${text}`)
+      await sendWA(fromPhone, `ðŸ“¡ *Meta API Response:*\n\n${text}`)
     } catch (e: any) {
-      await sendWA(fromPhone, `❌ Error: ${e.message}`)
+      await sendWA(fromPhone, `âŒ Error: ${e.message}`)
     }
     return new Response('OK', { status: 200 })
   }
@@ -110,41 +109,41 @@ export async function handleSlashCommands(
       history: [{ mode: 'repartidor', activado: Date.now() }],
       updated_at: new Date().toISOString()
     })
-    await sendWA(fromPhone, `🛵 *Modo Repartidor activado.*\nAhora recibirás pedidos como mensajero y puedes aceptarlos con el botón.\n\nEscribe */admin* para regresar a modo administrador.`)
+    await sendWA(fromPhone, `ðŸ›µ *Modo Repartidor activado.*\nAhora recibirÃ¡s pedidos como mensajero y puedes aceptarlos con el botÃ³n.\n\nEscribe */admin* para regresar a modo administrador.`)
     return new Response('OK', { status: 200 })
   }
 
   if (slashText === '/admin') {
     if (!esAdmin) return null
     await supabase.from('bot_memory').delete().eq('phone', `admin_mode_${from10}`)
-    await sendWA(fromPhone, `👔 *Modo Admin activado.*\nYa tienes acceso completo al panel de administración.`)
+    await sendWA(fromPhone, `ðŸ‘” *Modo Admin activado.*\nYa tienes acceso completo al panel de administraciÃ³n.`)
     return new Response('OK', { status: 200 })
   }
 
-  // ── /reset — Reinicia la sesión actual del usuario (sin afectar Loyalty) ──
+  // â”€â”€ /reset â€” Reinicia la sesiÃ³n actual del usuario (sin afectar Loyalty) â”€â”€
   if (slashText === '/reset' || slashText === '/reiniciar') {
-    // Borra todas las claves de estado que contengan su número (mandadito_state, capture_mode, etc)
+    // Borra todas las claves de estado que contengan su nÃºmero (mandadito_state, capture_mode, etc)
     await supabase.from('bot_memory').delete().like('phone', `%${from10}%`)
-    await sendWA(fromPhone, `🧹 *Sesión reiniciada.*\nHe borrado mi memoria a corto plazo sobre lo que estábamos haciendo. ¡Empecemos de cero!\n_(Tus datos, perfil y puntos de Loyalty están intactos)_.`)
+    await sendWA(fromPhone, `ðŸ§¹ *SesiÃ³n reiniciada.*\nHe borrado mi memoria a corto plazo sobre lo que estÃ¡bamos haciendo. Â¡Empecemos de cero!\n_(Tus datos, perfil y puntos de Loyalty estÃ¡n intactos)_.`)
     return new Response('OK', { status: 200 })
   }
 
-  // ── /reset_cache — Borra la caché de Maps (solo admins) ───────────────────
+  // â”€â”€ /reset_cache â€” Borra la cachÃ© de Maps (solo admins) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (slashText === '/reset_cache' || slashText === '/limpiar_cache') {
     if (!esAdmin) return null
     await supabase.from('bot_memory').delete().like('phone', `mandadito_txt_%`)
-    await sendWA(fromPhone, `🧠 *Caché de inteligencia artificial y Maps borrada masivamente.*\nTodo texto nuevo se procesará desde cero.`)
+    await sendWA(fromPhone, `ðŸ§  *CachÃ© de inteligencia artificial y Maps borrada masivamente.*\nTodo texto nuevo se procesarÃ¡ desde cero.`)
     return new Response('OK', { status: 200 })
   }
 
-  // ── /fin — Cerrar sesión de captura activa ────────────────────────────────
+  // â”€â”€ /fin â€” Cerrar sesiÃ³n de captura activa â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (slashText === '/fin' || slashText === '/listo' || slashText === '/salir') {
     // Cerrar captura (fachada)
     const { data: capSesion } = await supabase.from('bot_memory').select('history').eq('phone', `capture_mode_${from10}`).maybeSingle()
     if (capSesion?.history?.[0]) {
       const { clienteNombre, clienteTel } = capSesion.history[0]
       await supabase.from('bot_memory').delete().eq('phone', `capture_mode_${from10}`)
-      await sendWA(fromPhone, `✅ *SESIÓN CERRADA*\n───────────────────\n\n📋 *Cliente:* ${clienteNombre || clienteTel}\n\n_Todo el contenido enviado ha sido guardado exitosamente._ 👍`)
+      await sendWA(fromPhone, `âœ… *SESIÃ“N CERRADA*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\nðŸ“‹ *Cliente:* ${clienteNombre || clienteTel}\n\n_Todo el contenido enviado ha sido guardado exitosamente._ ðŸ‘`)
       return new Response('OK', { status: 200 })
     }
     
@@ -152,22 +151,22 @@ export async function handleSlashCommands(
     const { data: mapSesion } = await supabase.from('bot_memory').select('history').eq('phone', `mapear_mode_${from10}`).maybeSingle()
     if (mapSesion?.history?.[0]) {
       await supabase.from('bot_memory').delete().eq('phone', `mapear_mode_${from10}`)
-      await sendWA(fromPhone, `✅ *Modo Mapeo Finalizado.*`)
+      await sendWA(fromPhone, `âœ… *Modo Mapeo Finalizado.*`)
       return new Response('OK', { status: 200 })
     }
     
-    await sendWA(fromPhone, `ℹ️ No hay ninguna sesión activa.`)
+    await sendWA(fromPhone, `â„¹ï¸ No hay ninguna sesiÃ³n activa.`)
     return new Response('OK', { status: 200 })
   }
 
-  // ── /mapear — Iniciar sesión de mapeo de precios ────────────────────────
+  // â”€â”€ /mapear â€” Iniciar sesiÃ³n de mapeo de precios â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (slashText === '/mapear') {
     if (!esAdmin) return null
     const { data: col } = await supabase.from('colonias').select('id, nombre').is('precio', null).limit(1).maybeSingle()
     const { count: faltan } = await supabase.from('colonias').select('*', { count: 'exact', head: true }).is('precio', null)
     
     if (!col) {
-      await sendWA(fromPhone, `🎉 ¡Excelente! No hay colonias pendientes por mapear. Todas tienen precio.`)
+      await sendWA(fromPhone, `ðŸŽ‰ Â¡Excelente! No hay colonias pendientes por mapear. Todas tienen precio.`)
       return new Response('OK', { status: 200 })
     }
 
@@ -177,11 +176,11 @@ export async function handleSlashCommands(
       updated_at: new Date().toISOString()
     })
 
-    await sendWA(fromPhone, `📍 *MODO MAPEO INICIADO*\n_Faltan ${faltan} colonias._\n\nPara salir escribe */salir*.\n\n¿Cuánto cuesta el envío para:\n🏙️ *${col.nombre}*?`)
+    await sendWA(fromPhone, `ðŸ“ *MODO MAPEO INICIADO*\n_Faltan ${faltan} colonias._\n\nPara salir escribe */salir*.\n\nÂ¿CuÃ¡nto cuesta el envÃ­o para:\nðŸ™ï¸ *${col.nombre}*?`)
     return new Response('OK', { status: 200 })
   }
 
-  // ── /mis_pedidos — Ver pedidos activos de un repartidor ────────────────────
+  // â”€â”€ /mis_pedidos â€” Ver pedidos activos de un repartidor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (slashText === '/mis_pedidos') {
     const { data: repData } = await supabase.from('repartidores')
       .select('id, user_id, nombre').eq('telefono', from10).limit(1).maybeSingle()
@@ -197,27 +196,27 @@ export async function handleSlashCommands(
         .order('created_at', { ascending: true })
         .limit(10)
       if (!activos?.length) {
-        await sendWA(fromPhone, `✅ *${repData.nombre}*, no tienes pedidos activos ahora. ¡Quedas libre!`)
+        await sendWA(fromPhone, `âœ… *${repData.nombre}*, no tienes pedidos activos ahora. Â¡Quedas libre!`)
       } else {
-        const icons: Record<string, string> = { asignado: '🕘', recibido: '🛍️', en_camino: '🚀' }
-        let msg = `📋 *TUS PEDIDOS ACTIVOS (${activos.length})*\n\n`
+        const icons: Record<string, string> = { asignado: 'ðŸ•˜', recibido: 'ðŸ›ï¸', en_camino: 'ðŸš€' }
+        let msg = `ðŸ“‹ *TUS PEDIDOS ACTIVOS (${activos.length})*\n\n`
         ;(activos as any[]).forEach((p: any, i: number) => {
-          msg += `${i + 1}️⃣ ${icons[p.estado] || '📦'} *${p.estado.toUpperCase()}*\n`
-          msg += `   📦 ${(p.descripcion || 'Sin descripción').slice(0, 40)}\n`
-          if (p.cliente_nombre) msg += `   👤 ${p.cliente_nombre}\n`
-          if (p.cliente_tel) msg += `   📞 ${p.cliente_tel}\n`
-          if (p.direccion) msg += `   📍 ${p.direccion.slice(0, 50)}\n`
+          msg += `${i + 1}ï¸âƒ£ ${icons[p.estado] || 'ðŸ“¦'} *${p.estado.toUpperCase()}*\n`
+          msg += `   ðŸ“¦ ${(p.descripcion || 'Sin descripciÃ³n').slice(0, 40)}\n`
+          if (p.cliente_nombre) msg += `   ðŸ‘¤ ${p.cliente_nombre}\n`
+          if (p.cliente_tel) msg += `   ðŸ“ž ${p.cliente_tel}\n`
+          if (p.direccion) msg += `   ðŸ“ ${p.direccion.slice(0, 50)}\n`
           msg += '\n'
         })
         await sendWA(fromPhone, msg.trimEnd())
       }
     } else {
-      await sendWA(fromPhone, '❌ No encontré tus datos de repartidor. Contacta al admin.')
+      await sendWA(fromPhone, 'âŒ No encontrÃ© tus datos de repartidor. Contacta al admin.')
     }
     return new Response('OK', { status: 200 })
   }
 
-  // ── /libre — Notificar disponibilidad ──────────────────────────────────────
+  // â”€â”€ /libre â€” Notificar disponibilidad â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (slashText === '/libre') {
     const { data: rep } = await supabase.from('repartidores')
       .select('nombre').eq('telefono', from10).limit(1).maybeSingle()
@@ -228,13 +227,13 @@ export async function handleSlashCommands(
     const ADMIN_PHONE_MAIN = _adminMain10 ? `52${_adminMain10}` : ''
 
     if (ADMIN_PHONE_MAIN) {
-      await sendWA(ADMIN_PHONE_MAIN, `🟢 *${repNombre}* está libre y disponible para el próximo pedido.`)
+      await sendWA(ADMIN_PHONE_MAIN, `ðŸŸ¢ *${repNombre}* estÃ¡ libre y disponible para el prÃ³ximo pedido.`)
     }
-    await sendWA(fromPhone, `✅ Le avisé al admin que quedas libre. ¡Espera el próximo pedido!`)
+    await sendWA(fromPhone, `âœ… Le avisÃ© al admin que quedas libre. Â¡Espera el prÃ³ximo pedido!`)
     return new Response('OK', { status: 200 })
   }
 
-  // ── /set_field — Comando interno para edición desde botones ──────────────────────
+  // â”€â”€ /set_field â€” Comando interno para ediciÃ³n desde botones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (slashText.startsWith('/set_field ')) {
     // /set_field EDIT_NOM 9631234567 Juan Perez
     // /set_field EDIT_NOT 9631234567 borrar
@@ -246,7 +245,7 @@ export async function handleSlashCommands(
     let updateData: any = {}
     let successMsg = ''
     if (fieldAction === 'EDIT_NOM') { updateData = { nombre: val }; successMsg = `Nombre actualizado a *${val}*` }
-    else if (fieldAction === 'EDIT_DIR') { updateData = { direccion: val }; successMsg = `Dirección actualizada` }
+    else if (fieldAction === 'EDIT_DIR') { updateData = { direccion: val }; successMsg = `DirecciÃ³n actualizada` }
     else if (fieldAction === 'EDIT_NOT') { 
       const isBorrar = val.toLowerCase() === 'borrar' || val.toLowerCase() === 'eliminar'
       updateData = { notas_crm: isBorrar ? null : val }
@@ -254,39 +253,39 @@ export async function handleSlashCommands(
     }
     
     await supabase.from('clientes').update(updateData).eq('telefono', tel10)
-    await sendWA(fromPhone, `✅ ${successMsg}.\n_Tip: Envía /info ${tel10} para ver los cambios._`)
+    await sendWA(fromPhone, `âœ… ${successMsg}.\n_Tip: EnvÃ­a /info ${tel10} para ver los cambios._`)
     return new Response('OK', { status: 200 })
   }
 
-  // ── /opciones — Menú principal interactivo del administrador/repartidor ────────────────
+  // â”€â”€ /opciones â€” MenÃº principal interactivo del administrador/repartidor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (slashText === '/opciones' || slashText === '/menu') {
-    const listTitle = esAdmin ? '⚙️ *MENÚ DE ADMINISTRADOR*' : '⚙️ *MENÚ DE OPCIONES*'
+    const listTitle = esAdmin ? 'âš™ï¸ *MENÃš DE ADMINISTRADOR*' : 'âš™ï¸ *MENÃš DE OPCIONES*'
     await sendInteractiveList(
       fromPhone,
-      `${listTitle}\n───────────────────\nBienvenido a tu panel de control.\nSelecciona la acción rápida que deseas realizar:`,
-      `Elegir Acción`,
+      `${listTitle}\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\nBienvenido a tu panel de control.\nSelecciona la acciÃ³n rÃ¡pida que deseas realizar:`,
+      `Elegir AcciÃ³n`,
       [
         {
           title: 'Loyalty VIP',
           rows: [
-            { id: 'ACT_MENU_LOYALTY', title: '📱 Registro Loyalty', description: 'Crea y envía invitación T&C (Sesión)' },
-            { id: 'ACT_MENU_QR', title: '🎟️ Enviar Tarjeta VIP', description: 'Manda el QR de lealtad por WA' },
-            { id: 'ACT_MENU_SUMAR', title: '⭐ Sumar Puntos', description: 'Añadir puntos manualmente' }
+            { id: 'ACT_MENU_LOYALTY', title: 'ðŸ“± Registro Loyalty', description: 'Crea y envÃ­a invitaciÃ³n T&C (SesiÃ³n)' },
+            { id: 'ACT_MENU_QR', title: 'ðŸŽŸï¸ Enviar Tarjeta VIP', description: 'Manda el QR de lealtad por WA' },
+            { id: 'ACT_MENU_SUMAR', title: 'â­ Sumar Puntos', description: 'AÃ±adir puntos manualmente' }
           ]
         },
         {
-          title: 'Gestión CRM',
+          title: 'GestiÃ³n CRM',
           rows: [
-            { id: 'ACT_MENU_INFO', title: '📊 Ver Ficha del Cliente', description: 'Puntos, reputación, notas' },
-            { id: 'ACT_MENU_SCORE', title: '🏆 Calificar Cliente', description: 'Asignar Excelente, Bueno, Malo' },
-            { id: 'ACT_MENU_NOREGO', title: '👻 Registro Silencioso', description: 'Crea cliente sin notificar' }
+            { id: 'ACT_MENU_INFO', title: 'ðŸ“Š Ver Ficha del Cliente', description: 'Puntos, reputaciÃ³n, notas' },
+            { id: 'ACT_MENU_SCORE', title: 'ðŸ† Calificar Cliente', description: 'Asignar Excelente, Bueno, Malo' },
+            { id: 'ACT_MENU_NOREGO', title: 'ðŸ‘» Registro Silencioso', description: 'Crea cliente sin notificar' }
           ]
         },
         ...(esAdmin ? [{
           title: 'Operaciones Especiales',
           rows: [
-            { id: 'ACT_MENU_REGALAR', title: '🎁 Regalar Envío', description: 'Patrocinar un envío gratis' },
-            { id: 'ACT_MENU_REST', title: '🏪 Ver Clientes Restaurante', description: 'Consulta clientes B2B' }
+            { id: 'ACT_MENU_REGALAR', title: 'ðŸŽ Regalar EnvÃ­o', description: 'Patrocinar un envÃ­o gratis' },
+            { id: 'ACT_MENU_REST', title: 'ðŸª Ver Clientes Restaurante', description: 'Consulta clientes B2B' }
           ]
         }] : [])
       ]
@@ -294,18 +293,18 @@ export async function handleSlashCommands(
     return new Response('OK', { status: 200 })
   }
 
-  // ── /fachada — Activar sesión de captura de fachada ──────────────────────
+  // â”€â”€ /fachada â€” Activar sesiÃ³n de captura de fachada â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Uso: /fachada 9631234567
-  // Después: manda foto → se guarda como fachada del cliente
-  //          manda texto → se guarda como nota_crm
-  //          manda /fin  → cierra la sesión
+  // DespuÃ©s: manda foto â†’ se guarda como fachada del cliente
+  //          manda texto â†’ se guarda como nota_crm
+  //          manda /fin  â†’ cierra la sesiÃ³n
 
-  // ── /rest_accept — Aprobar solicitud B2B por texto (fallback de botones) ─────────
+  // â”€â”€ /rest_accept â€” Aprobar solicitud B2B por texto (fallback de botones) â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (slashText.startsWith('/rest_accept_') && esAdmin) {
     const restTel = slashText.replace('/rest_accept_', '').trim()
     
     if (!restTel || restTel.length !== 10) {
-      await sendWA(fromPhone, `⚠️ Formato incorrecto. El teléfono debe ser de 10 dígitos.`)
+      await sendWA(fromPhone, `âš ï¸ Formato incorrecto. El telÃ©fono debe ser de 10 dÃ­gitos.`)
       return new Response('OK', { status: 200 })
     }
 
@@ -314,7 +313,7 @@ export async function handleSlashCommands(
     const restInfo = pendingRest?.history?.[0]
 
     if (!restInfo) {
-      await sendWA(fromPhone, `⚠️ No encontré la solicitud para ${restTel}. Es posible que ya fue procesada.`)
+      await sendWA(fromPhone, `âš ï¸ No encontrÃ© la solicitud para ${restTel}. Es posible que ya fue procesada.`)
       return new Response('OK', { status: 200 })
     }
 
@@ -329,28 +328,28 @@ export async function handleSlashCommands(
     })
 
     if (error) {
-      if (error.code === '23505') await sendWA(fromPhone, `⚠️ El restaurante con teléfono ${restTel} ya existe.`)
-      else await sendWA(fromPhone, `❌ Error al guardar el restaurante: ${error.message}`)
+      if (error.code === '23505') await sendWA(fromPhone, `âš ï¸ El restaurante con telÃ©fono ${restTel} ya existe.`)
+      else await sendWA(fromPhone, `âŒ Error al guardar el restaurante: ${error.message}`)
       return new Response('OK', { status: 200 })
     }
 
     await supabase.from('bot_memory').delete().eq('phone', `pending_rest_${restTel}`)
     
-    await sendWA(fromPhone, `✅ Restaurante *${restInfo.nombreRest}* aprobado y registrado (vía comando de texto).`)
-    await sendWA(`52${restTel}`, `🎉 *¡Felicidades, ${restInfo.responsable || 'aliado'}!*\n\nTu restaurante ha sido aprobado por la administración. Ya eres parte oficial de Estrella Delivery.\n\nEnvía la palabra *Hola* o *Menú* para abrir tu Portal de Aliados B2B.`)
+    await sendWA(fromPhone, `âœ… Restaurante *${restInfo.nombreRest}* aprobado y registrado (vÃ­a comando de texto).`)
+    await sendWA(`52${restTel}`, `ðŸŽ‰ *Â¡Felicidades, ${restInfo.responsable || 'aliado'}!*\n\nTu restaurante ha sido aprobado por la administraciÃ³n. Ya eres parte oficial de Estrella Delivery.\n\nEnvÃ­a la palabra *Hola* o *MenÃº* para abrir tu Portal de Aliados B2B.`)
     
     const pdfUrl = Deno.env.get('PDF_BIENVENIDA_URL') || "https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/restaurantes/pdf-restaurantes/pdf-restaurante.pdf"
-    await sendWADocument(`52${restTel}`, pdfUrl, "Guia_Restaurantes.pdf", "📖 Te enviamos esta pequeña guía en PDF para que sepas cómo sacarle el máximo provecho a tu Portal de Aliados.")
+    await sendWADocument(`52${restTel}`, pdfUrl, "Guia_Restaurantes.pdf", "ðŸ“– Te enviamos esta pequeÃ±a guÃ­a en PDF para que sepas cÃ³mo sacarle el mÃ¡ximo provecho a tu Portal de Aliados.")
 
     return new Response('OK', { status: 200 })
   }
 
-  // ── /rest_reject — Rechazar solicitud B2B por texto (fallback de botones) ─────────
+  // â”€â”€ /rest_reject â€” Rechazar solicitud B2B por texto (fallback de botones) â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (slashText.startsWith('/rest_reject_') && esAdmin) {
     const restTel = slashText.replace('/rest_reject_', '').trim()
     
     if (!restTel || restTel.length !== 10) {
-      await sendWA(fromPhone, `⚠️ Formato incorrecto. El teléfono debe ser de 10 dígitos.`)
+      await sendWA(fromPhone, `âš ï¸ Formato incorrecto. El telÃ©fono debe ser de 10 dÃ­gitos.`)
       return new Response('OK', { status: 200 })
     }
 
@@ -359,17 +358,17 @@ export async function handleSlashCommands(
     const restInfo = pendingRest?.history?.[0]
 
     await supabase.from('bot_memory').delete().eq('phone', `pending_rest_${restTel}`)
-    await sendWA(`52${restTel}`, `Lo sentimos 🙏 Tu solicitud de afiliación no pudo ser aprobada.\nSi crees que es un error, contáctanos directamente.`)
-    await sendWA(fromPhone, `❌ Solicitud del restaurante *${restInfo?.nombreRest || restTel}* rechazada (vía comando de texto).`)
+    await sendWA(`52${restTel}`, `Lo sentimos ðŸ™ Tu solicitud de afiliaciÃ³n no pudo ser aprobada.\nSi crees que es un error, contÃ¡ctanos directamente.`)
+    await sendWA(fromPhone, `âŒ Solicitud del restaurante *${restInfo?.nombreRest || restTel}* rechazada (vÃ­a comando de texto).`)
     return new Response('OK', { status: 200 })
   }
 
-  // ── /pausa — Silencia el bot para un cliente (admin habla directo desde Chatwoot) ────
+  // â”€â”€ /pausa â€” Silencia el bot para un cliente (admin habla directo con el cliente) â”€â”€â”€â”€
   // Uso: /pausa 9631234567
   if (slashText.startsWith('/pausa ') && esAdmin) {
     const cTel = extract10Digits(slashText.replace('/pausa ', '').trim())
     if (!cTel || cTel.length !== 10) {
-      await sendWA(fromPhone, `⚠️ Uso: */pausa 9631234567*`)
+      await sendWA(fromPhone, `âš ï¸ Uso: */pausa 9631234567*`)
       return new Response('OK', { status: 200 })
     }
     await supabase.from('bot_memory').upsert({
@@ -378,34 +377,34 @@ export async function handleSlashCommands(
       updated_at: new Date().toISOString()
     })
     await sendWA(fromPhone,
-      `🔕 *Bot PAUSADO* para \`${cTel}\`.\n\nEl bot ya no responderá a este cliente.\nEscríbele directo desde Chatwoot con total libertad.\n\n_Usa */bot ${cTel}* para reactivarlo cuando termines._`
+      `⭕ *Bot PAUSADO* para \`${cTel}\`.\n\nEl bot ya no responderá a este cliente.\nPuedes hablar con él directamente.\n\n_Usa */bot ${cTel}* para reactivarlo cuando termines._`
     )
     return new Response('OK', { status: 200 })
   }
 
-  // ── /bot — Reactiva el bot para un cliente ────────────────────────────────
+  // ——— /bot — Reactiva el bot para un cliente ——————————————————————————————————————
   // Uso: /bot 9631234567
   if (slashText.startsWith('/bot ') && esAdmin) {
     const cTel = extract10Digits(slashText.replace('/bot ', '').trim())
     if (!cTel || cTel.length !== 10) {
-      await sendWA(fromPhone, `⚠️ Uso: */bot 9631234567*`)
+      await sendWA(fromPhone, `âš ï¸ Uso: */bot 9631234567*`)
       return new Response('OK', { status: 200 })
     }
     await supabase.from('bot_memory').delete().eq('phone', `bot_pausa_${cTel}`)
     await sendWA(fromPhone,
-      `🟢 *Bot REACTIVADO* para \`${cTel}\`.\n\nEl bot volverá a responder automáticamente a este cliente.`
+      `ðŸŸ¢ *Bot REACTIVADO* para \`${cTel}\`.\n\nEl bot volverÃ¡ a responder automÃ¡ticamente a este cliente.`
     )
     return new Response('OK', { status: 200 })
   }
 
-  // ── /noregistrado, /fachada y /loyalty — Activar sesión de captura de fachada ──────────────────────
+  // â”€â”€ /noregistrado, /fachada y /loyalty â€” Activar sesiÃ³n de captura de fachada â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (slashText.startsWith('/fachada ') || slashText.startsWith('/noregistrado ') || slashText.startsWith('/loyalty ')) {
     const isLoyalty = slashText.startsWith('/loyalty ');
     const isNoregistrado = slashText.startsWith('/noregistrado ');
     const param = slashText.replace(isLoyalty ? '/loyalty ' : (isNoregistrado ? '/noregistrado ' : '/fachada '), '').trim();
     const cTel = extract10Digits(param);
     if (!cTel || cTel.length !== 10) {
-      await sendWA(fromPhone, `⚠️ Formato: */fachada 9631234567*`)
+      await sendWA(fromPhone, `âš ï¸ Formato: */fachada 9631234567*`)
       return new Response('OK', { status: 200 })
     }
     let { data: cliente } = await supabase.from('clientes')
@@ -414,15 +413,15 @@ export async function handleSlashCommands(
 
     let clienteId = cliente?.id
     let clienteNombre = cliente?.nombre
-    let tieneFotoMsg = cliente?.foto_fachada_url ? `✅ Ya tiene foto guardada.` : `📷 Sin foto aún.`
-    let tieneNotaMsg = cliente?.notas_crm ? `📝 Nota actual: _${cliente.notas_crm.slice(0, 80)}_` : `📝 Sin notas.`
+    let tieneFotoMsg = cliente?.foto_fachada_url ? `âœ… Ya tiene foto guardada.` : `ðŸ“· Sin foto aÃºn.`
+    let tieneNotaMsg = cliente?.notas_crm ? `ðŸ“ Nota actual: _${cliente.notas_crm.slice(0, 80)}_` : `ðŸ“ Sin notas.`
 
     if (!cliente) {
       const loyaltyUrl = `https://www.app-estrella.shop/loyalty/${cTel}`
 
       if (isLoyalty) {
-        // ── Loyalty: registrar con nombre genérico pero NO mostrar "REGISTRO SILENCIOSO"
-        // El cliente recibirá los T&C y su nombre real se guardará cuando acepte.
+        // â”€â”€ Loyalty: registrar con nombre genÃ©rico pero NO mostrar "REGISTRO SILENCIOSO"
+        // El cliente recibirÃ¡ los T&C y su nombre real se guardarÃ¡ cuando acepte.
         const { data: nuevo, error } = await supabase.from('clientes').insert({
           telefono: cTel,
           nombre: 'Nuevo Cliente',
@@ -434,15 +433,15 @@ export async function handleSlashCommands(
         if (nuevo) {
           clienteId = nuevo.id
           clienteNombre = nuevo.nombre
-          tieneFotoMsg = `📷 Sin foto aún.`
-          tieneNotaMsg = `📝 Sin notas.`
-          // SIN mensaje de "Registro Silencioso" — el aviso Loyalty viene más abajo
+          tieneFotoMsg = `ðŸ“· Sin foto aÃºn.`
+          tieneNotaMsg = `ðŸ“ Sin notas.`
+          // SIN mensaje de "Registro Silencioso" â€” el aviso Loyalty viene mÃ¡s abajo
         } else {
-          await sendWA(fromPhone, `❌ Error al crear el cliente: ${error?.message}`)
+          await sendWA(fromPhone, `âŒ Error al crear el cliente: ${error?.message}`)
           return new Response('OK', { status: 200 })
         }
       } else {
-        // ── Silencioso (/noregistrado o /fachada): crear como "Cliente Express" sin notificar al cliente
+        // â”€â”€ Silencioso (/noregistrado o /fachada): crear como "Cliente Express" sin notificar al cliente
         const { data: nuevo, error } = await supabase.from('clientes').insert({
           telefono: cTel,
           nombre: 'Cliente Express',
@@ -454,11 +453,11 @@ export async function handleSlashCommands(
         if (nuevo) {
           clienteId = nuevo.id
           clienteNombre = nuevo.nombre
-          tieneFotoMsg = `📷 Sin foto aún.`
-          tieneNotaMsg = `📝 Sin notas.`
-          await sendWA(fromPhone, `ℹ️ *REGISTRO SILENCIOSO*\nEl cliente no existía, lo he registrado automáticamente como *Cliente Express* para poder guardar sus datos. No se le envió ningún mensaje.`)
+          tieneFotoMsg = `ðŸ“· Sin foto aÃºn.`
+          tieneNotaMsg = `ðŸ“ Sin notas.`
+          await sendWA(fromPhone, `â„¹ï¸ *REGISTRO SILENCIOSO*\nEl cliente no existÃ­a, lo he registrado automÃ¡ticamente como *Cliente Express* para poder guardar sus datos. No se le enviÃ³ ningÃºn mensaje.`)
         } else {
-          await sendWA(fromPhone, `❌ Error al crear el cliente: ${error?.message}`)
+          await sendWA(fromPhone, `âŒ Error al crear el cliente: ${error?.message}`)
           return new Response('OK', { status: 200 })
         }
       }
@@ -468,10 +467,10 @@ export async function handleSlashCommands(
     if (isLoyalty && (!cliente || cliente?.acepta_terminos === false)) {
       const { sendWATemplate } = await import('./whatsapp.ts')
       await sendWATemplate(`52${cTel}`, 'estrella_terminos_condiciones', [clienteNombre || 'Cliente'])
-      await sendWA(fromPhone, `📤 Se ha enviado la invitación del programa Loyalty a *${clienteNombre}*. Cuando acepte, recibirá su QR.`)
+      await sendWA(fromPhone, `ðŸ“¤ Se ha enviado la invitaciÃ³n del programa Loyalty a *${clienteNombre}*. Cuando acepte, recibirÃ¡ su QR.`)
     }
 
-    // Guardar sesión de captura con TTL
+    // Guardar sesiÃ³n de captura con TTL
     const SESION_TTL_MS = 2 * 60 * 60 * 1000 // 2 horas
     await supabase.from('bot_memory').upsert({
       phone: `capture_mode_${from10}`,
@@ -480,7 +479,7 @@ export async function handleSlashCommands(
         clienteTel: cTel,
         clienteId: clienteId,
         clienteNombre: clienteNombre,
-        capturedBy: from10,      // quién activó la sesión
+        capturedBy: from10,      // quiÃ©n activÃ³ la sesiÃ³n
         iniciado: Date.now(),    // timestamp para TTL
         expira: Date.now() + SESION_TTL_MS
       }],
@@ -488,33 +487,33 @@ export async function handleSlashCommands(
     })
 
     await sendWA(fromPhone,
-      `📸 *SESIÓN DE CAPTURA ACTIVA*\n───────────────────\n\n` +
-      `👤 *Cliente:* ${clienteNombre} (\`${cTel}\`)\n` +
+      `ðŸ“¸ *SESIÃ“N DE CAPTURA ACTIVA*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n` +
+      `ðŸ‘¤ *Cliente:* ${clienteNombre} (\`${cTel}\`)\n` +
       `${tieneFotoMsg}\n${tieneNotaMsg}\n\n` +
-      `*📌 OPCIONES:*\n` +
-      `📷 *Envía una foto:* Se guardará como fachada.\n` +
-      `💬 *Envía texto:* Se guardará como nota CRM.\n` +
-      `📍 *Dirección:* Pide a la IA: _"Actualiza la dirección de ${cTel} a..."_\n` +
-      `⭐ *Reputación:* Escribe: _/score ${cTel} excelente_ (O regular, malo)\n` +
-      `❌ *Escribe /fin:* Para cerrar la sesión.`
+      `*ðŸ“Œ OPCIONES:*\n` +
+      `ðŸ“· *EnvÃ­a una foto:* Se guardarÃ¡ como fachada.\n` +
+      `ðŸ’¬ *EnvÃ­a texto:* Se guardarÃ¡ como nota CRM.\n` +
+      `ðŸ“ *DirecciÃ³n:* Pide a la IA: _"Actualiza la direcciÃ³n de ${cTel} a..."_\n` +
+      `â­ *ReputaciÃ³n:* Escribe: _/score ${cTel} excelente_ (O regular, malo)\n` +
+      `âŒ *Escribe /fin:* Para cerrar la sesiÃ³n.`
     )
     return new Response('OK', { status: 200 })
   }
 
-  // ── /nota — Guardar nota directa sin sesión ───────────────────────────────
+  // â”€â”€ /nota â€” Guardar nota directa sin sesiÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (slashText.startsWith('/nota ')) {
     const rest = slashText.slice(6).trim()
     const match = rest.match(/^(\d[\d\s\-]{8,}\d)\s+(.+)$/s)
     const cTel = match ? extract10Digits(match[1]) : null
     const nota = match ? match[2].trim() : null
     if (!cTel || cTel.length !== 10 || !nota) {
-      await sendWA(fromPhone, `⚠️ Formato: */nota 9631234567 texto de la nota*`)
+      await sendWA(fromPhone, `âš ï¸ Formato: */nota 9631234567 texto de la nota*`)
       return new Response('OK', { status: 200 })
     }
     const { data: c } = await supabase.from('clientes')
       .select('id, nombre, notas_crm').eq('telefono', cTel).limit(1).maybeSingle()
     if (!c) {
-      await sendWA(fromPhone, `❌ Cliente ${cTel} no encontrado.`)
+      await sendWA(fromPhone, `âŒ Cliente ${cTel} no encontrado.`)
       return new Response('OK', { status: 200 })
     }
     const notaFinal = c.notas_crm
@@ -522,9 +521,9 @@ export async function handleSlashCommands(
       : `[${new Date().toLocaleDateString('es-MX')}] ${nota}`
     await supabase.from('clientes').update({ notas_crm: notaFinal }).eq('id', c.id)
     await sendWA(fromPhone,
-      `✅ *NOTA GUARDADA*\n───────────────────\n\n` +
-      `👤 *Cliente:* ${c.nombre} (\`${cTel}\`)\n\n` +
-      `📝 *Contenido:*\n_${nota}_`
+      `âœ… *NOTA GUARDADA*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n` +
+      `ðŸ‘¤ *Cliente:* ${c.nombre} (\`${cTel}\`)\n\n` +
+      `ðŸ“ *Contenido:*\n_${nota}_`
     )
     return new Response('OK', { status: 200 })
   }
@@ -533,13 +532,13 @@ export async function handleSlashCommands(
 
 
 
-  // ── /rest_clientes — Ver clientes afiliados a un restaurante ──────────────────────
+  // â”€â”€ /rest_clientes â€” Ver clientes afiliados a un restaurante â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Uso: /rest_clientes 9631234567
   if (slashText.startsWith('/rest_clientes ')) {
     if (!esAdmin) return null
     const cTel = extract10Digits(slashText.slice(15).trim())
     if (!cTel || cTel.length !== 10) {
-      await sendWA(fromPhone, `⚠️ Formato: */rest_clientes 9631234567* (teléfono del restaurante)`)
+      await sendWA(fromPhone, `âš ï¸ Formato: */rest_clientes 9631234567* (telÃ©fono del restaurante)`)
       return new Response('OK', { status: 200 })
     }
 
@@ -551,13 +550,13 @@ export async function handleSlashCommands(
 
     if (restErr) {
       console.error(`[rest_clientes] DB Error al buscar ${cTel}:`, restErr)
-      await sendWA(fromPhone, `❌ Error en DB buscando el restaurante: ${restErr.message}`)
+      await sendWA(fromPhone, `âŒ Error en DB buscando el restaurante: ${restErr.message}`)
       return new Response('OK', { status: 200 })
     }
 
     if (!rest) {
       console.log(`[rest_clientes] Restaurante no encontrado para ${cTel}`)
-      await sendWA(fromPhone, `❌ No encontré ningún restaurante registrado con el número *${cTel}*.`)
+      await sendWA(fromPhone, `âŒ No encontrÃ© ningÃºn restaurante registrado con el nÃºmero *${cTel}*.`)
       return new Response('OK', { status: 200 })
     }
 
@@ -572,9 +571,9 @@ export async function handleSlashCommands(
 
     if (!clientes?.length) {
       await sendWA(fromPhone,
-        `🏪 *${rest.nombre}*\n` +
-        `${rest.activo ? '✅ Restaurante Activo' : '⚠️ Restaurante Inactivo'}\n\n` +
-        `👥 Aún no tiene clientes afiliados.`
+        `ðŸª *${rest.nombre}*\n` +
+        `${rest.activo ? 'âœ… Restaurante Activo' : 'âš ï¸ Restaurante Inactivo'}\n\n` +
+        `ðŸ‘¥ AÃºn no tiene clientes afiliados.`
       )
       return new Response('OK', { status: 200 })
     }
@@ -586,14 +585,14 @@ export async function handleSlashCommands(
     const nameMap: Record<string, string> = {}
     clientesInfo?.forEach((c: any) => { nameMap[c.telefono] = c.nombre })
 
-    let msg = `🏪 *${rest.nombre}*\n`
-    msg += `${rest.activo ? '✅ Restaurante Activo' : '⚠️ Restaurante Inactivo'}\n`
-    msg += `───────────────────\n\n`
-    msg += `👥 *Top ${clientes.length} Clientes afiliados:*\n\n`
+    let msg = `ðŸª *${rest.nombre}*\n`
+    msg += `${rest.activo ? 'âœ… Restaurante Activo' : 'âš ï¸ Restaurante Inactivo'}\n`
+    msg += `â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n`
+    msg += `ðŸ‘¥ *Top ${clientes.length} Clientes afiliados:*\n\n`
     clientes.forEach((c: any, i: number) => {
       const nombre = nameMap[c.cliente_tel] || c.cliente_tel
-      msg += `${i + 1}️⃣ *${nombre}*\n`
-      msg += `   ⭐ ${c.puntos} pts • 👁️ ${c.visitas} visitas • \`${c.cliente_tel}\`\n\n`
+      msg += `${i + 1}ï¸âƒ£ *${nombre}*\n`
+      msg += `   â­ ${c.puntos} pts â€¢ ðŸ‘ï¸ ${c.visitas} visitas â€¢ \`${c.cliente_tel}\`\n\n`
     })
     await sendWA(fromPhone, msg)
 
@@ -601,11 +600,11 @@ export async function handleSlashCommands(
     const rows = clientes.slice(0, 10).map((c: any) => ({
       id: `ADMIN_REST_CLI_${c.cliente_tel}`,
       title: (nameMap[c.cliente_tel] || c.cliente_tel).slice(0, 24),
-      description: `⭐ ${c.puntos} pts • 👁️ ${c.visitas} visitas`
+      description: `â­ ${c.puntos} pts â€¢ ðŸ‘ï¸ ${c.visitas} visitas`
     }))
     await sendInteractiveList(
       fromPhone,
-      `¿Deseas ver la ficha de alguno?`,
+      `Â¿Deseas ver la ficha de alguno?`,
       'Ver Cliente',
       [{ title: 'Clientes del Restaurante', rows }]
     )
@@ -620,13 +619,13 @@ export async function handleSlashCommands(
   if (slashText.startsWith('/usar ')) {
     const codigo = slashText.replace('/usar ', '').trim().toUpperCase()
     const { data, error } = await supabase.rpc('usar_cupon', { p_codigo: codigo })
-    if (error) await sendWA(fromPhone, `❌ Error interno: ${error.message}`)
-    else if (!data?.ok) await sendWA(fromPhone, `❌ Error: ${data?.error || 'Cupón no encontrado'}`)
+    if (error) await sendWA(fromPhone, `âŒ Error interno: ${error.message}`)
+    else if (!data?.ok) await sendWA(fromPhone, `âŒ Error: ${data?.error || 'CupÃ³n no encontrado'}`)
     else await sendWA(fromPhone,
-      `✅ *CUPÓN APLICADO*\n───────────────────\n\n` +
-      `🎟️ *Código:* \`${codigo}\`\n` +
-      `👤 *Cliente:* ${data.cliente_nombre} (\`${data.cliente_tel}\`)\n\n` +
-      `_El cupón se ha marcado como USADO exitosamente._`
+      `âœ… *CUPÃ“N APLICADO*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n` +
+      `ðŸŽŸï¸ *CÃ³digo:* \`${codigo}\`\n` +
+      `ðŸ‘¤ *Cliente:* ${data.cliente_nombre} (\`${data.cliente_tel}\`)\n\n` +
+      `_El cupÃ³n se ha marcado como USADO exitosamente._`
     )
     return new Response('OK', { status: 200 })
   }
@@ -638,14 +637,14 @@ export async function handleSlashCommands(
       p_codigo: codigo,
       p_admin_id: adminUser?.id || null
     })
-    if (error) await sendWA(fromPhone, `❌ Error interno: ${error.message}`)
-    else if (!data?.ok) await sendWA(fromPhone, `❌ Error: ${data?.error || 'Cupón no encontrado'}`)
+    if (error) await sendWA(fromPhone, `âŒ Error interno: ${error.message}`)
+    else if (!data?.ok) await sendWA(fromPhone, `âŒ Error: ${data?.error || 'CupÃ³n no encontrado'}`)
     else await sendWA(fromPhone,
-      `✅ *CUPÓN CANCELADO*\n───────────────────\n\n` +
-      `🎟️ *Código:* \`${codigo}\`\n` +
-      `👤 *Cliente:* ${data.cliente_nombre}\n` +
-      `💵 *Reembolso:* $${data.monto_reembolsado} a billetera\n\n` +
-      `_El cupón fue invalidado y el saldo regresó al cliente._`
+      `âœ… *CUPÃ“N CANCELADO*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n` +
+      `ðŸŽŸï¸ *CÃ³digo:* \`${codigo}\`\n` +
+      `ðŸ‘¤ *Cliente:* ${data.cliente_nombre}\n` +
+      `ðŸ’µ *Reembolso:* $${data.monto_reembolsado} a billetera\n\n` +
+      `_El cupÃ³n fue invalidado y el saldo regresÃ³ al cliente._`
     )
     return new Response('OK', { status: 200 })
   }
@@ -653,21 +652,21 @@ export async function handleSlashCommands(
   if (slashText === '/testdiscord') {
     await logError(
       'whatsapp-bot',
-      '🔥 Prueba manual de Webhook iniciada por el administrador',
+      'ðŸ”¥ Prueba manual de Webhook iniciada por el administrador',
       { user: fromPhone, test: true, timestamp: new Date().toISOString() },
       'critical'
     );
-    await sendWA(fromPhone, `📡 *Test Enviado*\nAcabo de disparar un error crítico de prueba. Si configuraste bien el \`DISCORD_WEBHOOK_URL\` en Supabase, el mensaje debió llegar al canal de Discord ahora mismo.`);
+    await sendWA(fromPhone, `ðŸ“¡ *Test Enviado*\nAcabo de disparar un error crÃ­tico de prueba. Si configuraste bien el \`DISCORD_WEBHOOK_URL\` en Supabase, el mensaje debiÃ³ llegar al canal de Discord ahora mismo.`);
     return new Response('OK', { status: 200 })
   }
 
-  // ── COMANDOS DE EMERGENCIA (funcionan SIN DeepSeek) ──────────────────────
+  // â”€â”€ COMANDOS DE EMERGENCIA (funcionan SIN DeepSeek) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (slashText.startsWith('/pedido ')) {
     // Formato: /pedido 9631234567 2 tacos pastor de Makitan
     const args = slashText.slice(8).trim()
     const telMatch = args.match(/^(\d{10})\s+(.+)$/s)
     if (!telMatch) {
-      await sendWA(fromPhone, `⚠️ Formato: */pedido 9631234567 descripción del pedido*`)
+      await sendWA(fromPhone, `âš ï¸ Formato: */pedido 9631234567 descripciÃ³n del pedido*`)
       return new Response('OK', { status: 200 })
     }
     const [, cTel, desc] = telMatch
@@ -675,13 +674,13 @@ export async function handleSlashCommands(
     const r = await crearPedidoDesdeBot(supabase, pData, undefined, undefined, messageId)
     if (r.ok && r.pedidoId) {
       await sendWA(fromPhone,
-        `✅ *PEDIDO CREADO (MANUAL)*\n───────────────────\n\n` +
-        `📞 *Cliente:* \`${cTel}\`\n` +
-        `📦 *Descripción:*\n_${desc}_\n\n` +
-        `🔗 *Enlace:* ${pedidoLink(r.pedidoId)}`
+        `âœ… *PEDIDO CREADO (MANUAL)*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n` +
+        `ðŸ“ž *Cliente:* \`${cTel}\`\n` +
+        `ðŸ“¦ *DescripciÃ³n:*\n_${desc}_\n\n` +
+        `ðŸ”— *Enlace:* ${pedidoLink(r.pedidoId)}`
       )
     } else {
-      await sendWA(fromPhone, `❌ Error: ${r.error || 'No se pudo crear el pedido'}`)
+      await sendWA(fromPhone, `âŒ Error: ${r.error || 'No se pudo crear el pedido'}`)
     }
     return new Response('OK', { status: 200 })
   }
@@ -692,32 +691,31 @@ export async function handleSlashCommands(
     const cTel = args[0]?.replace(/\D/g, '').slice(-10)
     const cant = parseInt(args[1] || '1') || 1
     if (!cTel || cTel.length !== 10) {
-      await sendWA(fromPhone, `⚠️ Formato: */puntos 9631234567* o */puntos 9631234567 3*`)
+      await sendWA(fromPhone, `âš ï¸ Formato: */puntos 9631234567* o */puntos 9631234567 3*`)
       return new Response('OK', { status: 200 })
     }
     const { data, error } = await supabase.rpc('fn_registrar_entrega_bulk', { p_cliente_tel: cTel, p_cantidad: cant })
     if (data?.ok) {
-      await sendWA(fromPhone, `✅ *PUNTOS AÑADIDOS*\n───────────────────\n\n👤 *Cliente:* \`${cTel}\`\n➕ *Agregados:* ${cant} punto(s)\n⭐ *Total Actual:* ${data.puntos} pts\n\n_Los puntos ya están reflejados en su cuenta._`)
+      await sendWA(fromPhone, `âœ… *PUNTOS AÃ‘ADIDOS*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\nðŸ‘¤ *Cliente:* \`${cTel}\`\nâž• *Agregados:* ${cant} punto(s)\nâ­ *Total Actual:* ${data.puntos} pts\n\n_Los puntos ya estÃ¡n reflejados en su cuenta._`)
       if (data.recien_ascendido) {
         try {
-          await sendWA(`52${cTel}`, `👑 *¡Felicidades!* 👑\n\nHas sido promovido a *Cliente VIP* ⭐ de Estrella Delivery.\n\nA partir de ahora acumularás *saldo real* en tu billetera. 💰`)
+          await sendWA(`52${cTel}`, `ðŸ‘‘ *Â¡Felicidades!* ðŸ‘‘\n\nHas sido promovido a *Cliente VIP* â­ de Estrella Delivery.\n\nA partir de ahora acumularÃ¡s *saldo real* en tu billetera. ðŸ’°`)
 
-          // Enviar la nueva tarjeta digital con el diseño VIP
+          // Enviar la nueva tarjeta digital con el diseÃ±o VIP
           const { data: c } = await supabase.from('clientes').select('nombre, puntos, saldo_billetera').eq('telefono', cTel).maybeSingle()
           if (c) {
             const qrCode = generateCloudinaryVIPCard(cTel, c.nombre || 'Cliente VIP', c.puntos, c.saldo_billetera || 0, true)
             const { sendWAImage } = await import('./whatsapp.ts')
-            const captionVip = `🌟 *¡Aquí tienes tu nueva Tarjeta Digital VIP!* 🌟\n\nMuestra este código QR a nuestros repartidores al recibir tus pedidos para seguir acumulando saldo en tu billetera.`
+            const captionVip = `ðŸŒŸ *Â¡AquÃ­ tienes tu nueva Tarjeta Digital VIP!* ðŸŒŸ\n\nMuestra este cÃ³digo QR a nuestros repartidores al recibir tus pedidos para seguir acumulando saldo en tu billetera.`
             await sendWAImage(`52${cTel}`, qrCode, captionVip)
-            // Espejo en Chatwoot
-            syncBotImageByPhone(`52${cTel}`, qrCode, '👑 Cliente ascendido a VIP — Tarjeta enviada').catch(console.error)
+            
           }
         } catch (e) {
           console.error('[PUNTOS MANUALES] Error enviando bienvenida VIP al cliente:', e)
         }
       }
     } else {
-      await sendWA(fromPhone, `❌ Error: ${error?.message || data?.error || 'Cliente no encontrado'}`)
+      await sendWA(fromPhone, `âŒ Error: ${error?.message || data?.error || 'Cliente no encontrado'}`)
     }
     return new Response('OK', { status: 200 })
   }
@@ -725,44 +723,44 @@ export async function handleSlashCommands(
   if (slashText.startsWith('/buscar ')) {
     const cTel = slashText.slice(8).trim().replace(/\D/g, '').slice(-10)
     if (!cTel || cTel.length !== 10) {
-      await sendWA(fromPhone, `⚠️ Formato: */buscar 9631234567*`)
+      await sendWA(fromPhone, `âš ï¸ Formato: */buscar 9631234567*`)
       return new Response('OK', { status: 200 })
     }
     const { data: c } = await supabase.from('clientes')
       .select('nombre, telefono, puntos, es_vip, rango, saldo_billetera, envios_totales, envios_gratis_disponibles, cupon_activo, notas_crm')
       .eq('telefono', cTel).limit(1).maybeSingle()
     if (c) {
-      const cuponTxt = c.cupon_activo ? `\n🎟️ *Cupón Activo:* \`${c.cupon_activo}\`` : ''
-      const notasTxt = c.notas_crm ? `\n\n📝 *Notas CRM:*\n_${c.notas_crm.slice(0, 200)}_` : ''
-      const vipTxt = c.es_vip ? `👑 *NIVEL VIP* 👑\n` : ''
+      const cuponTxt = c.cupon_activo ? `\nðŸŽŸï¸ *CupÃ³n Activo:* \`${c.cupon_activo}\`` : ''
+      const notasTxt = c.notas_crm ? `\n\nðŸ“ *Notas CRM:*\n_${c.notas_crm.slice(0, 200)}_` : ''
+      const vipTxt = c.es_vip ? `ðŸ‘‘ *NIVEL VIP* ðŸ‘‘\n` : ''
 
       await sendWA(fromPhone,
-        `🔍 *INFORMACIÓN DEL CLIENTE*\n───────────────────\n\n` +
-        `👤 *Nombre:* ${c.nombre || 'Sin registrar'}\n` +
-        `📞 *Teléfono:* \`${c.telefono}\`\n\n` +
+        `ðŸ” *INFORMACIÃ“N DEL CLIENTE*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n` +
+        `ðŸ‘¤ *Nombre:* ${c.nombre || 'Sin registrar'}\n` +
+        `ðŸ“ž *TelÃ©fono:* \`${c.telefono}\`\n\n` +
         vipTxt +
-        `⭐ *Puntos:* ${c.puntos}\n` +
-        `📊 *Rango:* ${String(c.rango || 'bronce').toUpperCase()}\n` +
-        `💰 *Billetera:* $${c.saldo_billetera || 0}\n` +
-        `🎁 *Envíos Gratis:* ${c.envios_gratis_disponibles}\n` +
-        `🛵 *Total Entregas:* ${c.envios_totales}` +
+        `â­ *Puntos:* ${c.puntos}\n` +
+        `ðŸ“Š *Rango:* ${String(c.rango || 'bronce').toUpperCase()}\n` +
+        `ðŸ’° *Billetera:* $${c.saldo_billetera || 0}\n` +
+        `ðŸŽ *EnvÃ­os Gratis:* ${c.envios_gratis_disponibles}\n` +
+        `ðŸ›µ *Total Entregas:* ${c.envios_totales}` +
         cuponTxt + notasTxt
       )
     } else {
-      await sendWA(fromPhone, `❌ Cliente no encontrado con ese número.`)
+      await sendWA(fromPhone, `âŒ Cliente no encontrado con ese nÃºmero.`)
     }
     return new Response('OK', { status: 200 })
   }
 
 
 
-  // ── /rol ─────────────────────────────────────────────────────────────────
+  // â”€â”€ /rol â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Formato: /rol 9631234567 restaurante [Nombre Opcional]
   //          /rol 9631234567 cliente
   //          /rol 9631234567 repartidor [Nombre] [Alias]
   if (slashText.startsWith('/rol ')) {
     if (!esAdmin) {
-      await sendWA(fromPhone, `🚫 Solo los administradores pueden asignar roles.`);
+      await sendWA(fromPhone, `ðŸš« Solo los administradores pueden asignar roles.`);
       return new Response('OK', { status: 200 })
     }
     const args = slashText.slice(5).trim().split(/\s+/)
@@ -772,17 +770,17 @@ export async function handleSlashCommands(
 
     if (!cTel || cTel.length !== 10 || !['cliente', /*'restaurante',*/ 'repartidor'].includes(nuevoRol)) {
       await sendWA(fromPhone,
-        `⚠️ Formato: */rol 9631234567 [rol] [nombre opcional]*\n\n` +
+        `âš ï¸ Formato: */rol 9631234567 [rol] [nombre opcional]*\n\n` +
         `Roles disponibles:\n` +
-        `👤 *cliente* — usuario normal del programa\n` +
-        /*`🏪 *restaurante* — acceso al portal B2B\n` +*/
-        `🛵 *repartidor* — recibe y gestiona pedidos\n\n` +
+        `ðŸ‘¤ *cliente* â€” usuario normal del programa\n` +
+        /*`ðŸª *restaurante* â€” acceso al portal B2B\n` +*/
+        `ðŸ›µ *repartidor* â€” recibe y gestiona pedidos\n\n` +
         `Ejemplo: /rol 9631112233 cliente Maria`
       )
       return new Response('OK', { status: 200 })
     }
 
-    // Leer estado actual del número en las 3 tablas en paralelo
+    // Leer estado actual del nÃºmero en las 3 tablas en paralelo
     const [{ data: cli }, { data: rest }, { data: rep }] = await Promise.all([
       supabase.from('clientes').select('id, nombre').eq('telefono', cTel).maybeSingle(),
       supabase.from('restaurantes').select('id, nombre').eq('telefono', cTel).maybeSingle(),
@@ -794,8 +792,8 @@ export async function handleSlashCommands(
     if (nuevoRol === 'cliente') {
       if (cli) {
         await sendWA(fromPhone,
-          `ℹ️ *ROL EXISTENTE*\n───────────────────\n\n` +
-          `👤 *Número:* \`${cTel}\`\n` +
+          `â„¹ï¸ *ROL EXISTENTE*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n` +
+          `ðŸ‘¤ *NÃºmero:* \`${cTel}\`\n` +
           `_Ya es un cliente (${cli.nombre})._`
         )
       } else {
@@ -809,21 +807,21 @@ export async function handleSlashCommands(
           qr_code: qrCode
         })
         if (error) {
-          await sendWA(fromPhone, `❌ Error al crear cliente: ${error.message}`)
+          await sendWA(fromPhone, `âŒ Error al crear cliente: ${error.message}`)
         } else {
           await sendWA(fromPhone,
-            `✅ *ROL ASIGNADO*\n───────────────────\n\n` +
-            `👤 *Número:* \`${cTel}\`\n` +
-            `👤 *Rol:* Cliente\n` +
-            `📝 *Nombre:* ${nombreCli}`
+            `âœ… *ROL ASIGNADO*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n` +
+            `ðŸ‘¤ *NÃºmero:* \`${cTel}\`\n` +
+            `ðŸ‘¤ *Rol:* Cliente\n` +
+            `ðŸ“ *Nombre:* ${nombreCli}`
           )
         }
       }
     } else if (nuevoRol === 'repartidor') {
       if (rep) {
         await sendWA(fromPhone,
-          `ℹ️ *ROL EXISTENTE*\n───────────────────\n\n` +
-          `👤 *Número:* \`${cTel}\`\n` +
+          `â„¹ï¸ *ROL EXISTENTE*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n` +
+          `ðŸ‘¤ *NÃºmero:* \`${cTel}\`\n` +
           `_Ya es un repartidor (${rep.nombre})._`
         )
       } else {
@@ -836,27 +834,27 @@ export async function handleSlashCommands(
           activo: true
         })
         if (error) {
-          await sendWA(fromPhone, `❌ Error al crear repartidor: ${error.message}`)
+          await sendWA(fromPhone, `âŒ Error al crear repartidor: ${error.message}`)
         } else {
           await sendWA(fromPhone,
-            `✅ *ROL ASIGNADO*\n───────────────────\n\n` +
-            `👤 *Número:* \`${cTel}\`\n` +
-            `🛵 *Rol:* Repartidor\n` +
-            `📝 *Nombre:* ${nombreRep}\n` +
-            `🏷️ *Alias:* ${aliasRep}`
+            `âœ… *ROL ASIGNADO*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n` +
+            `ðŸ‘¤ *NÃºmero:* \`${cTel}\`\n` +
+            `ðŸ›µ *Rol:* Repartidor\n` +
+            `ðŸ“ *Nombre:* ${nombreRep}\n` +
+            `ðŸ·ï¸ *Alias:* ${aliasRep}`
           )
-          await sendWA(`52${cTel}`, `🛵 *Estrella Delivery* te ha registrado como repartidor.\n\nEscríbenos para activar tu cuenta y comenzar a recibir pedidos.`)
+          await sendWA(`52${cTel}`, `ðŸ›µ *Estrella Delivery* te ha registrado como repartidor.\n\nEscrÃ­benos para activar tu cuenta y comenzar a recibir pedidos.`)
         }
       }
     }
     return new Response('OK', { status: 200 })
   }
 
-  // ── /quitar-rol ───────────────────────────────────────────────────────────
+  // â”€â”€ /quitar-rol â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Formato: /quitar-rol 9631234567 restaurante
   if (slashText.startsWith('/quitar-rol ')) {
     if (!esAdmin) {
-      await sendWA(fromPhone, `🚫 Solo los administradores pueden quitar roles.`);
+      await sendWA(fromPhone, `ðŸš« Solo los administradores pueden quitar roles.`);
       return new Response('OK', { status: 200 })
     }
     const args = slashText.slice(12).trim().split(/\s+/)
@@ -864,7 +862,7 @@ export async function handleSlashCommands(
     const rolAQuitar = (args[1] || '').toLowerCase()
 
     if (!cTel || cTel.length !== 10 || !['cliente', /*'restaurante',*/ 'repartidor'].includes(rolAQuitar)) {
-      await sendWA(fromPhone, `⚠️ Formato: */quitar-rol 9631234567 [rol]*\nRoles: cliente, /*restaurante,*/ repartidor`)
+      await sendWA(fromPhone, `âš ï¸ Formato: */quitar-rol 9631234567 [rol]*\nRoles: cliente, /*restaurante,*/ repartidor`)
       return new Response('OK', { status: 200 })
     }
 
@@ -873,38 +871,38 @@ export async function handleSlashCommands(
 
     if (!existe) {
       await sendWA(fromPhone,
-        `⚠️ *ERROR*\n───────────────────\n\n` +
-        `El número *\`${cTel}\`* no tiene el rol de *${rolAQuitar}*.`
+        `âš ï¸ *ERROR*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n` +
+        `El nÃºmero *\`${cTel}\`* no tiene el rol de *${rolAQuitar}*.`
       )
     } else {
       if (rolAQuitar === 'repartidor') {
         await supabase.from('repartidores').update({ activo: false }).eq('id', existe.id)
       } else {
-        // Para clientes solo desactivamos términos y puntos (nunca se borra historial)
+        // Para clientes solo desactivamos tÃ©rminos y puntos (nunca se borra historial)
         await sendWA(fromPhone,
-          `⚠️ *ACCIÓN DENEGADA*\n───────────────────\n\n` +
+          `âš ï¸ *ACCIÃ“N DENEGADA*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n` +
           `Los clientes no se pueden eliminar para preservar el historial.\n` +
           `_Si quieres bloquearlo, usa:_ */vetar ${cTel}*`
         )
         return new Response('OK', { status: 200 })
       }
       await sendWA(fromPhone,
-        `✅ *ROL DESACTIVADO*\n───────────────────\n\n` +
-        `👤 *Número:* \`${cTel}\` (${existe.nombre})\n` +
-        `❌ *Rol quitado:* ${rolAQuitar.toUpperCase()}\n\n` +
-        `_El registro histórico se ha conservado._`
+        `âœ… *ROL DESACTIVADO*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n` +
+        `ðŸ‘¤ *NÃºmero:* \`${cTel}\` (${existe.nombre})\n` +
+        `âŒ *Rol quitado:* ${rolAQuitar.toUpperCase()}\n\n` +
+        `_El registro histÃ³rico se ha conservado._`
       )
     }
     return new Response('OK', { status: 200 })
   }
 
-  // /ayuda y /help ya se manejan al inicio del archivo (líneas 14 y 24)
-  // No duplicar aquí.
+  // /ayuda y /help ya se manejan al inicio del archivo (lÃ­neas 14 y 24)
+  // No duplicar aquÃ­.
 
   return null
 }
 
-// ── Procesador de botones/listas interactivas para Administrador ───────────────
+// â”€â”€ Procesador de botones/listas interactivas para Administrador â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function handleAdminInteractive(
   supabase: any,
   fromPhone: string,
@@ -912,7 +910,7 @@ export async function handleAdminInteractive(
   buttonId: string
 ): Promise<Response | null> {
 
-  // ── Menú Jerárquico de Gestión (Interceptor Numérico) ──
+  // â”€â”€ MenÃº JerÃ¡rquico de GestiÃ³n (Interceptor NumÃ©rico) â”€â”€
   if (buttonId.startsWith('ACT_CLI_')) {
     const actionParts = buttonId.split('_')
     const actionType = actionParts[2]
@@ -927,9 +925,9 @@ export async function handleAdminInteractive(
         await sendInteractiveList(
           fromPhone, `*Recargas y Puntos* para ${telReal}`, 'Seleccionar',
           [{ title: 'Abonos', rows: [
-            { id: `ACT_CLI_ADDPT_${telReal}`, title: '➕ Sumar 1 Punto' },
-            { id: `ACT_CLI_ADDSALDO_${telReal}`, title: '💰 Cargar Saldo VIP' },
-            { id: `ACT_CLI_GIVENV_${telReal}`, title: '🎁 Regalar Envío Gratis' }
+            { id: `ACT_CLI_ADDPT_${telReal}`, title: 'âž• Sumar 1 Punto' },
+            { id: `ACT_CLI_ADDSALDO_${telReal}`, title: 'ðŸ’° Cargar Saldo VIP' },
+            { id: `ACT_CLI_GIVENV_${telReal}`, title: 'ðŸŽ Regalar EnvÃ­o Gratis' }
           ]}]
         )
         return new Response('OK', { status: 200 })
@@ -938,19 +936,19 @@ export async function handleAdminInteractive(
         await sendInteractiveList(
           fromPhone, `*Cobros y Canjes* para ${telReal}`, 'Seleccionar',
           [{ title: 'Descuentos', rows: [
-            { id: `ACT_CLI_SUBSALDO_${telReal}`, title: '📉 Descontar Saldo VIP' },
-            { id: `ACT_CLI_RMVENV_${telReal}`, title: '🎟️ Quitar Envío Gratis' }
+            { id: `ACT_CLI_SUBSALDO_${telReal}`, title: 'ðŸ“‰ Descontar Saldo VIP' },
+            { id: `ACT_CLI_RMVENV_${telReal}`, title: 'ðŸŽŸï¸ Quitar EnvÃ­o Gratis' }
           ]}]
         )
         return new Response('OK', { status: 200 })
 
       case 'SUBREP':
         await sendInteractiveList(
-          fromPhone, `*Reputación* para ${telReal}`, 'Seleccionar',
+          fromPhone, `*ReputaciÃ³n* para ${telReal}`, 'Seleccionar',
           [{ title: 'Asignar', rows: [
-            { id: `ACT_CLI_SETREP_EXC_${telReal}`, title: '⭐ Excelente' },
-            { id: `ACT_CLI_SETREP_REG_${telReal}`, title: '⚠️ Regular' },
-            { id: `ACT_CLI_SETREP_VET_${telReal}`, title: '🚫 Vetar' }
+            { id: `ACT_CLI_SETREP_EXC_${telReal}`, title: 'â­ Excelente' },
+            { id: `ACT_CLI_SETREP_REG_${telReal}`, title: 'âš ï¸ Regular' },
+            { id: `ACT_CLI_SETREP_VET_${telReal}`, title: 'ðŸš« Vetar' }
           ]}]
         )
         return new Response('OK', { status: 200 })
@@ -959,9 +957,9 @@ export async function handleAdminInteractive(
         await sendInteractiveList(
           fromPhone, `*Roles y Accesos* para ${telReal}`, 'Seleccionar',
           [{ title: 'Modificar Rol', rows: [
-            { id: `ACT_CLI_TOGVIP_${telReal}`, title: '👑 Hacer VIP / Quitar' },
-            { id: `ACT_CLI_SETREPART_${telReal}`, title: '🛵 Hacer Repartidor' },
-            { id: `ACT_CLI_RMVROL_${telReal}`, title: '❌ Limpiar Roles' }
+            { id: `ACT_CLI_TOGVIP_${telReal}`, title: 'ðŸ‘‘ Hacer VIP / Quitar' },
+            { id: `ACT_CLI_SETREPART_${telReal}`, title: 'ðŸ›µ Hacer Repartidor' },
+            { id: `ACT_CLI_RMVROL_${telReal}`, title: 'âŒ Limpiar Roles' }
           ]}]
         )
         return new Response('OK', { status: 200 })
@@ -974,25 +972,25 @@ export async function handleAdminInteractive(
         if (c) {
           const { error } = await supabase.rpc('increment_cliente_envios_gratis', { p_tel: telReal, p_amount: 1 })
           if (!error) {
-            await sendWA(fromPhone, `✅ *Envío gratis regalado* a ${c.nombre} (${telReal}).`)
-            await sendWA(`52${telReal}`, `🎉 *¡Sorpresa!*\n\nEl equipo de Estrella Delivery te acaba de obsequiar un *Envío Gratis*. 🎁`)
-          } else await sendWA(fromPhone, `❌ Error: ${error.message}`)
-        } else await sendWA(fromPhone, `❌ Cliente no encontrado.`)
+            await sendWA(fromPhone, `âœ… *EnvÃ­o gratis regalado* a ${c.nombre} (${telReal}).`)
+            await sendWA(`52${telReal}`, `ðŸŽ‰ *Â¡Sorpresa!*\n\nEl equipo de Estrella Delivery te acaba de obsequiar un *EnvÃ­o Gratis*. ðŸŽ`)
+          } else await sendWA(fromPhone, `âŒ Error: ${error.message}`)
+        } else await sendWA(fromPhone, `âŒ Cliente no encontrado.`)
         return new Response('OK', { status: 200 })
       }
       case 'RMVENV': {
         const { error } = await supabase.rpc('increment_cliente_envios_gratis', { p_tel: telReal, p_amount: -1 })
-        if (!error) await sendWA(fromPhone, `✅ Se ha descontado 1 envío gratis a ${telReal}.`)
-        else await sendWA(fromPhone, `❌ Error: ${error.message}`)
+        if (!error) await sendWA(fromPhone, `âœ… Se ha descontado 1 envÃ­o gratis a ${telReal}.`)
+        else await sendWA(fromPhone, `âŒ Error: ${error.message}`)
         return new Response('OK', { status: 200 })
       }
       case 'ADDSALDO':
         await supabase.from('bot_memory').upsert({ phone: `admin_action_state_${from10}`, history: [{ action: `ESPERANDO_SALDO_SUMA_${telReal}` }], updated_at: new Date().toISOString() })
-        await sendWA(fromPhone, `💰 *Recargar Saldo*\nEscribe la cantidad en MXN a recargar a ${telReal} (ej. \`50\`):`)
+        await sendWA(fromPhone, `ðŸ’° *Recargar Saldo*\nEscribe la cantidad en MXN a recargar a ${telReal} (ej. \`50\`):`)
         return new Response('OK', { status: 200 })
       case 'SUBSALDO':
         await supabase.from('bot_memory').upsert({ phone: `admin_action_state_${from10}`, history: [{ action: `ESPERANDO_SALDO_RESTA_${telReal}` }], updated_at: new Date().toISOString() })
-        await sendWA(fromPhone, `📉 *Descontar Saldo*\nEscribe la cantidad en MXN a descontar a ${telReal} (ej. \`50\`):`)
+        await sendWA(fromPhone, `ðŸ“‰ *Descontar Saldo*\nEscribe la cantidad en MXN a descontar a ${telReal} (ej. \`50\`):`)
         return new Response('OK', { status: 200 })
         
       case 'SETREP': {
@@ -1009,14 +1007,14 @@ export async function handleAdminInteractive(
   }
 
   const actionsMap: Record<string, { cmd: string; desc: string }> = {
-    'ACT_MENU_NOREGO': { cmd: 'Registro Silencioso', desc: 'iniciar la sesión de captura silenciosa' },
-    'ACT_MENU_LOYALTY': { cmd: 'Registro Loyalty', desc: 'enviar invitación y abrir captura' },
+    'ACT_MENU_NOREGO': { cmd: 'Registro Silencioso', desc: 'iniciar la sesiÃ³n de captura silenciosa' },
+    'ACT_MENU_LOYALTY': { cmd: 'Registro Loyalty', desc: 'enviar invitaciÃ³n y abrir captura' },
     'ACT_MENU_INFO': { cmd: 'Ficha de Cliente', desc: 'ver su perfil completo' },
     'ACT_MENU_QR': { cmd: 'Enviar Tarjeta VIP', desc: 'enviarle su QR' },
-    'ACT_MENU_SCORE': { cmd: 'Calificar Cliente', desc: 'asignarle una reputación' },
-    'ACT_MENU_SUMAR': { cmd: 'Sumar Puntos', desc: 'sumarle 1 punto (o más con /puntos 963... 3)' },
-    'ACT_MENU_REGALAR': { cmd: 'Regalar Envío', desc: 'obsequiarle un envío gratis' },
-    'ACT_MENU_REST': { cmd: 'Ver Clientes de Restaurante', desc: 'escribir el teléfono del restaurante a consultar' },
+    'ACT_MENU_SCORE': { cmd: 'Calificar Cliente', desc: 'asignarle una reputaciÃ³n' },
+    'ACT_MENU_SUMAR': { cmd: 'Sumar Puntos', desc: 'sumarle 1 punto (o mÃ¡s con /puntos 963... 3)' },
+    'ACT_MENU_REGALAR': { cmd: 'Regalar EnvÃ­o', desc: 'obsequiarle un envÃ­o gratis' },
+    'ACT_MENU_REST': { cmd: 'Ver Clientes de Restaurante', desc: 'escribir el telÃ©fono del restaurante a consultar' },
   }
 
   const actionInfo = actionsMap[buttonId]
@@ -1030,30 +1028,30 @@ export async function handleAdminInteractive(
 
     await sendWA(
       fromPhone,
-      `📝 *${actionInfo.cmd}*\n───────────────────\n\nPor favor, escribe el *número a 10 dígitos* del cliente para ${actionInfo.desc}:`
+      `ðŸ“ *${actionInfo.cmd}*\nâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\nPor favor, escribe el *nÃºmero a 10 dÃ­gitos* del cliente para ${actionInfo.desc}:`
     )
     return new Response('OK', { status: 200 })
   }
 
-  // Editar campos específicos de cliente
+  // Editar campos especÃ­ficos de cliente
   if (buttonId.startsWith('EDIT_')) {
     const action = buttonId.slice(0, 8) // e.g., EDIT_NOM, EDIT_SCO
     const tel10 = buttonId.slice(9)
     
-    // Si la acción es SCORE, mostrar directamente la lista de calificaciones
+    // Si la acciÃ³n es SCORE, mostrar directamente la lista de calificaciones
     if (action === 'EDIT_SCO') {
       await sendInteractiveList(
         fromPhone,
-        `⭐ *Calificar Cliente* — \`${tel10}\`\nPor favor selecciona la reputación que le asignarás:`,
-        `Elegir Reputación`,
+        `â­ *Calificar Cliente* â€” \`${tel10}\`\nPor favor selecciona la reputaciÃ³n que le asignarÃ¡s:`,
+        `Elegir ReputaciÃ³n`,
         [{
           title: 'Reputaciones',
           rows: [
-            { id: `RATE_EXC_${tel10}`, title: '⭐ Excelente' },
-            { id: `RATE_BUE_${tel10}`, title: '👍 Bueno' },
-            { id: `RATE_REG_${tel10}`, title: '⚠️ Regular' },
-            { id: `RATE_MAL_${tel10}`, title: '❌ Malo' },
-            { id: `VETAR_${tel10}`, title: '🚫 Vetado' }
+            { id: `RATE_EXC_${tel10}`, title: 'â­ Excelente' },
+            { id: `RATE_BUE_${tel10}`, title: 'ðŸ‘ Bueno' },
+            { id: `RATE_REG_${tel10}`, title: 'âš ï¸ Regular' },
+            { id: `RATE_MAL_${tel10}`, title: 'âŒ Malo' },
+            { id: `VETAR_${tel10}`, title: 'ðŸš« Vetado' }
           ]
         }]
       )
@@ -1062,7 +1060,7 @@ export async function handleAdminInteractive(
 
     let desc = ''
     if (action === 'EDIT_NOM') desc = 'el nuevo NOMBRE del cliente'
-    else if (action === 'EDIT_DIR') desc = 'la nueva DIRECCIÓN (colonia, calle, ref)'
+    else if (action === 'EDIT_DIR') desc = 'la nueva DIRECCIÃ“N (colonia, calle, ref)'
     else if (action === 'EDIT_NOT') desc = 'las nuevas NOTAS CRM (o escribe "borrar" para eliminarlas)'
     
     if (desc) {
@@ -1071,19 +1069,19 @@ export async function handleAdminInteractive(
         history: [{ action, tel: tel10 }],
         updated_at: new Date().toISOString()
       })
-      await sendWA(fromPhone, `✏️ Escribe ${desc}:`)
+      await sendWA(fromPhone, `âœï¸ Escribe ${desc}:`)
       return new Response('OK', { status: 200 })
     }
   }
 
-  // Drill-down: el admin seleccionó un cliente de la lista del restaurante
+  // Drill-down: el admin seleccionÃ³ un cliente de la lista del restaurante
   if (buttonId.startsWith('ADMIN_REST_CLI_')) {
     const tel10 = buttonId.replace('ADMIN_REST_CLI_', '').trim()
     // Redirige al mismo flujo que /info
     return await handleSlashCommands(supabase, fromPhone, from10, `/info ${tel10}`, 'btn_' + Date.now(), true)
   }
 
-  // Cerrar Sesión (viniendo del botón)
+  // Cerrar SesiÃ³n (viniendo del botÃ³n)
   if (buttonId === 'ACT_CERRAR_SESION') {
     return await handleSlashCommands(supabase, fromPhone, from10, '/fin', 'btn_' + Date.now(), true)
   }

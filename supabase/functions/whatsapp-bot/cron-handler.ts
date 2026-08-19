@@ -275,34 +275,9 @@ export async function handleCronEvent(supabase: any, body: any): Promise<Respons
     }
   }
 
-  // ── 🧪 TEST IA REAL ──────────────────────────
+  // ── 🧪 TEST IA REAL (DESHABILITADO — mandadito-handler.ts eliminado mientras el feature está en pausa) ──────────────────────────
   if (body.event === 'CRON_TEST_IA') {
-    try {
-      const { data: appCfg } = await supabase.from('app_config').select('configuracion_precios').eq('id', 'default').maybeSingle()
-      // Ejecutar la simulación importando test_criterio
-      const { generarPreguntaReferenciasIA } = await import('./mandadito-handler.ts')
-      console.log('--- INICIO TEST DE IA REAL ---')
-      
-      const esc1 = await generarPreguntaReferenciasIA('Bodega Aurrera', 'Mi casa en las palmas')
-      console.log('ESCENARIO 1 (Aurrera -> Casa):', esc1)
-      
-      const esc2 = await generarPreguntaReferenciasIA("Domino's Pizza a nombre de Juan", "Hospital General")
-      console.log('ESCENARIO 2 (Dominos -> Hospital):', esc2)
-      
-      const esc3 = await generarPreguntaReferenciasIA("mi casa", "4a avenida sur poniente")
-      console.log('ESCENARIO 3 (Casa -> Calle):', esc3)
-      
-      console.log('--- FIN TEST DE IA REAL ---')
-      const resultados = `
-ESCENARIO 1 (Aurrera -> Casa):\n${esc1}\n
-ESCENARIO 2 (Dominos -> Hospital):\n${esc2}\n
-ESCENARIO 3 (Casa -> Calle):\n${esc3}
-`
-      return new Response(resultados, { status: 200 })
-    } catch (e) {
-      console.error('[CRON_TEST_IA] Error:', e)
-      return new Response('Error', { status: 500 })
-    }
+    return new Response('Test de mandaditos deshabilitado temporalmente (feature en pausa).', { status: 200 })
   }
 
 
@@ -491,5 +466,42 @@ ESCENARIO 3 (Casa -> Calle):\n${esc3}
     return new Response('Resumen Discord enviado', { status: 200 })
   }
 
+  // ⏱️ REINTENTOS DE LA COLA ASÍNCRONA DE WHATSAPP ⏱️
+  if (body.event === 'CRON_WHATSAPP_QUEUE') {
+    const hace2Minutos = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+    
+    // Buscar mensajes atorados en 'procesando' (crasheados por timeout) o 'pendiente' que no se lanzaron
+    const { data: atorados } = await supabase.from('whatsapp_queue')
+      .select('id, payload')
+      .in('estado', ['pendiente', 'procesando', 'error'])
+      .lt('reintentos', 3)
+      .lt('updated_at', hace2Minutos)
+      .limit(10)
+
+    if (atorados && atorados.length > 0) {
+      console.log(`[CRON QUEUE] Reintentando ${atorados.length} mensajes atorados...`)
+      const { processQueueItem } = await import('./queue-processor.ts')
+      
+      for (const item of atorados) {
+        // Bloquear temporalmente sumando intento
+        await supabase.from('whatsapp_queue').update({ 
+          estado: 'procesando', 
+          reintentos: item.reintentos + 1,
+          updated_at: new Date().toISOString()
+        }).eq('id', item.id)
+
+        try {
+          await processQueueItem(supabase, JSON.stringify(item.payload))
+          await supabase.from('whatsapp_queue').update({ estado: 'completado' }).eq('id', item.id)
+        } catch (e) {
+          console.error(`[CRON QUEUE ERROR] ID ${item.id}:`, e)
+          await supabase.from('whatsapp_queue').update({ estado: 'error', error_log: String(e) }).eq('id', item.id)
+        }
+      }
+    }
+    return new Response('Queue Retries Processed', { status: 200 })
+  }
+
   return null
 }
+

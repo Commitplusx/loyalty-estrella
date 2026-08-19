@@ -3,6 +3,7 @@ import { handleScoreCommand } from './cmd-score.ts'
 import { handleQrCommand } from './cmd-qr.ts'
 import { handleSaldoCommand } from './cmd-saldo.ts'
 import { handleModoCommand } from './cmd-modo.ts'
+import { handleOffCommand } from './cmd-off.ts'
 
 // Interfaz estándar para todos los comandos
 export interface CommandContext {
@@ -24,6 +25,8 @@ const commandRegistry: Record<string, CommandHandler> = {
   '/qr': handleQrCommand,
   '/saldo': handleSaldoCommand,
   '/modo': handleModoCommand,
+  '/off': handleOffCommand,
+  '/reset': handleOffCommand,
 }
 
 export async function routeCommand(ctx: CommandContext): Promise<Response | null> {

@@ -5,7 +5,6 @@ import { extract10Digits, guardarMemoria, limpiarMemoria, buscarRepartidor } fro
 import { generateCloudinaryVIPCard } from '../_shared/utils.ts'
 import { getMetaPuntos } from '../_shared/constants.ts'
 import { conversacionDeepSeek } from './ai.ts'
-import { updateChatwootProfile, addPrivateNoteByPhone, syncContactAttributes, syncBotImageByPhone } from './chatwoot-sync.ts'
 
 type Supa = ReturnType<typeof createClient>
 
@@ -247,10 +246,8 @@ export async function executeAdminAction(
         // El RPC fn_registrar_entrega ya actualiza clientes.puntos atómicamente.
         // NO hacemos update manual aquí para evitar race conditions.
 
-        // Sincronizar hacia Chatwoot inmediatamente
+        
         try {
-          const { updateChatwootProfile } = await import('./chatwoot-sync.ts')
-          await updateChatwootProfile(supabase, tel10)
         } catch (e) {
           console.error('[CW Sync] Error post-sumar:', e)
         }
@@ -952,9 +949,6 @@ export async function handleCalificacion(supabase: Supa, fromPhone: string, butt
     } else {
       await supabase.from('clientes').upsert({ telefono: tel10, nombre: clienteNombre, reputacion, etiquetas: nuevasEtiquetas, puntos: 0 }, { onConflict: 'telefono' })
     }
-    await updateChatwootProfile(supabase, tel10).catch(console.error)
-    await addPrivateNoteByPhone(tel10, `⚠️ Alerta: El repartidor acaba de calificar a este cliente con mala actitud: *${etiqueta.toUpperCase()}*`).catch(console.error)
-    await syncContactAttributes(tel10, { problemático: true }).catch(console.error)
 
     await supabase.from('calificaciones_pendientes').delete().eq('cliente_tel', tel10)
     await sendWA(fromPhone, `${emoji} *${clienteNombre}* → Reputación: *${reputacion}*\nEtiqueta añadida: *${etiqueta}*\n🏷️ Historial: ${nuevasEtiquetas.join(', ')}`)
@@ -969,9 +963,6 @@ export async function handleCalificacion(supabase: Supa, fromPhone: string, butt
     } else {
       await supabase.from('clientes').upsert({ telefono: tel10, nombre: clienteNombre, reputacion: 'vetado', etiquetas: nuevasEtiquetas, puntos: 0 }, { onConflict: 'telefono' })
     }
-    await updateChatwootProfile(supabase, tel10).catch(console.error)
-    await addPrivateNoteByPhone(tel10, `🔴 ALERTA MÁXIMA: Este cliente ha sido VETADO permanentemente por el repartidor.`).catch(console.error)
-    await syncContactAttributes(tel10, { problemático: true, vetado: true }).catch(console.error)
 
     await supabase.from('calificaciones_pendientes').delete().eq('cliente_tel', tel10)
     await sendWA(fromPhone, `🔴 *${clienteNombre}* → *VETADO*\nEste cliente ya no recibirá servicio. Los restaurantes serán alertados automáticamente.`)
@@ -1009,8 +1000,7 @@ Guárdala muy bien en tus favoritos. Con ella irás acumulando recompensas en ca
 ¡Gracias por preferir Estrella Delivery! 🛵💨`
 
     await sendWAImage(`52${tel10}`, qrImageUrl, mensajeBienvenida)
-    // Espejo en Chatwoot: adjuntar la imagen para que los agentes la vean inline
-    syncBotImageByPhone(`52${tel10}`, qrImageUrl, '🎟️ Tarjeta VIP enviada al cliente').catch(console.error)
+    
 
     // Notificar al admin si había un pendiente de admin en cache
     const { data: pendingQR } = await supabase.from('bot_memory').select('history').eq('phone', `pending_qr_${tel10}`).maybeSingle()
