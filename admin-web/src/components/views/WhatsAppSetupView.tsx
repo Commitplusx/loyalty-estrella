@@ -50,12 +50,14 @@ export function WhatsAppSetupView() {
         }
       },
       {
-        scope: 'whatsapp_business_management,whatsapp_business_messaging',
+        config_id: 'PEGA_TU_CONFIG_ID_AQUI', // ⚠️ IMPORTANTE: Pon aquí el ID que creaste en Meta
+        response_type: 'code', // Requerido para el nuevo flujo SaaS
+        override_default_response_type: true,
         extras: { 
           setup: { 
             metadata: 'estrella_eats_setup'
           },
-          feature: 'whatsapp_business_app_onboarding'
+          feature: 'whatsapp_embedded_signup' // <-- Nombre oficial del flujo de Meta
         },
       }
     );
