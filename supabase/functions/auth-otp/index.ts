@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { promotionIdsFromCart, promotionMenuIds, validatePromotionCart } from '../_shared/promotion-catalog.ts'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -22,25 +23,38 @@ async function validarEInsertarPedido(supabase: any, payload: any, carrito: any[
   }
 
   const restauranteId = payload.restaurante_id
-  if (!restauranteId) throw new Error('Falta restaurante_id')
+  if (typeof restauranteId !== 'string' || !restauranteId) throw new Error('Falta restaurante_id')
 
   // 1. Extraer todos los IDs únicos de items, combos y promos
+  const promoIds = promotionIdsFromCart(carrito)
   const itemIds = carrito.filter(c => c.item.tipo === 'item').map(c => c.item.id)
   const comboIds = carrito.filter(c => c.item.tipo === 'combo').map(c => c.item.id)
-  const promoIds = carrito.filter(c => c.item.tipo === 'promo').map(c => c.item.id)
 
   // 2. Fetch de precios reales en paralelo
   const [itemsRes, combosRes, promosRes, restRes] = await Promise.all([
-    itemIds.length > 0 ? supabase.from('menu_items').select('id, precio, opciones').in('id', itemIds) : { data: [] },
-    comboIds.length > 0 ? supabase.from('menu_combos').select('id, precio, opciones').in('id', comboIds) : { data: [] },
-    promoIds.length > 0 ? supabase.from('menu_promociones').select('id, precio_especial, opciones').in('id', promoIds) : { data: [] },
-    supabase.from('restaurantes').select('envio_gratis_monto_minimo, envio_gratis_tope, cupon_activo, cupon_codigo, cupon_descuento, cupon_tipo').eq('id', restauranteId).single()
+    itemIds.length > 0 ? supabase.from('menu_items').select('id, precio, opciones').eq('restaurante_id', restauranteId).in('id', itemIds) : { data: [] },
+    comboIds.length > 0 ? supabase.from('menu_combos').select('id, precio, opciones').eq('restaurante_id', restauranteId).in('id', comboIds) : { data: [] },
+    promoIds.length > 0 ? supabase.from('menu_promociones').select('id, restaurante_id, precio_especial, opciones, activa, dias_aplicacion, fecha_fin').eq('restaurante_id', restauranteId).in('id', promoIds) : { data: [] },
+    supabase.from('restaurantes').select('id').eq('id', restauranteId).single()
   ])
+
+  if (itemsRes.error || combosRes.error || promosRes.error || restRes.error) {
+    throw new Error('No se pudo verificar el catálogo. Intenta de nuevo.')
+  }
 
   const dbItems = itemsRes.data || []
   const dbCombos = combosRes.data || []
   const dbPromos = promosRes.data || []
-  const restauranteData = restRes.data || {}
+
+  if (promoIds.length) {
+    const linkedIds = promotionMenuIds(dbPromos)
+    const linkedResult = linkedIds.length
+      ? await supabase.from('menu_items').select('id, restaurante_id, nombre, disponible, agotado_hoy, activo').eq('restaurante_id', restauranteId).in('id', linkedIds)
+      : { data: [], error: null }
+    if (linkedResult.error) throw new Error('No se pudieron verificar los productos de la promoción.')
+    const validated = validatePromotionCart(carrito, dbPromos, linkedResult.data || [], restauranteId)
+    for (const line of validated) carrito[line.index].item.opcionesSeleccionadas = line.selections
+  }
 
   // 3. Recalcular el subtotal real basándonos estrictamente en los precios de la BD
   let subtotalReal = 0
@@ -85,7 +99,6 @@ async function validarEInsertarPedido(supabase: any, payload: any, carrito: any[
 
   // 4. Calcular el Costo de Envío Real con H3 y Bolsa de Subsidio
   let costoEnvioReal = 0
-  let isFreeDelivery = false
   let tarifaBaseEnvio = 0
 
   if (payload.tipo_pedido === 'domicilio' && payload.lat && payload.lng) {
@@ -130,10 +143,6 @@ async function validarEInsertarPedido(supabase: any, payload: any, carrito: any[
         costoEnvioReal = 0
       }
 
-      isFreeDelivery = !!(restauranteData.envio_gratis_monto_minimo && subtotalReal >= restauranteData.envio_gratis_monto_minimo)
-      if (isFreeDelivery) {
-        costoEnvioReal = Math.max(0, costoEnvioReal - (restauranteData.envio_gratis_tope || 0))
-      }
     } catch (e) {
       console.error("Error H3:", e)
       // Fallback a lo que envia el cliente si H3 falla, aunque no es ideal
@@ -141,7 +150,7 @@ async function validarEInsertarPedido(supabase: any, payload: any, carrito: any[
     }
   }
 
-  // 5. Validar Cupones (Plataforma y Restaurante) y VIP
+  // 5. Validar cupones de plataforma y VIP con sus tablas vigentes
   let descuentoTotal = 0
 
   // 5.1 Cupón Plataforma
@@ -151,17 +160,6 @@ async function validarEInsertarPedido(supabase: any, payload: any, carrito: any[
       if (cupon.tipo === 'porcentaje') descuentoTotal += subtotalReal * (cupon.valor / 100)
       else if (cupon.tipo === 'fijo') descuentoTotal += cupon.valor
       else if (cupon.tipo === 'envio_gratis') costoEnvioReal = 0
-    }
-  }
-
-  // 5.2 Cupón Restaurante
-  if (payload.cupon_cliente && restauranteData.cupon_activo && restauranteData.cupon_codigo === payload.cupon_cliente) {
-    if (restauranteData.cupon_tipo === 'porcentaje') {
-      descuentoTotal += subtotalReal * (Number(restauranteData.cupon_descuento) / 100)
-    } else if (restauranteData.cupon_tipo === 'fijo') {
-      descuentoTotal += Number(restauranteData.cupon_descuento)
-    } else if (restauranteData.cupon_tipo === 'envio_gratis') {
-      costoEnvioReal = 0
     }
   }
 
@@ -193,6 +191,7 @@ async function validarEInsertarPedido(supabase: any, payload: any, carrito: any[
   // 8. Insertar el pedido usando SERVICE ROLE (pasa por encima de RLS)
   // Forzamos que el payload tenga el total estrictamente recalculado para máxima seguridad
   payload.total = totalReal
+  payload.items = carrito
 
   // Eliminar campos auxiliares que no existen en la tabla pedidos
   delete payload.cupon_cliente
