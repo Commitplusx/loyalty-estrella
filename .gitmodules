@@ -1,0 +1,4 @@
+[submodule "estrella-eats"]
+	path = estrella-eats
+	url = https://github.com/Commitplusx/restaurantes-estrella.git
+	branch = main
