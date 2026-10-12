@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Cliente, AppConfig } from '@/types';
+import { customerSupabase } from '@/lib/customer-loyalty';
 
 // Las credenciales deben venir de variables de entorno para mayor seguridad, sin fallbacks manuales.
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -50,7 +51,7 @@ export async function submitRating(registroPuntoId: string, puntuacion: number, 
     payload.comentario = comentario.trim();
   }
 
-  const { error } = await supabase
+  const { error } = await customerSupabase
     .from('calificaciones_servicio')
     .insert(payload);
 

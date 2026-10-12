@@ -1,365 +1,61 @@
 import { useState, useEffect, useRef } from 'react';
-import { getMetaPuntos } from '@/lib/constants';
 import { useParams } from 'react-router-dom';
 import { AnimatePresence, motion, useMotionValue, useTransform, animate } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import {
   Phone, Search, Gift, Star, ArrowRight,
-  TrendingUp, Clock, Download,
-  ChevronLeft, QrCode, AlertCircle, Sun, Moon,
-  Truck, X, Share2, Utensils, Heart, LogOut
+  ChevronLeft, AlertCircle, Share2
 } from 'lucide-react';
-import { toast } from '@/components/ui/toast-native';
-import QRCode from 'qrcode';
-import { supabase, getClienteByTelefono, subscribeToCliente, getHistorialCliente } from '@/lib/supabase';
-import { PromosBanner } from '@/components/client/PromosBanner';
+import { useLoyaltyAccess } from '@/hooks/useLoyaltyAccess';
+import { CustomerOtpCard } from '@/components/client/CustomerOtpCard';
 import { ClientStats } from '@/components/ClientStats';
 import { RatingModal } from '@/components/RatingModal';
 import { CanjeModal } from '@/components/client/CanjeModal';
 import { WalletSection } from '@/components/client/WalletSection';
 import { ProgressCard } from '@/components/client/ProgressCard';
 import { HistorialTimeline } from '@/components/client/HistorialTimeline';
-import { PinEntry } from '@/components/client/PinEntry';
-import AuthorityCounter from '@/components/client/AuthorityCounter';
 import { OnboardingWelcome } from '@/components/client/OnboardingWelcome';
-import { BottomNav, type TabType } from '@/components/client/BottomNav';
+
 import { useSchedule } from '@/hooks/useSchedule';
-import { useDarkMode } from '@/hooks/useDarkMode';
 import { generateCloudinaryVIPCard } from '@/lib/utils';
-import type { Cliente, RegistroMovimiento } from '@/types';
-
-
-type ViewState = 'search' | 'loading' | 'pin-setup' | 'pin-verify' | 'result' | 'error-not-found' | 'error-generic';
+import '@/loyalty.css';
 
 
 export function ClienteView() {
   const { tel: routeTel } = useParams<{ tel?: string }>();
-  const [telefono, setTelefono] = useState('');
-  const [cliente, setCliente] = useState<Cliente | null>(null);
-  const [viewState, setViewState] = useState<ViewState>('search');
-  const [showQR, setShowQR] = useState(false);
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const [historial, setHistorial] = useState<RegistroMovimiento[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<TabType>('home');
-
-  // Onboarding eliminado a petición del cliente
-  const [showOnboarding, setShowOnboarding] = useState(false);
-
-  const [showRating, setShowRating] = useState(false);
-  const [activeRegistroId, setActiveRegistroId] = useState<string | null>(null);
-
-  const [showCanjeModal, setShowCanjeModal] = useState(false);
-
-  // ── PIN state ────────────────────────────────────────────────────
-  const [pinError, setPinError] = useState(false);
-  const [pinLoading, setPinLoading] = useState(false);
-  const [pinAttempts, setPinAttempts] = useState(0);
-  // pinConfirm removed — never used in render or logic
-  const [pinSetupStep, setPinSetupStep] = useState<'enter' | 'confirm'>('enter');
-  const [pinFirst, setPinFirst] = useState(''); // primer PIN ingresado en setup
-
-
-  const { storeState, contacto } = useSchedule();
-  const { isDark, toggle } = useDarkMode();
-  const whatsappUrl = `https://wa.me/${(contacto?.whatsapp || '529631550244').replace(/\D/g, '')}`;
-
-  // Scroll-aware header shadow
-  const [navScrolled, setNavScrolled] = useState(false);
+  const rawPrefill=(routeTel || new URLSearchParams(window.location.search).get('tel') || '').replace(/\D/g,'').slice(-10);
+  const access=useLoyaltyAccess(rawPrefill.length===10 ? rawPrefill : '');
+  const {telefono,setTelefono,cliente,setCliente,historial,viewState}=access;
+  const inputRef=useRef<HTMLInputElement>(null);
+  const [showOnboarding,setShowOnboarding]=useState(false);
+  const [showRating,setShowRating]=useState(false);
+  const [activeRegistroId,setActiveRegistroId]=useState<string | null>(null);
+  const [showCanjeModal,setShowCanjeModal]=useState(false);
+  const {contacto}=useSchedule();
+  const whatsappUrl=`https://wa.me/${(contacto?.whatsapp || '529631550244').replace(/\D/g,'')}`;
+  const [navScrolled,setNavScrolled]=useState(false);
   useEffect(() => {
-    const onScroll = () => setNavScrolled(window.scrollY > 6);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  // Al montar, restauramos la sesión.
-  // Usamos sessionStorage para saber si el PIN ya fue verificado en esta sesión.
-  // Esto evita pedir PIN en cada refresh, pero sí en cada nueva visita/pestaña.
+    const onScroll=() => setNavScrolled(window.scrollY>6);
+    window.addEventListener('scroll',onScroll,{passive:true});
+    return () => window.removeEventListener('scroll',onScroll);
+  },[]);
   useEffect(() => {
-    const saved = localStorage.getItem('estrella_cliente');
-    if (saved) {
-      try {
-        const parsed: Cliente = JSON.parse(saved);
-        setCliente(parsed);
-        const pinVerifiedThisSession = sessionStorage.getItem('pin_verified') === 'true';
-        if (pinVerifiedThisSession) {
-          // PIN ya verificado en esta pestaña → mostrar perfil directo
-          setViewState('result');
-        } else {
-          // Nueva visita → siempre pedir PIN (o crear si no tiene)
-          setViewState(parsed.pin ? 'pin-verify' : 'pin-setup');
-        }
-        getHistorialCliente(parsed.id).then(setHistorial).catch(() => {});
-        getClienteByTelefono(parsed.telefono).then(freshData => {
-          if (freshData && !('found' in freshData)) {
-            setCliente(freshData);
-            // Si los datos frescos muestran que no tiene PIN, forzar setup
-            if (!freshData.pin && !pinVerifiedThisSession) setViewState('pin-setup');
-          }
-        }).catch(() => {});
-      } catch {
-        localStorage.removeItem('estrella_cliente');
-      }
-    }
-  }, []);
-
-
-  // Cada vez que cambia el cliente, actualizamos (o borramos) la sesión guardada
-  useEffect(() => {
-    if (cliente) {
-      localStorage.setItem('estrella_cliente', JSON.stringify(cliente));
-    }
-  }, [cliente]);
-
-  // DEEP LINKING: Detectar teléfono en la URL (?tel=9611234567) O en la ruta /loyalty/:tel
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const telParam = routeTel || params.get('tel');
-    if (telParam && telParam.length >= 10) {
-      const cleanTel = telParam.replace(/\D/g, '').slice(-10);
-      setTelefono(cleanTel);
-      localStorage.removeItem('estrella_cliente');
-      setCliente(null);
-      setViewState('loading');
-      getClienteByTelefono(cleanTel).then(async (data) => {
-        if (data && !('found' in data)) {
-          if (data.acepta_terminos === false) {
-            setViewState('error-not-found');
-            return;
-          }
-          const histData = await getHistorialCliente(data.id);
-          setHistorial(histData);
-          setCliente(data);
-          // Redirigir a PIN setup o verify
-          setViewState(data.pin ? 'pin-verify' : 'pin-setup');
-        } else if (data && 'found' in data) {
-          setViewState('error-not-found');
-        } else {
-          setViewState('error-generic');
-        }
-      });
-    }
-  }, [routeTel]);
-
-
-  // Suscripción en tiempo real
-  const clienteId = cliente?.id;
-  useEffect(() => {
-    if (!clienteId) return;
-    const unsubscribe = subscribeToCliente(clienteId, (updated) => {
-      setCliente(updated);
-      // Mantenemos la sesión actualizada en storage también
-      localStorage.setItem('estrella_cliente', JSON.stringify(updated));
-    });
-
-    // Usamos un solo canal para no duplicar conexiones de WebSocket
-    // escuchando la misma tabla.
-    const eventsChannel = supabase
-      .channel(`events_${clienteId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'registros_puntos', filter: `cliente_id=eq.${clienteId}` },
-        async (payload: { new: { id: string; tipo: string } }) => {
-          // Reload history
-          const fresh = await getHistorialCliente(clienteId);
-          setHistorial(fresh);
-          // Show rating modal only for real point accumulations
-          if (payload.new.tipo === 'acumulacion') {
-            setActiveRegistroId(payload.new.id);
-            setShowRating(true);
-          }
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.error(`[Realtime] Events channel error for ${clienteId}: ${status}`);
-        }
-      });
-
-    return () => {
-      unsubscribe();
-      supabase.removeChannel(eventsChannel);
-    };
-  }, [clienteId]);
-
-  // ── Auto-cleanup: si cupon_activo ya fue marcado como 'usado' en
-  //    la tabla cupones, lo limpiamos del estado local para que no se muestre.
-  //    También maneja cupones legacy que no tienen entrada en la tabla cupones.
-  useEffect(() => {
-    if (!cliente?.cupon_activo) return;
-    supabase
-      .from('cupones')
-      .select('estado')
-      .eq('codigo', cliente.cupon_activo)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data && data.estado !== 'activo') {
-          // El cupón ya fue usado o cancelado — limpiar del estado
-          setCliente(prev => prev ? { ...prev, cupon_activo: null } : prev);
-          const stored = localStorage.getItem('estrella_cliente');
-          if (stored) {
-            try {
-              const parsed = JSON.parse(stored);
-              localStorage.setItem('estrella_cliente', JSON.stringify({ ...parsed, cupon_activo: null }));
-            } catch { /* ignore */ }
-          }
-        }
-        // Si data es null (cupón legacy sin entrada en tabla cupones), lo dejamos visible
-        // ya que solo el comando /usar o el botón BTN_CUPON lo pueden limpiar.
-      });
-  }, [cliente?.cupon_activo]);
-
-
-  useEffect(() => {
-    if (!cliente?.qr_code) return;
-    QRCode.toDataURL(cliente.qr_code, {
-      width: 260,
-      margin: 2,
-      color: { dark: '#1a1a1a', light: '#ffffff' },
-      errorCorrectionLevel: 'H',
-    }).then(setQrDataUrl).catch(console.error);
-  }, [cliente?.qr_code]);
-
-  const handleBuscar = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const tel = telefono.trim();
-    if (!tel) return;
-
-    setViewState('loading');
-    setCliente(null);
-    setQrDataUrl(null);
-
-    // Run fetch + 4-second minimum timer in parallel "” whichever finishes last wins
-    const MIN_LOADING_MS = 4000;
-    const [data] = await Promise.all([
-      getClienteByTelefono(tel),
-      new Promise<void>(res => setTimeout(res, MIN_LOADING_MS)),
-    ]);
-
-    if (data === null) {
-      setViewState('error-generic');
-    } else if ('found' in data) {
-      setViewState('error-not-found');
-    } else {
-      if (data.acepta_terminos === false) {
-        setViewState('error-not-found');
-        return;
-      }
-      const histData = await getHistorialCliente(data.id);
-      setHistorial(histData);
-      setCliente(data);
-      // Si no tiene PIN → obligar a crear uno; si tiene → verificar
-      setViewState(data.pin ? 'pin-verify' : 'pin-setup');
-    }
-  };
-
-  // ── Verificar PIN ingresado ─────────────────────────────────────────
-  const handlePinVerify = async (pin: string) => {
-    if (!cliente) return;
-    // Máximo 5 intentos
-    if (pinAttempts >= 4) {
-      toast.error('Demasiados intentos', 'Espera unos minutos e intenta de nuevo');
-      return;
-    }
-    setPinLoading(true);
-    const { data } = await supabase.rpc('verify_cliente_pin', {
-      p_telefono: cliente.telefono,
-      p_pin: pin,
-    });
-    setPinLoading(false);
-
-    if (data?.ok) {
-      setPinError(false);
-      setPinAttempts(0);
-      localStorage.setItem('estrella_cliente', JSON.stringify(cliente));
-      // Marcar PIN como verificado en esta sesión (evita re-pedir en refresh)
-      sessionStorage.setItem('pin_verified', 'true');
-      setViewState('result');
-    } else {
-      setPinAttempts(prev => prev + 1);
-      setPinError(true);
-      setTimeout(() => setPinError(false), 800); // resetear para re-shake si vuelve a fallar
-      toast.error('PIN incorrecto', `Intento ${pinAttempts + 1}/5`);
-    }
-  };
-
-  // ── Configurar nuevo PIN (2 pasos: ingresar + confirmar) ─────────────────
-  const handlePinSetup = async (pin: string) => {
-    if (!cliente) return;
-    if (pinSetupStep === 'enter') {
-      // Primer ingreso → pedir confirmación
-      setPinFirst(pin);
-      setPinSetupStep('confirm');
-      return;
-    }
-    // Confirmación → verificar que coincidan
-    if (pin !== pinFirst) {
-      setPinError(true);
-      setTimeout(() => setPinError(false), 800);
-      toast.error('Los PIN no coinciden', 'Vuelve a intentarlo');
-      setPinSetupStep('enter');
-      setPinFirst('');
-      return;
-    }
-    // Guardar en DB
-    setPinLoading(true);
-    const { data } = await supabase.rpc('set_cliente_pin', {
-      p_telefono: cliente.telefono,
-      p_pin: pin,
-    });
-    setPinLoading(false);
-    if (data?.ok) {
-      setCliente(prev => prev ? { ...prev, pin } : prev);
-      localStorage.setItem('estrella_cliente', JSON.stringify({ ...cliente, pin }));
-      sessionStorage.setItem('pin_verified', 'true');
-      toast.success('¡PIN creado!', 'Tu cuenta está protegida 🔒');
-      setViewState('result');
-    } else {
-      toast.error('Error al guardar PIN', data?.error || 'Intenta de nuevo');
-      setPinSetupStep('enter');
-    }
+    if (access.newAccumulationId && cliente) {setActiveRegistroId(access.newAccumulationId); setShowRating(true);}
+  },[access.newAccumulationId,cliente?.id]);
+  const handleBuscar=(event: React.FormEvent) => {event.preventDefault(); void access.requestCode();};
+  const handleReset=() => {
+    setShowRating(false); setShowCanjeModal(false); setActiveRegistroId(null);
+    void access.reset();
   };
 
 
-  const handleReset = () => {
-    // Cerrar sesión: limpiamos todo incluyendo la sesión guardada en localStorage
-    localStorage.removeItem('estrella_cliente');
-    setCliente(null);
-    setTelefono('');
-    setHistorial([]);
-    setViewState('search');
-    setShowQR(false);
-    setQrDataUrl(null);
-    setShowRating(false);
-    setActiveRegistroId(null);
-    // Reset PIN state
-    setPinError(false);
-    setPinLoading(false);
-    setPinAttempts(0);
-    setPinSetupStep('enter');
-    setPinFirst('');
-
-    // Limpiar sesión de PIN para que la próxima vez se pida de nuevo
-    sessionStorage.removeItem('pin_verified');
-    setTimeout(() => inputRef.current?.focus(), 100);
-
-  };
-
-
-  const isVip = cliente?.es_vip === true || (cliente?.envios_totales ? cliente.envios_totales >= 15 : false);
-  const metaVip = getMetaPuntos(cliente?.rango, isVip);
+  const metaVip = 5; // Published coupon redemption requires five points, independently of delivery checkout.
   // Si el cliente es nuevo y tiene 0 puntos, no mostramos el mensaje de gratis.
-  const puntosEnCiclo = cliente ? cliente.puntos % metaVip : 0;
+  const puntosEnCiclo = cliente ? Math.min(cliente.puntos, metaVip) : 0;
   const progreso = cliente ? (puntosEnCiclo / metaVip) * 100 : 0;
-  const enviosRestantes = cliente
-    ? (puntosEnCiclo === 0 && cliente.envios_totales === 0
-        ? metaVip                        // cliente nuevo: aún le faltan todos
-        : metaVip - puntosEnCiclo)       // en ciclo activo o inicio de nuevo ciclo
-    : metaVip;
+  const enviosRestantes = cliente ? Math.max(0,metaVip-cliente.puntos) : metaVip;
 
   // â”€â”€ Compartir tarjeta de lealtad â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleShare = () => {
@@ -378,10 +74,10 @@ export function ClienteView() {
   const displayPointsRounded = useTransform(displayPoints, v => Math.round(v));
   useEffect(() => {
     if (viewState === 'result' && cliente) {
-      const ctrl = animate(displayPoints, puntosEnCiclo, { duration: 1.2, ease: 'easeOut' });
+      const ctrl = animate(displayPoints, cliente.puntos || 0, { duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 0.6, ease: 'easeOut' });
       return ctrl.stop;
     }
-  }, [viewState, cliente?.id, puntosEnCiclo]);
+  }, [viewState, cliente?.id, cliente?.puntos, displayPoints]);
 
   // â”€â”€ Confetti when cycle is complete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
@@ -395,16 +91,6 @@ export function ClienteView() {
     }
   }, [viewState, cliente?.id, enviosRestantes]);
 
-  // â”€â”€ Descargar QR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const handleDownloadQR = () => {
-    if (!qrDataUrl) return;
-    const a = document.createElement('a');
-    a.href = qrDataUrl;
-    a.download = `estrella-qr-${cliente?.telefono || 'mi-codigo'}.png`;
-    a.click();
-    toast.success('¡QR descargado!', 'Guardado en tu galería');
-  };
-
   // Wallet handlers moved to WalletSection component
 
   // El QR ya se genera arriba, quitamos el efecto duplicado.
@@ -415,7 +101,7 @@ export function ClienteView() {
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 1.02, y: -10 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="min-h-screen overflow-x-hidden bg-white text-gray-900 transition-colors duration-300"
+      className="loyalty-page loyalty-portal min-h-screen overflow-x-hidden transition-colors duration-300"
     >
       {/* Onboarding primera visita */}
       {showOnboarding && (
@@ -426,7 +112,7 @@ export function ClienteView() {
       )}
       {/* Header — Fixed Peach */}
       <div
-        className={`fixed top-0 inset-x-0 z-50 bg-white/90 backdrop-blur-md transition-all duration-300
+        className={`loyalty-portal-header fixed top-0 inset-x-0 z-50 bg-white/90 backdrop-blur-md transition-all duration-300
           ${navScrolled ? 'shadow-sm border-b border-gray-100' : ''}`}
         style={{ paddingTop: 'max(env(safe-area-inset-top), 0.5rem)' }}
       >
@@ -434,35 +120,19 @@ export function ClienteView() {
           <div className="flex items-center justify-between h-14 sm:h-16">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <div className="w-6 h-6 flex items-center justify-center">
-                <img src="/estrella-circle.png" alt="Estrella" className="w-full h-full object-contain" />
-              </div>
+              <span className="loyalty-brand-mark"><Star size={22} strokeWidth={2.5} aria-hidden="true" /></span>
               <div className="font-black text-lg text-gray-900 tracking-tight">
-                Estrella<span className="text-orange-500">.</span>
+                Estrella<span style={{ color: "var(--loyalty-accent)" }}>.</span>
               </div>
             </div>
 
-            {/* Estado tienda */}
-            <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border border-gray-200 text-gray-600">
-              <span className={`w-1.5 h-1.5 rounded-full ${storeState.isOpen ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
-              {storeState.isOpen ? 'Abierto ahora' : 'Cerrado'}
-            </div>
-
-            {/* Controles derechos */}
             <div className="flex items-center gap-2">
-              <Badge
-                variant={storeState.isOpen ? 'default' : 'secondary'}
-                className={`sm:hidden text-[11px] px-3 py-1 font-black ${storeState.isOpen
-                  ? 'bg-green-500 shadow-lg shadow-green-500/30 text-white'
-                  : 'bg-gray-100 text-gray-600'}`}
-              >
-                {storeState.isOpen ? 'ABIERTO' : 'CERRADO'}
-              </Badge>
               {cliente && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleReset}
+                  disabled={access.busy}
                   className="text-gray-500 hover:text-gray-900 hover:bg-gray-100 ml-1 text-xs gap-1 font-bold"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
@@ -475,7 +145,7 @@ export function ClienteView() {
       </div>
 
       {/* Main "” padding-top to clear fixed header + bottom safe-area for iPhone home bar */}
-      <main className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pt-20 sm:pt-24"
+      <main className="loyalty-portal-main max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pt-20 sm:pt-24"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 2rem)' }}>
 
         {/* --- LOADING --- */}
@@ -520,7 +190,7 @@ export function ClienteView() {
                   animate={{ opacity: [0.7, 1, 0.7] }}
                   transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
                 >
-                  Buscando tu cuenta...
+                  Verificando tu acceso…
                 </motion.h2>
                 <p className="text-sm text-gray-400 font-mono tracking-wide">
                   +52 {telefono.slice(0, 3)} {telefono.slice(3, 6)} {telefono.slice(6)}
@@ -580,7 +250,7 @@ export function ClienteView() {
                 </div>
                 <h2 className="text-2xl font-bold mb-2">Número no registrado</h2>
                 <p className="text-orange-100">
-                  El número <strong className="text-white">{telefono}</strong> no tiene una cuenta VIP activa.
+                  El número <strong className="text-white">{telefono}</strong> todavía no tiene una tarjeta de beneficios activa.
                 </p>
               </div>
               <CardContent className="p-6 space-y-4 text-center">
@@ -624,8 +294,8 @@ export function ClienteView() {
                   <AlertCircle className="w-8 h-8 text-red-500" />
                 </div>
                 <h2 className="text-xl font-bold text-gray-900">Error de conexión</h2>
-                <p className="text-gray-500">No se pudo conectar al servidor. Verifica tu internet e intenta de nuevo.</p>
-                <Button onClick={handleReset} variant="outline" className="border-orange-300 text-orange-600">
+                <p className="text-gray-500">{access.accessError || 'No pudimos verificar tu acceso. Revisa tu conexión e intenta de nuevo.'}</p>
+                <Button onClick={() => {void access.restore();}} variant="outline" className="border-orange-300 text-orange-600">
                   Intentar de nuevo
                 </Button>
               </CardContent>
@@ -634,315 +304,58 @@ export function ClienteView() {
         )}
 
         {viewState === 'search' && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, y: -15 }}
-            transition={{ duration: 0.4 }}
-            className="flex flex-col -mx-4 sm:-mx-6 lg:-mx-8 -mt-4 min-h-[calc(100vh-4rem)]"
-          >
-            {/* ── HERO REDISEÑADO (ESTILO ESTRELLA EATS) ── */}
-            <div className="relative flex flex-col items-center justify-center px-6 pt-16 pb-16 bg-white overflow-hidden">
-              {/* Luces de fondo (Glow effects) */}
-              <div className="absolute top-0 right-0 w-96 h-96 bg-orange-400/10 blur-[100px] rounded-full -translate-y-1/2 translate-x-1/3" />
-              <div className="absolute bottom-0 left-0 w-72 h-72 bg-amber-400/10 blur-[80px] rounded-full translate-y-1/3 -translate-x-1/4" />
-              
-              {/* Pattern superpuesto sutil */}
-              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.05] mix-blend-multiply"></div>
-
-              {/* Logo / Ícono Central */}
-              <motion.div
-                initial={{ scale: 0.5, opacity: 0, rotate: -10 }}
-                animate={{ scale: 1, opacity: 1, rotate: 0 }}
-                transition={{ delay: 0.1, type: 'spring', stiffness: 200, damping: 20 }}
-                className="relative z-10 w-24 h-24 flex items-center justify-center mb-6"
-              >
-                <img src="/estrella-circle.png" alt="Estrella" className="w-full h-full object-contain drop-shadow-sm" />
-              </motion.div>
-
-              <motion.div
-                initial={{ y: 15, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.2, duration: 0.5 }}
-                className="relative z-10 text-center"
-              >
-                <Badge className="bg-orange-100 text-orange-600 border border-orange-200 mb-4 px-3 py-1 font-bold tracking-wide shadow-sm">
-                  ESTRELLA EATS LOYALTY
-                </Badge>
-                <h1 className="text-4xl sm:text-5xl font-black text-gray-900 tracking-tight mb-3">
-                  Tu <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-amber-500">Billetera</span> Digital
-                </h1>
-                <p className="text-gray-600 text-base font-medium max-w-sm mx-auto leading-relaxed">
-                  Pide tu comida favorita, acumula puntos y desbloquea envíos gratis.
-                </p>
-              </motion.div>
-
-              {/* Stats row Premium */}
-              <motion.div
-                initial={{ y: 15, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.3, duration: 0.5 }}
-                className="relative z-10 flex gap-6 mt-10"
-              >
-                {[
-                  { val: '35K+', label: 'Entregas', icon: Truck },
-                  { val: '5', label: 'Estrellas', icon: Star },
-                  { val: '100%', label: 'Garantía', icon: Heart },
-                ].map((s, i) => (
-                  <div key={s.label} className="flex flex-col items-center bg-white rounded-2xl px-5 py-3 border border-gray-100 shadow-md">
-                    <s.icon className="w-4 h-4 text-orange-500 mb-1" />
-                    <p className="text-gray-900 font-black text-lg leading-tight">{s.val}</p>
-                    <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">{s.label}</p>
-                  </div>
-                ))}
-              </motion.div>
+          <section className="loyalty-entry" aria-labelledby="loyalty-entry-title">
+            <div className="loyalty-entry-story">
+              <p className="loyalty-eyebrow">TU ESPACIO / TUS PUNTOS</p>
+              <h1 id="loyalty-entry-title" className="loyalty-portal-heading">Lo que has ganado, <em>siempre contigo.</em></h1>
+              <p className="loyalty-entry-lead">Consulta tus entregas, beneficios disponibles y movimientos en una sola tarjeta.</p>
+              <div className="loyalty-entry-note">
+                <span className="loyalty-entry-note-mark"><Star size={23} fill="currentColor" aria-hidden="true" /></span>
+                <div><strong>Una tarjeta para cada entrega</strong><p>Tu avance y tu meta se actualizan con los datos de tu cuenta.</p></div>
+              </div>
             </div>
-
-
-            {/* ── FORM PANEL ── */}
-            <motion.div
-              initial={{ y: 40, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.2, type: 'spring', stiffness: 260, damping: 26 }}
-              className="flex-1 bg-gray-50 -mt-6 rounded-t-[32px] px-5 pt-8 pb-28 space-y-5"
-            >
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 text-center">
-                Ingresa tu número
-              </p>
-
-              {/* Phone input */}
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none gap-2.5 z-10">
-                  <span className="text-gray-800 font-bold text-lg">+52</span>
-                  <div className="h-6 w-px bg-gray-200" />
-                </div>
-                <Input
-                  ref={inputRef}
-                  value={telefono}
-                  onChange={(e) => {
-                    const onlyDigits = e.target.value.replace(/\D/g, '');
-                    setTelefono(onlyDigits);
-                  }}
-                  placeholder="10 dígitos"
-                  className="pl-[4.5rem] pr-14 h-16 text-2xl font-black rounded-2xl border-2 border-gray-200 bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all tracking-widest shadow-sm"
-                  type="tel"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={10}
-                  required
-                  autoFocus
-                />
-                <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
-                  <span className={`text-sm font-bold tabular-nums transition-colors ${
-                    telefono.length === 10 ? 'text-green-500' : 'text-gray-300'
-                  }`}>
-                    {telefono.length}/10
-                  </span>
-                </div>
+            <div className="loyalty-entry-card">
+              <div className="loyalty-entry-card-heading">
+                <span className="loyalty-card-kicker">ACCESO A TU TARJETA</span>
+                <h2>Consulta tus puntos</h2>
+                <p>Escribe el celular con el que te registraste.</p>
               </div>
-
-              {/* Digit progress dots */}
-              <div className="flex gap-1.5 justify-center">
-                {Array.from({ length: 10 }).map((_, i) => (
-                  <motion.div
-                    key={i}
-                    className="h-1 rounded-full"
-                    animate={{
-                      backgroundColor: i < telefono.length ? '#f97316' : '#e5e7eb',
-                      width: i < telefono.length ? 20 : 10,
-                    }}
-                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              <form onSubmit={handleBuscar} className="loyalty-entry-form">
+                <label htmlFor="loyalty-client-phone">Número celular</label>
+                <div className="loyalty-entry-phone">
+                  <span>+52</span>
+                  <input
+                    id="loyalty-client-phone"
+                    ref={inputRef}
+                    value={telefono}
+                    onChange={(event) => setTelefono(event.target.value.replace(/\D/g, '').slice(0, 10))}
+                    disabled={access.busy}
+                    placeholder="10 dígitos"
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    pattern="[0-9]{10}"
+                    maxLength={10}
+                    required
+                    aria-describedby="loyalty-client-phone-help"
                   />
-                ))}
-              </div>
-
-              {/* CTA */}
-              <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.97 }}>
-                <Button
-                  type="button"
-                  onClick={(e) => handleBuscar(e as any)}
-                  disabled={telefono.length < 10}
-                  className="w-full h-14 bg-gradient-primary text-white font-bold text-lg rounded-2xl shadow-xl shadow-primary/30 disabled:opacity-40 disabled:shadow-none transition-all flex items-center justify-center gap-2"
-                >
-                  Consultar mi saldo
-                  <ArrowRight className="w-5 h-5" />
-                </Button>
-              </motion.div>
-
-              {/* Divider */}
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-gray-200" />
-                <span className="text-xs text-gray-400 font-medium">¿Nuevo aquí?</span>
-                <div className="flex-1 h-px bg-gray-200" />
-              </div>
-
-              {/* Register via WhatsApp */}
-              <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.97 }}>
-                <Button
-                  type="button"
-                  onClick={() => window.open(`${whatsappUrl}?text=Quiero%20registrarme`, '_blank')}
-                  className="w-full h-12 bg-white text-gray-700 border-2 border-gray-200 font-semibold text-sm rounded-2xl hover:border-green-400 hover:text-green-700 transition-all flex items-center justify-center gap-2"
-                >
-                  <Phone className="w-4 h-4 text-green-500" />
-                  Regístrate gratis por WhatsApp
-                </Button>
-              </motion.div>
-
-              {/* ── BANNER ESTRELLA EATS (NUEVO) ── */}
-              <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-                className="mt-6 p-[2px] rounded-3xl bg-gradient-to-r from-orange-400 via-amber-500 to-orange-400 shadow-lg shadow-orange-500/20"
-              >
-                <div className="bg-white p-5 rounded-[22px] flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
-                  <div className="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center shrink-0">
-                    <Utensils className="w-7 h-7 text-orange-500" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-gray-900 text-lg">Pide en Estrella Eats</h3>
-                    <p className="text-sm text-gray-500 mt-1">Nuestros restaurantes asociados te esperan. <b>Acumula puntos con cada pedido.</b></p>
-                  </div>
-                  <Button
-                    onClick={() => window.open('https://estrella-eats.shop', '_blank')}
-                    className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl h-11 px-6 shadow-md shadow-orange-500/30"
-                  >
-                    Ver Restaurantes
-                  </Button>
+                  <small>{telefono.length}/10</small>
                 </div>
-              </motion.div>
-
-              {/* Benefit chips */}
-              <div className="grid grid-cols-3 gap-3 pt-4">
-                {[
-                  { icon: Gift, label: '6to gratis', sub: 'Cada 5 envíos', cls: 'text-orange-500 bg-orange-50' },
-                  { icon: Star, label: 'Fidelidad', sub: 'Suma beneficios', cls: 'text-primary bg-orange-50' },
-                  { icon: Truck, label: 'Garantizado', sub: 'Envío seguro', cls: 'text-green-600 bg-green-50' },
-                ].map(({ icon: Icon, label, sub, cls }) => (
-                  <div key={label} className="flex flex-col items-center gap-2 p-3 bg-white rounded-2xl border border-gray-100 shadow-sm text-center">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${cls}`}>
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <p className="text-[11px] font-black text-gray-800 leading-tight">{label}</p>
-                    <p className="text-[10px] text-gray-400 leading-tight">{sub}</p>
-                  </div>
-                ))}
+                <p id="loyalty-client-phone-help">Te enviaremos un código por WhatsApp para proteger tu tarjeta.</p>
+                {access.accessError && <p className="loyalty-access-error" role="alert">{access.accessError}</p>}
+                <button type="submit" disabled={telefono.length !== 10 || access.busy}>{access.busy ? 'Enviando tu código…' : 'Recibir código por WhatsApp'} <ArrowRight size={18} aria-hidden="true" /></button>
+              </form>
+              <div className="loyalty-entry-register">
+                <p>¿Todavía no estás registrado?</p>
+                <a href={whatsappUrl + '?text=Quiero%20registrarme'} target="_blank" rel="noopener noreferrer"><Phone size={17} aria-hidden="true" /> Regístrate por WhatsApp</a>
               </div>
-            </motion.div>
-          </motion.div>
+            </div>
+          </section>
         )}
-
-        {/* ══════════════════════════════════════════════════
-            PIN SETUP — obligar a crear PIN (primer acceso)
-        ══════════════════════════════════════════════════ */}
-        {(viewState === 'pin-setup' || viewState === 'pin-verify') && cliente && (
-          <>
-            {/* Fondo translúcido — solo mobile */}
-            <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-30 lg:hidden" />
-
-            {/* ── Mobile: bottom sheet que sube desde abajo ── */}
-            <motion.div
-              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-              className="fixed bottom-0 inset-x-0 z-40 lg:hidden bg-white rounded-t-3xl shadow-2xl"
-              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-            >
-              <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mt-3 mb-1" />
-              <div className="px-6 py-8 space-y-8">
-                {viewState === 'pin-setup' ? (
-                  <>
-                    <div className="text-center">
-                      <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
-                        <span className="text-4xl">🔒</span>
-                      </div>
-                      <h2 className="text-2xl font-black text-gray-800 leading-tight">
-                        {pinSetupStep === 'enter' ? 'Crea tu PIN de seguridad' : 'Confirma tu PIN'}
-                      </h2>
-                      <p className="text-base text-muted-foreground mt-2 font-medium">
-                        {pinSetupStep === 'enter'
-                          ? 'Elige 4 dígitos para proteger tu cuenta'
-                          : 'Vuelve a ingresar los mismos 4 dígitos'}
-                      </p>
-                    </div>
-                    <PinEntry key={pinSetupStep} onComplete={handlePinSetup} disabled={pinLoading} error={pinError} />
-                    {pinLoading && <p className="text-center text-sm text-primary animate-pulse">Guardando...</p>}
-                  </>
-                ) : (
-                  <>
-                    <div className="text-center">
-                      <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
-                        <span className="text-4xl">🔑</span>
-                      </div>
-                      <h2 className="text-2xl font-black text-gray-800 leading-tight">Ingresa tu PIN</h2>
-                      <p className="text-base text-muted-foreground mt-2 font-medium">
-                        Hola, <strong>{cliente.nombre || cliente.telefono}</strong> 👋
-                      </p>
-                    </div>
-                    <PinEntry onComplete={handlePinVerify} disabled={pinLoading} error={pinError} />
-                    {pinLoading && <p className="text-center text-sm text-primary animate-pulse">Verificando...</p>}
-                    {pinAttempts > 0 && (
-                      <p className="text-center text-sm font-bold text-red-500 bg-red-50 py-2.5 rounded-xl">
-                        Intento {pinAttempts}/5 — {5 - pinAttempts} restante{5 - pinAttempts !== 1 ? 's' : ''}
-                      </p>
-                    )}
-                    <button onClick={handleReset} className="w-full text-center text-sm font-bold text-gray-400 hover:text-gray-600 py-3 mt-2">
-                      No soy yo — Cambiar número
-                    </button>
-                  </>
-                )}
-              </div>
-            </motion.div>
-
-            {/* ── Desktop: card centrado ── */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-              className="hidden lg:flex items-center justify-center min-h-[60vh]"
-            >
-              <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-8 space-y-6">
-                {viewState === 'pin-setup' ? (
-                  <>
-                    <div className="text-center">
-                      <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <span className="text-4xl">🔒</span>
-                      </div>
-                      <h2 className="text-2xl font-bold text-gray-800">
-                        {pinSetupStep === 'enter' ? 'Crea tu PIN' : 'Confirma tu PIN'}
-                      </h2>
-                      <p className="text-sm text-muted-foreground mt-2">
-                        {pinSetupStep === 'enter'
-                          ? 'Elige 4 dígitos para proteger tu cuenta'
-                          : 'Ingresa nuevamente los mismos 4 dígitos'}
-                      </p>
-                    </div>
-                    <PinEntry key={pinSetupStep} onComplete={handlePinSetup} disabled={pinLoading} error={pinError} />
-                    {pinLoading && <p className="text-center text-sm text-primary animate-pulse">Guardando...</p>}
-                  </>
-                ) : (
-                  <>
-                    <div className="text-center">
-                      <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <span className="text-4xl">🔑</span>
-                      </div>
-                      <h2 className="text-2xl font-bold text-gray-800">Ingresa tu PIN</h2>
-                      <p className="text-sm text-muted-foreground mt-2">
-                        Hola, <strong>{cliente.nombre || cliente.telefono}</strong> 👋
-                      </p>
-                    </div>
-                    <PinEntry onComplete={handlePinVerify} disabled={pinLoading} error={pinError} />
-                    {pinLoading && <p className="text-center text-sm text-primary animate-pulse">Verificando...</p>}
-                    {pinAttempts > 0 && (
-                      <p className="text-center text-xs text-red-500">
-                        Intento {pinAttempts}/5 — {5 - pinAttempts} restante{5 - pinAttempts !== 1 ? 's' : ''}
-                      </p>
-                    )}
-                    <button onClick={handleReset} className="w-full text-center text-xs text-gray-400 hover:text-gray-600 py-1">
-                      No soy yo — Cambiar número
-                    </button>
-                  </>
-                )}
-              </div>
-            </motion.div>
-          </>
+        {viewState === 'otp' && (
+          <CustomerOtpCard challenge={access.challenge} phone={telefono} code={access.codigo} busy={access.busy}
+            error={access.accessError} onCode={access.setCodigo} onVerify={() => {void access.verifyCode();}}
+            onResend={() => {void access.requestCode(true);}} onChangeNumber={handleReset} />
         )}
 
         {/* --- RESULT --- */}
@@ -950,45 +363,34 @@ export function ClienteView() {
           <motion.div
             initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="w-full overflow-hidden pb-24 lg:pb-0"
+            className="loyalty-dashboard w-full"
           >
-            {/* Header Actions (Share & Exit) - Solo visible en mobile arriba */}
-            <div className="flex items-center justify-between px-4 pb-4 lg:hidden">
-              <h2 className="text-xl font-bold text-gray-900">
-                {activeTab === 'home' ? 'Inicio' : activeTab === 'wallet' ? 'Billetera' : 'Perfil'}
-              </h2>
-              <div className="flex items-center gap-2">
-                <button onClick={handleShare} className="w-9 h-9 rounded-full flex items-center justify-center bg-orange-50 text-primary">
-                  <Share2 className="w-4 h-4" />
+            {access.refreshError && <div className="loyalty-data-error" role="alert"><p>{access.refreshError}</p><button type="button" onClick={() => {void access.refresh();}}>Actualizar tarjeta</button></div>}
+            <div className="loyalty-dashboard-intro">
+              <div>
+                <p className="loyalty-eyebrow">MI ESPACIO ESTRELLA</p>
+                <h1 className="loyalty-portal-heading">Hola, {cliente.nombre || 'bienvenido'}.</h1>
+                <p>Aquí están tus puntos, beneficios y movimientos.</p>
+              </div>
+              <div className="loyalty-dashboard-actions">
+                <button type="button" onClick={handleShare} className="loyalty-share-action">
+                  <Share2 size={18} aria-hidden="true" /> Compartir tarjeta
                 </button>
-                <button onClick={handleReset} className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 bg-gray-50">
-                  <LogOut className="w-4 h-4" />
-                </button>
+                <a className="loyalty-contact-action" href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+                  <Phone size={17} aria-hidden="true" /> Ayuda
+                </a>
               </div>
             </div>
 
-            <div className="flex flex-col lg:flex-row gap-4 lg:gap-8 items-start">
-              
-              {/* HOME TAB (Mobile) OR LEFT SIDEBAR (Desktop) */}
-              <div className={`w-full lg:w-96 shrink-0 min-w-0 lg:sticky lg:top-24 space-y-6 overflow-hidden ${activeTab === 'home' ? 'block' : 'hidden lg:block'}`}>
-                {/* Desktop Header */}
-                <div className="hidden lg:flex items-center justify-between px-2 pb-2">
-                  <h2 className="text-xl font-bold text-gray-900">Mi Tarjeta VIP</h2>
-                  <div className="flex items-center gap-2">
-                    <button onClick={handleShare} className="w-9 h-9 rounded-full flex items-center justify-center bg-orange-50 text-primary">
-                      <Share2 className="w-4 h-4" />
-                    </button>
-                    <button onClick={handleReset} className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 bg-gray-50">
-                      <LogOut className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Cloudinary VIP Card */}
-                <div className="relative w-full max-w-[420px] mx-auto rounded-[20px] overflow-hidden shadow-[0_20px_40px_-15px_rgba(0,0,0,0.3)] transition-transform hover:-translate-y-1 ring-1 ring-black/5">
-                  <img src={generateCloudinaryVIPCard(cliente.telefono)} alt="Tarjeta VIP" className="w-full h-auto object-cover" />
-                </div>
-                <ProgressCard 
+            <nav className="loyalty-dashboard-jumps" aria-label="Secciones de mi tarjeta">
+              <a href="#loyalty-overview">Mis puntos</a>
+              <a href="#loyalty-card">Mi QR</a>
+              <a href="#loyalty-benefits">Beneficios</a>
+              <a href="#loyalty-history">Movimientos</a>
+            </nav>
+            <div className="loyalty-dashboard-columns">
+              <div className="loyalty-dashboard-primary" id="loyalty-overview">
+                <ProgressCard
                   cliente={cliente}
                   metaVip={metaVip}
                   progreso={progreso}
@@ -996,55 +398,42 @@ export function ClienteView() {
                   displayPointsRounded={displayPointsRounded}
                   onCanjear={() => setShowCanjeModal(true)}
                 />
-
-                {/* ── BANNER SECUNDARIO ESTRELLA EATS (PERFIL) ── */}
-                <div onClick={() => window.open('https://estrella-eats.shop', '_blank')} className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-[20px] p-4 flex items-center gap-4 cursor-pointer hover:shadow-md hover:border-orange-300 transition-all group">
-                  <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:shadow-lg shadow-orange-500/20 transition-all">
-                    <Utensils className="w-6 h-6 text-orange-500" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="font-bold text-gray-900 text-sm">¿Tienes hambre?</h4>
-                    <p className="text-xs text-gray-500 mt-0.5">Pide en <b className="text-orange-600">Estrella Eats</b> y suma puntos</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* MIDDLE COLUMN (Wallet & Stats) */}
-              <div className={`w-full min-w-0 space-y-6 lg:max-w-xl ${activeTab === 'wallet' ? 'block' : 'hidden lg:block'}`}>
-                <WalletSection cliente={cliente} />
                 <ClientStats cliente={cliente} historial={historial} />
               </div>
 
-              {/* RIGHT COLUMN (Profile / History) */}
-              <div className={`w-full min-w-0 space-y-6 lg:max-w-md ${activeTab === 'profile' ? 'block' : 'hidden lg:block'}`}>
-                <HistorialTimeline historial={historial} cuponActivo={cliente?.cupon_activo} />
+              <div className="loyalty-dashboard-secondary">
+                <section className="loyalty-qr-card" id="loyalty-card" aria-labelledby="loyalty-qr-title">
+                  <div className="loyalty-qr-heading">
+                    <span className="loyalty-card-kicker">TU TARJETA</span>
+                    <h2 id="loyalty-qr-title">Lista para sumar</h2>
+                    <p>Muestra tu código al pedir para registrar tus entregas.</p>
+                  </div>
+                  <div className="loyalty-qr-content">
+                    <div className="loyalty-qr-image">
+                      <img src={generateCloudinaryVIPCard(cliente.telefono)} alt="Código QR de tu tarjeta Estrella" width="174" height="174" />
+                    </div>
+                    <div className="loyalty-qr-detail">
+                      <span>ESTRELLA · PUNTOS</span>
+                      <strong>{cliente.es_vip ? 'Miembro VIP' : cliente.rango || 'Miembro'}</strong>
+                      <p>Tu código es personal. Tenlo a mano cuando hagas tu siguiente pedido.</p>
+                    </div>
+                  </div>
+                </section>
+                <div id="loyalty-benefits"><WalletSection cliente={cliente} onClienteUpdate={setCliente} /></div>
               </div>
-
             </div>
-          </motion.div>
+
+            <div className="loyalty-dashboard-history" id="loyalty-history">
+              {access.historyError ? <div className="loyalty-data-error" role="alert"><p>{access.historyError}</p><button type="button" onClick={() => {void access.retryHistory();}}>Reintentar movimientos</button></div> : <HistorialTimeline historial={historial} cuponActivo={cliente?.cupon_activo} />}
+            </div>          </motion.div>
         )}
       </main>
 
-      <BottomNav activeTab={activeTab} onChange={setActiveTab} />
       
 
-      <footer className="hidden lg:block border-t border-gray-100 bg-white/50 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 flex items-center justify-center">
-                <img src="/estrella-circle.png" alt="Estrella" className="w-full h-full object-contain" />
-              </div>
-              <span className="font-semibold text-sm text-gray-700">Estrella Delivery</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-gray-400">
-              <Clock className="w-3.5 h-3.5" /> Lun - Dom: 9 AM - 10 PM
-            </div>
-          </div>
-          <div className="mt-4 pt-4 border-t border-gray-100 text-center text-[10px] text-gray-300">
-            © {new Date().getFullYear()} Estrella Delivery - Hecho con <Heart className="w-2.5 h-2.5 text-red-400 fill-red-400 inline mx-0.5" /> para nuestros clientes
-          </div>
-        </div>
+      <footer className="loyalty-portal-footer">
+        <span>© {new Date().getFullYear()} Estrella</span>
+        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">Contacto por WhatsApp</a>
       </footer>
 
       <AnimatePresence>
@@ -1057,29 +446,12 @@ export function ClienteView() {
         {cliente && (
           <CanjeModal
             isOpen={showCanjeModal}
-            onClose={() => { setShowCanjeModal(false); if (cliente?.telefono) getClienteByTelefono(cliente.telefono).then(d => {if(d && !('found' in d)) setCliente(d)}) }}
-            cliente={cliente as Cliente}
+            onClose={() => {setShowCanjeModal(false); void access.refresh();}}
+            cliente={cliente}
           />
         )}
       </AnimatePresence>
-      {/* Floating WhatsApp button */}
-      <motion.a
-        href={whatsappUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="fixed bottom-24 lg:bottom-6 right-5 z-40 w-14 h-14 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center shadow-xl shadow-green-500/40 transition-colors"
-        style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
-        initial={{ scale: 0, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.8, type: 'spring', stiffness: 260, damping: 20 }}
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.93 }}
-        aria-label="Contactar por WhatsApp"
-      >
-        <svg viewBox="0 0 24 24" className="w-7 h-7 fill-white" xmlns="http://www.w3.org/2000/svg">
-          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-        </svg>
-      </motion.a>
+
 
     </motion.div>
   );

@@ -4,11 +4,10 @@
 // Extraído de ClienteView. Maneja su propio estado del modal de canje.
 
 import { useState } from 'react';
-import { Wallet, Utensils, Truck, ChevronLeft, X, Loader2, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, Copy, Ticket, Wallet, Utensils, Truck, ChevronLeft, X, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from '@/components/ui/toast-native';
 import { MAX_COBERTURA_ENVIO_GRATIS } from '@/lib/constants';
-import { supabase } from '@/lib/supabase';
-import { logCriticalError } from '@/lib/logger';
+import { redeemCustomerBenefit, type CustomerRedemption } from '@/lib/customer-loyalty';
 import type { Cliente } from '@/types';
 
 interface WalletSectionProps {
@@ -25,146 +24,93 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
   const [deliveryCost, setDeliveryCost] = useState('');
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletMsg, setWalletMsg] = useState('');
+  const [walletCode,setWalletCode] = useState('');
 
   const resetModal = () => {
+    if (walletLoading) return;
     setShowModal(false);
     setWalletMode('select');
     setFoodAmount('');
     setDeliveryCost('');
     setWalletMsg('');
+    setWalletCode('');
     setWalletLoading(false);
   };
 
-  // notifyWhatsApp se eliminó porque la Edge Function canjear-puntos
-  // lo hace de forma segura en el backend.
-
+  const applyRedemption = async (amount: number, summary: (result: CustomerRedemption) => string) => {
+    if (walletLoading) return;
+    setWalletLoading(true); setWalletMsg('');
+    try {
+      const result=await redeemCustomerBenefit({phone:cliente.telefono,type:'billetera',amount});
+      setWalletMsg(summary(result)); setWalletCode(result.codigo); setWalletMode('success');
+      onClienteUpdate(previous => previous ? {...previous,saldo_billetera:result.saldo_nuevo,
+        puntos:result.puntos_nuevos,envios_gratis_disponibles:result.envios_gratis_nuevos,cupon_activo:result.codigo} : previous);
+    } catch(error: unknown) {
+      setWalletMsg(error instanceof Error ? error.message : 'No pudimos confirmar tu canje. Intenta de nuevo.');
+    } finally {setWalletLoading(false);}
+  };
   const handleCanjeComida = async () => {
-    const monto = parseFloat(foodAmount);
-    if (isNaN(monto) || monto <= 0 || monto > (cliente.saldo_billetera || 0)) return;
-    if (monto > 350) {
-      setWalletMsg(`❌ El límite máximo de canje por transacción es de $350 pesos.`);
-      return;
+    const amount=Number(foodAmount);
+    if (!Number.isFinite(amount) || amount<=0 || Number(amount.toFixed(2))!==amount || amount>cliente.saldo_billetera) {
+      setWalletMsg('Escribe un importe válido que puedas cubrir con tu saldo.'); return;
     }
-    if (cliente.cupon_activo) {
-      setWalletMsg(`❌ Ya tienes un cupón activo: ${cliente.cupon_activo}. Úsalo antes de generar otro.`);
-      return;
-    }
-    setWalletLoading(true);
-    const { data, error } = await supabase.functions.invoke('canjear-puntos', {
-      body: {
-        clienteTel: cliente.telefono,
-        tipo: 'billetera',
-        saldoAUsar: monto
-      }
-    });
-    setWalletLoading(false);
-
-    const res = error ? { ok: false, error: error.message } : (data || { ok: false, error: 'Respuesta vacía del servidor' });
-
-    if (res.ok) {
-      const codigo = res.codigo || 'SIN-CODIGO';
-      const nuevoSaldo = typeof res.nuevo_saldo === 'number'
-        ? res.nuevo_saldo
-        : Math.max(0, (cliente.saldo_billetera || 0) - monto);
-      setWalletMsg(`✅ Se descontaron $${monto.toFixed(2)} de tu billetera VIP.\n🎟️ Código de descuento: ${codigo}`);
-      setWalletMode('success');
-      onClienteUpdate(prev => prev ? { ...prev, saldo_billetera: nuevoSaldo, cupon_activo: codigo } : prev);
-    } else {
-      setWalletMsg(`❌ ${res.error || 'Error al procesar el canje'}`);
-      logCriticalError('Error en canje de comida billetera', res);
-    }
+    if (amount>300) {setWalletMsg('Puedes canjear hasta $300 por transacción.'); return;}
+    if (cliente.cupon_activo) {setWalletMsg('Ya tienes un cupón activo. Úsalo antes de generar otro.'); return;}
+    await applyRedemption(amount,result => `Se descontaron $${result.valor_pesos.toFixed(2)} de tu billetera VIP.\nTu cupón quedó guardado.`);
   };
-
   const handleCanjeEnvio = async () => {
-    if (cliente.cupon_activo) {
-      setWalletMsg(`❌ Ya tienes un cupón activo: ${cliente.cupon_activo}. Úsalo antes de generar otro.`);
-      return;
-    }
-    const costoReal = parseFloat(deliveryCost) || MAX_COBERTURA_ENVIO_GRATIS;
-    const cobertura = Math.min(costoReal, MAX_COBERTURA_ENVIO_GRATIS);
-    const diferencia = Math.max(0, costoReal - MAX_COBERTURA_ENVIO_GRATIS);
-    if (cobertura > (cliente.saldo_billetera || 0)) {
-      setWalletMsg(`❌ Saldo insuficiente. El canje de envío requiere al menos $${cobertura.toFixed(2)}`);
-      return;
-    }
-    setWalletLoading(true);
-    const { data, error } = await supabase.functions.invoke('canjear-puntos', {
-      body: {
-        clienteTel: cliente.telefono,
-        tipo: 'billetera',
-        saldoAUsar: cobertura
-      }
-    });
-    setWalletLoading(false);
-
-    const res = error ? { ok: false, error: error.message } : (data || { ok: false, error: 'Respuesta vacía del servidor' });
-
-    if (res.ok) {
-      const codigo = res.codigo || 'SIN-CODIGO';
-      const nuevoSaldo = typeof res.nuevo_saldo === 'number'
-        ? res.nuevo_saldo
-        : Math.max(0, (cliente.saldo_billetera || 0) - cobertura);
-      const msg = diferencia > 0
-        ? `✅ Cobertura de $${cobertura.toFixed(2)} aplicada.\n💳 Diferencia a pagar: $${diferencia.toFixed(2)}\n🎟️ Código: ${codigo}`
-        : `✅ Envío cubierto totalmente ($${cobertura.toFixed(2)}) con tu Billetera VIP.\n🎟️ Código: ${codigo}`;
-      setWalletMsg(msg);
-      setWalletMode('success');
-      onClienteUpdate(prev => prev ? { ...prev, saldo_billetera: nuevoSaldo, cupon_activo: codigo } : prev);
-    } else {
-      setWalletMsg(`❌ ${res.error || 'Error al procesar el canje'}`);
-      logCriticalError('Error en canje de envío billetera', res);
-    }
+    if (cliente.cupon_activo) {setWalletMsg('Ya tienes un cupón activo. Úsalo antes de generar otro.'); return;}
+    const cost=deliveryCost.trim() ? Number(deliveryCost) : MAX_COBERTURA_ENVIO_GRATIS;
+    if (!Number.isFinite(cost) || cost<=0 || Number(cost.toFixed(2))!==cost) {setWalletMsg('Escribe un costo de envío válido.'); return;}
+    const coverage=Math.min(cost,MAX_COBERTURA_ENVIO_GRATIS),difference=Math.max(0,cost-MAX_COBERTURA_ENVIO_GRATIS);
+    if (coverage>cliente.saldo_billetera) {setWalletMsg(`Necesitas $${coverage.toFixed(2)} de saldo para este canje.`); return;}
+    await applyRedemption(coverage,result => difference>0
+      ? `Tu cupón cubre $${result.valor_pesos.toFixed(2)}. La diferencia del envío es $${difference.toFixed(2)}.`
+      : `Tu cupón cubre $${result.valor_pesos.toFixed(2)} de envío.`);
   };
 
   // ── Wallet card (collapsed) ──────────────────────────────────────────────
   if (!showModal) {
     return (
-      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden min-w-0 w-full max-w-full">
-        {/* Saldo */}
-        <div className="p-5 border-b border-gray-50">
-          <div className="flex items-center gap-2 mb-2">
-            <Wallet className="w-5 h-5 text-amber-500" />
-            <span className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Billetera VIP</span>
+      <section className="loyalty-wallet" aria-labelledby="loyalty-wallet-title">
+        <div className="loyalty-wallet-head">
+          <div className="loyalty-section-title">
+            <Wallet size={20} aria-hidden="true" />
+            <h2 id="loyalty-wallet-title">Billetera VIP</h2>
           </div>
-          <p className="text-5xl font-black text-gray-900 mt-2">${(cliente.saldo_billetera || 0).toFixed(2)}</p>
-          <p className="text-sm text-gray-400 mt-1">Saldo disponible</p>
+          <div className="loyalty-wallet-balance">
+            <strong>{'$' + (cliente.saldo_billetera || 0).toFixed(2)}</strong>
+            <span>Saldo disponible</span>
+          </div>
         </div>
-
-        {/* Cupón activo — bloquea el canje */}
         {cliente.cupon_activo ? (
-          <div className="p-4">
-            <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4 space-y-2 overflow-hidden min-w-0">
-              <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider">🎟️ Cupón activo</p>
-              <p className="font-mono font-black text-amber-700 text-base tracking-wide break-all">{cliente.cupon_activo}</p>
-              <p className="text-xs text-amber-600/80">Usa este código con el repartidor. No puedes generar otro hasta que se marque como usado.</p>
-              <button
-                onClick={() => navigator.clipboard.writeText(cliente.cupon_activo!)}
-                className="text-xs font-bold text-amber-600 bg-amber-200/60 px-3 py-1.5 rounded-lg hover:bg-amber-300/60 transition-colors"
-              >
-                Copiar código
-              </button>
+          <div className="loyalty-wallet-body">
+            <div className="loyalty-wallet-coupon">
+              <span><Ticket size={17} aria-hidden="true" /> Cupón activo</span>
+              <strong>{cliente.cupon_activo}</strong>
+              <p>Muestra este código al repartidor. Podrás generar otro cuando éste se haya usado.</p>
+              <button type="button" onClick={() =>
+                navigator.clipboard.writeText(cliente.cupon_activo!)
+                  .then(() => toast.success('Código copiado', 'Listo para usar'))
+                  .catch(() => toast.error('No se pudo copiar', 'Selecciona el código para copiarlo'))
+              }><Copy size={16} aria-hidden="true" /> Copiar código</button>
             </div>
           </div>
         ) : (
-          <div className="p-4 space-y-3">
+          <div className="loyalty-wallet-body">
             {(cliente.saldo_billetera || 0) > 0 ? (
-              <button
-                onClick={() => { setShowModal(true); setWalletMode('select'); }}
-                className="w-full py-4 rounded-2xl bg-amber-500 text-white font-bold text-lg flex items-center justify-center gap-3 hover:bg-amber-600 transition-colors shadow-md shadow-amber-500/30"
-              >
-                <Wallet className="w-6 h-6" />
-                Canjear Beneficios
+              <button type="button" className="loyalty-wallet-action" onClick={() => { setShowModal(true); setWalletMode('select'); }}>
+                Usar mi saldo <ArrowRight size={18} aria-hidden="true" />
               </button>
             ) : (
-              <p className="text-center text-gray-400 text-xs py-1">Acumula saldo realizando envíos</p>
+              <p className="loyalty-wallet-empty">Tu saldo se acumula con las entregas participantes.</p>
             )}
-            <p className="text-center text-sm text-gray-400 mt-1">💡 Descuento en comida o envío gratis (hasta $45)</p>
+            <p className="loyalty-wallet-help">Puedes usarlo en comida o cubrir hasta ${MAX_COBERTURA_ENVIO_GRATIS} de un envío.</p>
           </div>
         )}
-      </div>
+      </section>
     );
   }
-
   // ── Wallet modal (expanded) ──────────────────────────────────────────────
   return (
     <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
@@ -177,7 +123,7 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
             <p className="text-sm text-gray-400">Puntos: <strong className="text-amber-600">{cliente.puntos || 0}</strong></p>
           </div>
         </div>
-        <button onClick={resetModal} className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors">
+        <button onClick={resetModal} disabled={walletLoading} aria-label="Cerrar billetera" className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors">
           <X className="w-5 h-5" />
         </button>
       </div>
@@ -237,12 +183,12 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
                 <input
                   type="number"
                   min="1"
-                  max={Math.min(350, cliente.saldo_billetera || 0)}
+                  max={Math.min(300, cliente.saldo_billetera || 0)}
                   step="0.01"
                   value={foodAmount}
                   onChange={e => {
                     const val = e.target.value;
-                    if (parseFloat(val) > 350) setFoodAmount('350');
+                    if (parseFloat(val) > 300) setFoodAmount('300');
                     else setFoodAmount(val);
                   }}
                   placeholder="0.00"
@@ -252,7 +198,7 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
               {walletMsg && <p className="mt-2 text-xs text-red-500">{walletMsg}</p>}
             </div>
             <button
-              disabled={walletLoading || !foodAmount || parseFloat(foodAmount) <= 0 || parseFloat(foodAmount) > Math.min(350, cliente.saldo_billetera || 0)}
+              disabled={walletLoading || !foodAmount || parseFloat(foodAmount) <= 0 || parseFloat(foodAmount) > Math.min(300, cliente.saldo_billetera || 0)}
               onClick={handleCanjeComida}
               className="w-full py-5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black text-xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed hover:from-orange-600 hover:to-amber-600 transition-all shadow-lg active:scale-[0.98]"
             >
@@ -312,14 +258,13 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
             </div>
             <p className="font-bold text-gray-900 text-lg">¡Canje Exitoso!</p>
             
-            {/* Extract code from walletMsg */}
+            <p className="text-gray-600 text-sm whitespace-pre-line">{walletMsg}</p>
             {(() => {
-              const cMatch = walletMsg.match(/(CANJE-[A-Z0-9]+)/i);
-              const code = cMatch ? cMatch[1] : null;
+              const code = walletCode;
               return code ? (
                 <div className="relative bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-50 border-2 border-dashed border-amber-400 rounded-2xl p-5 space-y-2">
                   <p className="text-xs uppercase tracking-widest text-amber-500 font-bold">Tu código de descuento</p>
-                  <p className="font-mono font-black text-2xl text-amber-700 tracking-[0.25em]">{code}</p>
+                  <p className="font-mono font-bold text-base text-amber-700 break-all">{code}</p>
                   <p className="text-[11px] text-amber-600/70">Muestra o dicta este código al repartidor</p>
                   <button
                     onClick={() => navigator.clipboard.writeText(code).then(() => toast.success('¡Copiado!', 'Código listo para usar')).catch(() => toast.error('Error', 'No se pudo copiar al portapapeles'))}
@@ -333,7 +278,7 @@ export function WalletSection({ cliente, onClienteUpdate }: WalletSectionProps) 
               );
             })()}
             
-            <p className="text-xs text-gray-400 italic">También te lo enviamos por WhatsApp 📲</p>
+            <p className="text-sm text-gray-600">Tu cupón quedó guardado. Puedes consultarlo aquí aunque no llegue el aviso de WhatsApp.</p>
             <button
               onClick={resetModal}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold hover:from-green-600 hover:to-emerald-600 transition-all shadow-md"

@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Gift, X, Loader2, CheckCircle2, Ticket } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import { getMetaPuntos } from '@/lib/constants';
+import { redeemCustomerBenefit, type CustomerRedemption } from '@/lib/customer-loyalty';
 import type { Cliente } from '@/types';
 
 interface CanjeModalProps {
@@ -14,7 +13,7 @@ interface CanjeModalProps {
 export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [successData, setSuccessData] = useState<{codigo: string, valor_pesos: number, expires_at: string} | null>(null);
+  const [successData, setSuccessData] = useState<CustomerRedemption | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -26,7 +25,7 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
 
   const isVip = cliente?.es_vip === true;
   // Meta de puntos dinámica según rango (centralizado en constants.ts)
-  const puntosNecesarios = getMetaPuntos(cliente?.rango, isVip);
+  const puntosNecesarios = 5; // Current redemption RPC; distinct from progress tiers.
   const puedeCanjearNormal = (cliente?.puntos || 0) >= puntosNecesarios || (cliente?.envios_gratis_disponibles || 0) > 0;
   const saldoBilletera = cliente?.saldo_billetera || 0;
 
@@ -35,21 +34,9 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
     setErrorMsg('');
     
     try {
-      const { data, error } = await supabase.functions.invoke('canjear-puntos', {
-        body: {
-          clienteTel: cliente?.telefono,
-          tipo,
-          montoPedido, // 0 for normal, otherwise max 50 for VIP
-        }
-      });
-
-      if (error) throw new Error(error.message);
-      if (data && !data.success) throw new Error(data.error);
-
-      setSuccessData(data);
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.message || 'Ocurrió un error al canjear los puntos.');
+      setSuccessData(await redeemCustomerBenefit({phone:cliente.telefono,type:tipo,delivery:montoPedido}));
+    } catch (error: unknown) {
+      setErrorMsg(error instanceof Error ? error.message : 'No pudimos confirmar el canje. Intenta de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -68,10 +55,12 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
           initial={{ scale: 0.95, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.95, opacity: 0, y: 20 }}
-          className="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl relative"
+          className="loyalty-redeem-modal bg-white dark:bg-gray-900 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl relative" role="dialog" aria-modal="true" aria-labelledby="loyalty-redeem-title"
         >
           <button
             onClick={onClose}
+            disabled={loading}
+            aria-label="Cerrar canje"
             className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/10 hover:bg-black/20 text-gray-700 dark:text-gray-300 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -82,16 +71,16 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
               <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
                 <CheckCircle2 className="w-10 h-10 text-green-500" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">¡Cupón Generado!</h2>
+              <h2 id="loyalty-redeem-title" className="text-2xl font-bold text-gray-900 dark:text-white">Cupón generado</h2>
               <div className="p-4 bg-orange-50 dark:bg-orange-900/20 border-2 border-orange-200 dark:border-orange-500/30 rounded-xl">
                 <p className="text-xs text-orange-600 dark:text-orange-400 font-semibold mb-1 uppercase tracking-wider">Código de Descuento</p>
-                <p className="text-2xl font-black text-gray-900 dark:text-white font-mono tracking-widest">{successData.codigo}</p>
+                <p className="text-base font-bold text-gray-900 dark:text-white font-mono break-all">{successData.codigo}</p>
               </div>
               <p className="text-gray-600 dark:text-gray-400 text-sm">
                 Has obtenido <strong>${successData.valor_pesos} pesos</strong> de descuento para tu próximo envío.
               </p>
               <p className="text-xs text-gray-400">
-                Se te ha enviado el código también por WhatsApp. Expira el {new Date(successData.expires_at).toLocaleDateString()}.
+                Tu cupón quedó guardado. Expira el {new Date(successData.expires_at).toLocaleDateString('es-MX')}. Puedes consultarlo aquí aunque no llegue el aviso de WhatsApp.
               </p>
               <button
                 onClick={onClose}
@@ -101,54 +90,15 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
               </button>
             </div>
           ) : loading ? (
-            <div className="p-12 flex flex-col items-center justify-center bg-white dark:bg-gray-900">
-              <div className="relative w-24 h-24 mb-6">
-                <motion.div
-                  className="absolute inset-0 rounded-full border-4 border-transparent border-t-orange-500 border-r-amber-400"
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 0.9, repeat: Infinity, ease: 'linear' }}
-                />
-                <motion.div
-                  className="absolute inset-2 rounded-full border-4 border-transparent border-b-amber-300 border-l-orange-400"
-                  animate={{ rotate: -360 }}
-                  transition={{ duration: 1.6, repeat: Infinity, ease: 'linear' }}
-                />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <motion.div
-                    className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/40"
-                    animate={{ scale: [1, 1.12, 1] }}
-                    transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
-                  >
-                    <Gift className="w-4 h-4 text-white" />
-                  </motion.div>
-                </div>
-              </div>
-              <div className="text-center">
-                <motion.h2
-                  className="text-xl font-bold text-gray-900 dark:text-white mb-1"
-                  animate={{ opacity: [0.7, 1, 0.7] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                >
-                  Canjeando beneficio...
-                </motion.h2>
-                <p className="text-sm text-gray-400">Por favor no cierres esta ventana</p>
-              </div>
-              <div className="flex justify-center gap-1.5 mt-6">
-                {[0, 1, 2].map((i) => (
-                  <motion.div
-                    key={i}
-                    className="w-1.5 h-1.5 rounded-full bg-orange-400"
-                    animate={{ scale: [1, 1.6, 1], opacity: [0.4, 1, 0.4] }}
-                    transition={{ duration: 1, repeat: Infinity, delay: i * 0.2, ease: 'easeInOut' }}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : (
+            <div className="loyalty-redeem-loading" role="status">
+              <Loader2 size={36} className="animate-spin" aria-hidden="true" />
+              <h2 id="loyalty-redeem-title">Procesando tu canje</h2>
+              <p>Espera un momento mientras confirmamos tu beneficio.</p>
+            </div>          ) : (
             <>
               <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-6 text-white text-center">
                 <Gift className="w-12 h-12 mx-auto mb-2" />
-                <h2 className="text-xl font-bold">Canjear Beneficio</h2>
+                <h2 id="loyalty-redeem-title" className="text-xl font-bold">Canjear beneficio</h2>
                 <p className="text-orange-100 text-sm">Convierte tus puntos en descuentos reales</p>
               </div>
 
@@ -167,7 +117,7 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
                 </div>
 
                 {errorMsg && (
-                  <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
+                  <div role="alert" className="p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
                     {errorMsg}
                   </div>
                 )}
@@ -176,15 +126,15 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
                   <div className="space-y-3">
                     <div className="p-4 border-2 border-orange-100 rounded-xl">
                       <h3 className="font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
-                        <Ticket className="w-5 h-5 text-orange-500" /> Envío Gratis ($50)
+                        <Ticket className="w-5 h-5 text-orange-500" /> Beneficio de envío
                       </h3>
-                      <p className="text-sm text-gray-500 mb-3">Canjea tus beneficios por un cupón de $50 pesos de descuento en tu envío.</p>
+                      <p className="text-sm text-gray-500 mb-3">Usa tus puntos o un envío gratis disponible. Verás el valor exacto del cupón antes de usarlo.</p>
                       <button
                         onClick={() => handleCanjear('envio_normal')}
                         disabled={loading || !puedeCanjearNormal}
                         className="w-full py-3 rounded-xl bg-orange-500 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-orange-600 transition-colors"
                       >
-                        Canjear 5 puntos
+                        Canjear beneficio
                       </button>
                       {!puedeCanjearNormal && (
                         <p className="text-xs text-center text-red-500 mt-2">No tienes envíos gratis ni puntos suficientes.</p>
@@ -198,17 +148,17 @@ export function CanjeModal({ isOpen, onClose, cliente }: CanjeModalProps) {
                         <Ticket className="w-5 h-5 text-amber-500" /> Envío Gratis VIP
                       </h3>
                       <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                        Canjea 5 puntos y usa tu saldo de billetera para pagar tu envío (hasta $50 pesos).
+                        Usa tus puntos disponibles y el saldo de tu billetera para cubrir el envío.
                       </p>
                       <button
                         onClick={() => handleCanjear('envio_vip', 50)}
                         disabled={loading || !puedeCanjearNormal || saldoBilletera <= 0}
                         className="w-full py-3 rounded-xl bg-amber-500 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-amber-600 transition-colors"
                       >
-                        Canjear 5 puntos y Saldo
+                        Canjear beneficio y Saldo
                       </button>
                       {!puedeCanjearNormal ? (
-                        <p className="text-xs text-center text-red-500 mt-2">Necesitas 5 puntos.</p>
+                        <p className="text-xs text-center text-red-500 mt-2">Necesitas {puntosNecesarios} puntos o un envío gratis disponible.</p>
                       ) : saldoBilletera <= 0 ? (
                         <p className="text-xs text-center text-red-500 mt-2">No tienes saldo en tu billetera.</p>
                       ) : null}
