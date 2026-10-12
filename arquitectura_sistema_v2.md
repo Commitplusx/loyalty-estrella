@@ -157,21 +157,20 @@ Cuando el restaurante presiona "Preparar":
 ```
 
 ```
-Cuando el cliente paga en línea:
+Checkout público actual (efectivo + OTP):
   CartPage.tsx
-    └─ INSERT pedidos { estado: 'pendiente_pago' }   ← INVISIBLE en UI
-    └─ POST → mercadopago-checkout
-        └─ Redirect a MercadoPago
-            ├─ ✅ Pago ok → POST mercadopago-webhook
-            │   └─ UPDATE pedidos SET estado='pendiente'
-            │       └─ [TRIGGER BD: "notificar_cambio"]
-            │           └─ POST → notificar-whatsapp
-            │               └─ WA al restaurante con botón "Empezar a preparar"
-            │
-            └─ ❌ Cancelado → returnUrl?error=pago_cancelado
-                └─ CartPage.tsx lee el parámetro
-                └─ Toast de error, pedido queda en 'pendiente_pago' (invisible)
+    ├─ Borrador local + clave idempotente persistida
+    ├─ POST auth-otp: request-client-otp → desafío por WhatsApp
+    └─ POST auth-otp: verify-and-order
+        └─ cash-checkout-gateway valida intención y catálogo
+            └─ RPC checkout_cash_order en PostgreSQL
+                ├─ Error real → conservar borrador / reintentar con la misma clave
+                └─ Pedido persistido válido → limpiar carrito
+                    └─ /success?pedido=... comprueba el registro
+                        └─ /tracker?pedido=... (replace)
 ```
+
+La web actual no inserta `pedidos` directamente ni ofrece Mercado Pago. Los callbacks de pago y las secciones históricas de pagos en línea no describen el checkout vigente. Cocina, notificaciones y asignación conservan los procesos del servidor; confirmar sus fuentes activas y permisos antes de cambiar backend. Contrato comprobado en código el 12 de octubre de 2026; esta actualización documental no constituye una nueva prueba productiva del pedido completo.
 
 ---
 
@@ -198,6 +197,22 @@ Cuando el cliente paga en línea:
 ---
 
 
+
+### 0.8 Web pública y documentación vigente — 12 de octubre de 2026
+
+La web `estrella-eats` es un repositorio independiente: [Commitplusx/restaurantes-estrella](https://github.com/Commitplusx/restaurantes-estrella). Su rama productiva es `main`, proyecto Vercel `deiffs-projects/restaurantes-estrella`, dominio `estrella-eats.mx`. Un push dispara el despliegue; no demuestra que esté Ready ni que la PWA del dispositivo cargue la versión nueva.
+
+Código de Beneficios, Términos, Privacidad y animaciones subido primero en `3c51df8`: lectura con índice, móvil/PC, contenido legal conservado y enlace Ver restaurantes al catálogo. El scrollbar móvil se oculta sin eliminar el carrusel. La entrada/salida es acotada y la opción reducir movimiento omite desplazamiento y espera. No cambia Supabase, worker ni APK.
+
+La documentación del frontend complementa este archivo, sin crear otra arquitectura de negocio:
+
+- [Entrada y configuración del repositorio web](https://github.com/Commitplusx/restaurantes-estrella/blob/main/README.md).
+- [Rutas, estado local, contratos y preparación de backend](https://github.com/Commitplusx/restaurantes-estrella/blob/main/docs/GUIA_WEB.md).
+- [Mapbox y límites del selector de dirección](https://github.com/Commitplusx/restaurantes-estrella/blob/main/docs/MAPBOX_CART_20261012.md).
+- [Aviso de nuevas versiones de la PWA](https://github.com/Commitplusx/restaurantes-estrella/blob/main/docs/WEB_UPDATES_2026-10-12.md).
+- [Información pública, movimiento y evidencia](https://github.com/Commitplusx/restaurantes-estrella/blob/main/docs/PUBLIC_INFO_DESIGN_20261012.md).
+
+Antes del siguiente trabajo de backend, inventariar las diferencias locales/productivas: esta copia de Loyalty conserva cambios previos en Edge, Flutter, paneles y migraciones, con archivos sin versionar y eliminaciones pendientes de revisión. No desplegar todo por estar en local; verificar esquema, constraints, RLS, RPC, contratos e idempotencia y versionar sólo archivos revisados. Build de la web aprobado no certifica el backend. Las secciones históricas de este documento no reemplazan esa comprobación.
 
 ## 1. Mapa del sistema
 
