@@ -23,4 +23,3 @@ REVOKE ALL ON FUNCTION public.loyalty_guard_restaurant_identity() FROM PUBLIC, a
 DROP TRIGGER IF EXISTS loyalty_guard_restaurant_identity ON public.restaurantes;
 CREATE TRIGGER loyalty_guard_restaurant_identity BEFORE UPDATE ON public.restaurantes
 FOR EACH ROW EXECUTE FUNCTION public.loyalty_guard_restaurant_identity();
-
