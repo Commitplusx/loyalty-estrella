@@ -1,4 +1,6 @@
 # 🌟 Estrella Delivery — Arquitectura del Sistema v3.0
+> **Sucursales Estrella Eats, 15 de octubre de 2026:** una marca, menú/ubicación/horarios por local y acceso por teléfono con contraseña generada. La principal administra el grupo; cada sucursal opera su local. Backend publicado con migraciones 20261015000003/004 y branch-access v1; prueba temporal real de creación/login/rotación/aislamiento y limpieza completa. 31 SQL y 11 Deno aprobadas. GitHub/web en cierre. [Contratos, evidencia e instrucciones](docs/RESTAURANT_BRANCHES_20261015.md).
+
 > Documento vivo para desarrolladores. Última actualización: julio 2026.
 
 ## Tabla de Contenidos
