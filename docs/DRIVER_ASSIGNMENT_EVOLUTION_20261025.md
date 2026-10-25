@@ -1,5 +1,7 @@
 # Evolución de la asignación de Estrella Eats
 
+**Actualización posterior:** la primera versión por presencia y tiempo de llegada ya está implementada y activa; [contrato, APK y evidencia](DRIVER_ASSIGNMENT_V2_20261025.md). Este documento conserva el plan inicial. Agrupación de viajes y entrenamiento predictivo no están activados; los viajes aceptados se protegen de desvíos automáticos.
+
 Propuesta técnica del 25 de octubre de 2026, basada en el código y PostgreSQL publicados. **No está activada una versión nueva del ranking por ETA.** Las correcciones vigentes están descritas en [la publicación](EATS_BACKEND_ALGORITHM_FIXES_20261025.md). No se conoce ni se intenta reproducir el algoritmo propietario de Uber, Rappi o DiDi.
 
 ## Punto de partida medido

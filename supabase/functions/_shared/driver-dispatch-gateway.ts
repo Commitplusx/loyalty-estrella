@@ -5,6 +5,10 @@ import {
 import { cert, getApps, initializeApp } from "npm:firebase-admin@11.11.1/app";
 import { getMessaging } from "npm:firebase-admin@11.11.1/messaging";
 import {
+  DriverRouteEstimator,
+  parseDispatchContext,
+} from "./driver-route-eta.ts";
+import {
   type DispatchCandidate,
   type DispatchGateway,
   type DispatchOrder,
@@ -53,7 +57,10 @@ export function serviceClient(): SupabaseClient {
   });
 }
 export class SupabaseDispatchGateway implements DispatchGateway {
-  constructor(readonly client: SupabaseClient) {}
+  constructor(
+    readonly client: SupabaseClient,
+    readonly routes = routeEstimator,
+  ) {}
   async boolRpc(name: string, args: Record<string, string>): Promise<boolean> {
     const { data, error } = await this.client.rpc(name, args);
     const result: unknown = data;
@@ -65,7 +72,14 @@ export class SupabaseDispatchGateway implements DispatchGateway {
   claim(id: string): Promise<boolean> {
     return this.boolRpc("reclamar_despacho_pedido", { p_pedido_id: id });
   }
-  offer(id: string, driver: string): Promise<boolean> {
+  offer(id: string, driver: string, contextId?: string): Promise<boolean> {
+    if (contextId) {
+      return this.boolRpc("eats_offer_ranked", {
+        p_pedido_id: id,
+        p_repartidor_id: driver,
+        p_context_id: contextId,
+      });
+    }
     return this.boolRpc("asignar_pedido_atomico", {
       p_pedido_id: id,
       p_repartidor_id: driver,
@@ -79,35 +93,20 @@ export class SupabaseDispatchGateway implements DispatchGateway {
     return data === null ? null : parseDispatchOrder(data);
   }
   async candidates(order: DispatchOrder): Promise<DispatchCandidate[]> {
-    let lat = order.pickupLat, lng = order.pickupLng;
-    if ((lat === null || lng === null) && order.restaurantId) {
-      const { data, error } = await this.client.from("restaurantes").select(
-        "lat,lng",
-      ).eq("id", order.restaurantId).maybeSingle();
-      if (error) throw new Error("Error consultando origen");
-      if (data) {
-        const coords = object(data);
-        if (
-          typeof coords.lat === "number" && typeof coords.lng === "number" &&
-          Number.isFinite(coords.lat) && Number.isFinite(coords.lng) &&
-          Math.abs(coords.lat) <= 90 && Math.abs(coords.lng) <= 180
-        ) {
-          lat = coords.lat;
-          lng = coords.lng;
-        }
-      }
-    }
-    const { data, error } = await this.client.rpc(
-      "buscar_repartidores_cercanos",
-      {
-        p_lat: lat !== null && lng !== null ? lat : null,
-        p_lng: lat !== null && lng !== null ? lng : null,
-        p_radio_metros: 5000,
-        p_cliente_lat: order.deliveryLat,
-        p_cliente_lng: order.deliveryLng,
-        p_excluidos: order.rejected,
-      },
+    const { data: raw, error: contextError } = await this.client.rpc(
+      "eats_dispatch_context",
+      { p_pedido_id: order.id },
     );
+    if (contextError) throw new Error("Error preparando contexto de despacho");
+    if (raw === null) return [];
+    const context = parseDispatchContext(raw);
+    const evidence = await this.routes.estimate(context);
+    const { data, error } = await this.client.rpc("eats_rank_dispatch", {
+      p_context_id: context.id,
+      p_routes: evidence.routes,
+      p_source: evidence.source,
+      p_reason: evidence.reason,
+    });
     const rows: unknown = data;
     if (error || !Array.isArray(rows)) {
       throw new Error("Error buscando candidatos");
@@ -117,7 +116,7 @@ export class SupabaseDispatchGateway implements DispatchGateway {
       if (typeof row.score !== "number" || !Number.isFinite(row.score)) {
         throw new Error("Score inválido");
       }
-      return { id: uuid(row.user_id), score: row.score };
+      return { id: uuid(row.id), score: row.score, contextId: context.id };
     }).sort((a, b) => a.score - b.score);
   }
   async incident(
@@ -240,3 +239,6 @@ export class SupabaseDispatchGateway implements DispatchGateway {
     await result.body?.cancel();
   }
 }
+const routeEstimator = new DriverRouteEstimator(() =>
+  Deno.env.get("MAPBOX_ACCESS_TOKEN")
+);

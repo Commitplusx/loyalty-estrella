@@ -14,6 +14,7 @@ export interface DispatchOrder {
 export interface DispatchCandidate {
   id: string;
   score: number;
+  contextId?: string;
 }
 export interface NotificationResult {
   realtime: boolean;
@@ -28,7 +29,7 @@ export interface DispatchGateway {
   claim(id: string): Promise<boolean>;
   read(id: string): Promise<DispatchOrder | null>;
   candidates(order: DispatchOrder): Promise<DispatchCandidate[]>;
-  offer(id: string, driver: string): Promise<boolean>;
+  offer(id: string, driver: string, contextId?: string): Promise<boolean>;
   notify(order: DispatchOrder): Promise<NotificationResult>;
   incident(
     id: string,
@@ -64,7 +65,7 @@ export async function dispatchOrder(
         continue;
       }
       seen.add(candidate.id);
-      if (!await gateway.offer(id, candidate.id)) continue;
+      if (!await gateway.offer(id, candidate.id, candidate.contextId)) continue;
       const offered = await gateway.read(id);
       if (
         !offered || offered.state !== "ofrecido" ||

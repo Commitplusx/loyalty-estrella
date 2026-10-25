@@ -1,151 +1,159 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:battery_plus/battery_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/supabase_config.dart' show supabaseUrl, supabaseAnonKey;
+import 'driver_presence.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CONSTANTES de Supabase (duplicadas aquí porque este handler corre en un
-// Isolate separado y no tiene acceso al Supabase.instance normal)
-// ─────────────────────────────────────────────────────────────────────────────
-const _supabaseUrl   = 'https://jdrrkpvodnqoljycixbg.supabase.co';
-const _supabaseAnon  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkcnJrcHZvZG5xb2xqeWNpeGJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNDkyOTEsImV4cCI6MjA5MDYyNTI5MX0.WEKqdL2p99cy8XvyqY31EP8-KbdOnhx2-fx9qz_iQtQ';
-
-// Callback obligatorio — punto de entrada del Isolate de segundo plano
 @pragma('vm:entry-point')
 void startCallback() {
   FlutterForegroundTask.setTaskHandler(OriginIslandTaskHandler());
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TASK HANDLER — corre en el Isolate de fondo cada 5 segundos
-// ─────────────────────────────────────────────────────────────────────────────
 class OriginIslandTaskHandler extends TaskHandler {
-
+  DriverPresenceCoordinator? _presence;
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
-//     print('🏝️ [BG] Servicio de fondo iniciado.');
+    _presence = DriverPresenceCoordinator(_BackgroundPresencePort(),
+        diagnostic: (code) => debugPrint(code));
+    unawaited(_presence!.tick());
   }
-
-  static DateTime? _lastUpdate;
 
   @override
   void onRepeatEvent(DateTime timestamp) {
-    // Lanzamos async sin bloquear el hilo del Isolate
-    _sendLocationToSupabase();
-  }
-
-  Future<void> _sendLocationToSupabase() async {
-    try {
-      // 1. Leer el ID del repartidor guardado en preferencias por el login
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.reload(); // Obligatorio para aislamientos en segundo plano
-      final repartidorId = prefs.getString('repartidor_id');
-      final isOnline = prefs.getBool('repartidor_online') ?? false;
-      final estadoViaje = prefs.getString('repartidor_estado_viaje'); // null, asignado, en_cocina, llegada_restaurante, en_camino
-
-      if (repartidorId == null || !isOnline) {
-//         print('🏝️ [BG] Repartidor offline o sin ID — omitiendo update.');
-        return;
-      }
-
-      // 1.5 Lógica de estrangulamiento (Throttling) dinámico
-      int intervalSeconds = 60; // Por defecto: Sin viaje o esperando comida
-      if (estadoViaje == 'asignado' || estadoViaje == 'preparando' || estadoViaje == 'en_camino') {
-        intervalSeconds = 1; // Viaje activo (hacia rest o hacia cliente)
-      } else if (estadoViaje == 'en_cocina' || estadoViaje == 'llegada_restaurante') {
-        intervalSeconds = 60; // Llegó al rest pero sigue esperando comida
-      }
-
-      final now = DateTime.now();
-      if (_lastUpdate != null && now.difference(_lastUpdate!).inSeconds < intervalSeconds) {
-        return; // Aún no es tiempo de actualizar
-      }
-      _lastUpdate = now;
-
-      // 2. Obtener GPS
-      final permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-//         print('🏝️ [BG] Sin permiso de GPS — omitiendo update.');
-        return;
-      }
-
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 4),
-        ),
-      );
-
-      // 3. Construir payload
-      final body = <String, dynamic>{
-        'lat': pos.latitude,
-        'lng': pos.longitude,
-      };
-
-      // 4. Leer access token
-      final accessToken = _prefs_getAccessToken(prefs);
-
-      // 5. Enviar a Supabase REST (funciona desde cualquier Isolate)
-      final url = Uri.parse('$_supabaseUrl/rest/v1/repartidores?id=eq.$repartidorId');
-      final resp = await http.patch(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': _supabaseAnon,
-          'Authorization': 'Bearer $accessToken',
-          'Prefer': 'return=minimal',
-        },
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 5));
-
-      if (resp.statusCode >= 200 && resp.statusCode < 300) {
-//         print('🏝️ [BG] 📍 GPS enviado → (${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}) | HTTP ${resp.statusCode}');
-      } else {
-        print('🏝️ [BG] ❌ Error GPS → HTTP ${resp.statusCode}: ${resp.body}');
-      }
-    } catch (e) {
-      print('🏝️ [BG] Error en _sendLocationToSupabase: $e');
-    }
-  }
-
-  /// Lee el access token guardado por supabase_flutter en SharedPreferences
-  String _prefs_getAccessToken(SharedPreferences prefs) {
-    // supabase_flutter guarda la sesión como JSON en esta clave
-    final raw = prefs.getString('sb-jdrrkpvodnqoljycixbg-auth-token');
-    if (raw == null) return _supabaseAnon;
-    try {
-      final decoded = jsonDecode(raw) as Map<String, dynamic>;
-      return decoded['access_token'] as String? ?? _supabaseAnon;
-    } catch (_) {
-      return _supabaseAnon;
-    }
+    unawaited(_presence?.tick());
   }
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
-//     print('🏝️ [BG] Servicio de fondo detenido.');
+    _presence?.stop();
   }
-
-  void onButtonPressed(String id) {}
 
   @override
   void onNotificationPressed() {}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SERVICIO PÚBLICO — llamado desde la UI de Flutter
-// ─────────────────────────────────────────────────────────────────────────────
-class OriginIslandService {
+class _BackgroundPresencePort implements DriverPresencePort {
+  static final _uuid = RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+  @override
+  Future<DriverPresenceContext?> context() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final profile = prefs.getString('repartidor_id');
+    final raw = prefs.getString('sb-jdrrkpvodnqoljycixbg-auth-token');
+    if (profile == null || !_uuid.hasMatch(profile) || raw == null) return null;
+    final Object? session = jsonDecode(raw);
+    if (session is! Map<String, Object?>) return null;
+    final token = session['access_token'];
+    final user = session['user'];
+    final expiry = session['expires_at'];
+    if (token is! String ||
+        token.isEmpty ||
+        user is! Map<String, Object?> ||
+        expiry is! int ||
+        expiry * 1000 <= DateTime.now().millisecondsSinceEpoch) {
+      return null;
+    }
+    final actor = user['id'];
+    final device = prefs.getString('my_device_id');
+    if (actor is! String ||
+        !_uuid.hasMatch(actor) ||
+        (device != null && !_uuid.hasMatch(device))) {
+      return null;
+    }
+    return DriverPresenceContext(
+        profileId: profile,
+        actorId: actor,
+        deviceId: device,
+        accessToken: token,
+        online: prefs.getBool('repartidor_online') ?? false);
+  }
 
+  @override
+  Future<DriverGpsSample?> location() async {
+    final permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      return null;
+    }
+    Position? position;
+    try {
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null &&
+          DateTime.now().difference(last.timestamp).inSeconds >= 0 &&
+          DateTime.now().difference(last.timestamp).inSeconds <= 30) {
+        position = last;
+      }
+    } catch (_) {/* A fresh measurement is attempted below. */}
+    position ??= await Geolocator.getCurrentPosition(
+            locationSettings: AndroidSettings(
+                accuracy: LocationAccuracy.high,
+                timeLimit: const Duration(seconds: 6),
+                intervalDuration: const Duration(seconds: 3)))
+        .timeout(const Duration(seconds: 7));
+    return DriverGpsSample(
+        lat: position.latitude,
+        lng: position.longitude,
+        measuredAt: position.timestamp,
+        accuracyMeters: position.accuracy,
+        mocked: position.isMocked);
+  }
+
+  @override
+  Future<int?> battery() =>
+      Battery().batteryLevel.timeout(const Duration(seconds: 2));
+  Future<Object?> _rpc(DriverPresenceContext context, String name,
+      Map<String, Object?> body) async {
+    final response = await http
+        .post(Uri.parse('$supabaseUrl/rest/v1/rpc/$name'),
+            headers: {
+              'apikey': supabaseAnonKey,
+              'Authorization': 'Bearer ${context.accessToken}',
+              'Content-Type': 'application/json'
+            },
+            body: jsonEncode(body))
+        .timeout(const Duration(seconds: 5));
+    if (response.statusCode != 200 || response.bodyBytes.length > 16384) {
+      throw StateError('Presence request unconfirmed');
+    }
+    final Object? value = jsonDecode(response.body);
+    return value;
+  }
+
+  @override
+  Future<bool> begin(DriverPresenceContext context, String sessionId) async {
+    final result = await _rpc(context, 'driver_presence_begin', {
+      'p_profile_id': context.profileId,
+      'p_device_id': context.deviceId,
+      'p_session_id': sessionId
+    });
+    if (result is! bool) {
+      throw const FormatException('Invalid presence session receipt');
+    }
+    return result;
+  }
+
+  @override
+  Future<PresenceReceipt> report(
+          DriverPresenceContext context, DriverPresenceReport report) async =>
+      PresenceReceipt.parse(await _rpc(context, 'driver_presence_report',
+          report.arguments(context.profileId)));
+}
+
+class OriginIslandService {
   /// Inicializar la configuración del servicio de segundo plano
   static void initService() {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'estrella_delivery_origin_island_v2',
         channelName: 'Estrella Delivery · GPS Activo',
-        channelDescription: 'Transmite tu ubicación al panel de control en tiempo real',
+        channelDescription:
+            'Transmite tu ubicación al panel de control en tiempo real',
         channelImportance: NotificationChannelImportance.LOW,
         priority: NotificationPriority.LOW,
       ),
@@ -154,8 +162,12 @@ class OriginIslandService {
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(1000), // cada 1 segundo (throttled internamente)
+        // 5s es el sweet spot: frecuente para el GPS pero sin que Android lo mate.
+        // El throttling interno en _sendLocationToSupabase controla la frecuencia real.
+        eventAction: ForegroundTaskEventAction.repeat(5000),
         autoRunOnBoot: true,
+        autoRunOnMyPackageReplaced:
+            true, // Reiniciar después de updates de la app
         allowWakeLock: true,
         allowWifiLock: true,
       ),
@@ -189,7 +201,7 @@ class OriginIslandService {
         );
       }
     } catch (e) {
-      print('🏝️ [ORIGIN ISLAND] startIsland error: $e');
+      debugPrint('driver_foreground_service_start_failed');
     }
   }
 
@@ -213,7 +225,8 @@ class OriginIslandService {
   }
 
   /// Encender o apagar el servicio según el estado online del repartidor
-  static Future<void> toggleBackgroundService(bool isOnline, {String? repartidorId}) async {
+  static Future<void> toggleBackgroundService(bool isOnline,
+      {String? repartidorId}) async {
 //     print('🏝️ [ORIGIN ISLAND] toggleBackgroundService → isOnline=$isOnline');
     try {
       // Siempre guardar el contexto actualizado para el Isolate
@@ -241,7 +254,7 @@ class OriginIslandService {
         await stopIsland();
       }
     } catch (e) {
-      print('🏝️ [ORIGIN ISLAND] ERROR en toggleBackgroundService: $e');
+      debugPrint('driver_foreground_service_toggle_failed');
     }
   }
 }

@@ -8,12 +8,15 @@ node supabase/tests/driver-dispatch-db/test-algorithm-guards.cjs
 node supabase/tests/driver-dispatch-db/test-dispatch.cjs
 node supabase/tests/driver-dispatch-db/test-order-notifications.cjs
 node supabase/tests/driver-dispatch-db/test-kitchen-transitions.cjs
+node supabase/tests/driver-dispatch-db/test-presence-eta.cjs
 deno check --config supabase/tests/driver-dispatch.deno.json supabase/functions/asignar-repartidor/index.ts supabase/functions/asignacion-timeout/index.ts supabase/functions/cron-rescate/index.ts
-deno test --allow-env --allow-net --config supabase/tests/driver-dispatch.deno.json supabase/tests/driver-dispatch_test.ts supabase/tests/driver-dispatch-gateway_test.ts
+deno test --allow-env --allow-net --config supabase/tests/driver-dispatch.deno.json supabase/tests/driver-dispatch_test.ts supabase/tests/driver-dispatch-gateway_test.ts supabase/tests/driver-route-eta_test.ts
 ```
 
-Resultado esperado: 65 comprobaciones SQL aisladas y catorce Deno con tipado. La primera descarga resuelve dependencias fijadas; las solicitudes de Supabase de los tests usan transportes sintéticos. PGlite no prueba concurrencia entre conexiones ni distancias reales de PostGIS. `algorithm-publication.sql` es una comprobación administrativa de sólo lectura para una instalación compatible, no un archivo para ejecutar anónimamente desde la web.
+Resultado esperado: 87 comprobaciones SQL aisladas y 26 Deno con tipado. La primera descarga resuelve dependencias fijadas; las solicitudes de Supabase de los tests usan transportes sintéticos. PGlite no prueba concurrencia entre conexiones ni distancias reales de PostGIS. `algorithm-publication.sql` y `presence-eta-publication.sql` son comprobaciones administrativas de sólo lectura para una instalación compatible, no archivos para ejecutar anónimamente desde la web.
+
+`test-presence-concurrency.cjs` requiere un PostgreSQL aislado en `127.0.0.1`; no acepta un host remoto. La variable `DISPATCH_TEST_CONNECTION` apunta a un JSON privado con `host`, `port`, `database=postgres`, `user` y `password`. El usuario de prueba debe poder crear roles/base. La suite crea una base con prefijo exclusivo `dispatch_test_`, usa dos conexiones y borra únicamente esa base al terminar. Ejecuta seis carreras reales; no usar credenciales productivas ni guardar ese JSON en Git. Para Flutter: `flutter test --no-pub` desde `driver_app`, 117 casos; el análisis de los módulos nuevos y su servicio también está comprobado.
 
 La migración del 25 de octubre y sus versiones históricas necesarias están versionadas para conservar el contrato y reproducir las regresiones. Las migraciones históricas anteriores no son una orden para reaplicarlas a la base existente. No ejecutar `db push` sobre este checkout como sustituto del procedimiento de publicación: primero comparar registro, esquema y consumidores reales; respaldar y aplicar sólo la migración revisada que falte.
 
-La fuente de las tres funciones incluida aquí coincide con despacho v72, timeout v39 y rescate v26 publicados en Loyalty. El nuevo diseño por presencia y ETA es una [propuesta separada](DRIVER_ASSIGNMENT_EVOLUTION_20261025.md); no está conectado a la asignación productiva.
+La fuente de las tres funciones incluida aquí coincide con despacho v74, timeout v41 y rescate v28 publicados en Loyalty. El nuevo diseño por presencia y ETA está conectado y activo; [contrato y límites](DRIVER_ASSIGNMENT_V2_20261025.md). El plan previo se conserva como historial.
