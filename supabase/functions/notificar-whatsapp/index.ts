@@ -6,23 +6,39 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { extract10Digits, formatTel, generarNumeroOrden, logError, fetchWithTimeout } from '../_shared/utils.ts'
 import { getMetaPuntos } from '../_shared/constants.ts'
+import { handleGenericNotification, notificationSender } from '../_shared/notification-messaging.ts'
+import { handleLoyaltyCouponNotice } from '../_shared/loyalty-coupon-notice.ts'
+import { acceptedOrderBodyParameters } from '../_shared/order-status-messaging.ts'
+import { authorizeNotificationRequest } from '../_shared/notification-authorization.ts'
+import { SupabaseNotificationAuthorization } from '../_shared/notification-authorization-gateway.ts'
+import { OrderNotificationGateway, handleOrderProviderEvent, relaySecretMatches, runOrderOutbox, usesOrderOutbox } from '../_shared/eats-order-notification-gateway.ts'
+import { readBoundedJson } from '../_shared/http-request.ts'
+import type {OrderNotificationDatabase} from '../_shared/eats-notification-database.ts'
+declare const EdgeRuntime: {waitUntil(task: Promise<unknown>): void};
+
+function wakeOrderOutbox(gateway: OrderNotificationGateway): void {
+  const work=runOrderOutbox(gateway).catch((_error: unknown) => {
+    console.error(JSON.stringify({event:'order_notification_worker_unavailable'}));
+  });
+  if (typeof EdgeRuntime !== 'undefined') EdgeRuntime.waitUntil(work);
+}
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-dispatch-token',
 }
 
-const WA_TOKEN = Deno.env.get('WHATSAPP_TOKEN')!
-const WA_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_ID')!
+const WA_TOKEN = Deno.env.get('YCLOUD_API_KEY')!
+const WA_PHONE_ID = notificationSender(Deno.env.get('YCLOUD_SENDER_PHONE'))
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 // ── VALIDACIÓN DE ENV VARS EN STARTUP ──
 const validateEnv = () => {
   const missing = []
-  if (!WA_TOKEN) missing.push('WHATSAPP_TOKEN')
-  if (!WA_PHONE_ID) missing.push('WHATSAPP_PHONE_ID')
+  if (!WA_TOKEN) missing.push('YCLOUD_API_KEY')
+  if (!WA_PHONE_ID) missing.push('YCLOUD_SENDER_PHONE')
   if (!SUPABASE_URL) missing.push('SUPABASE_URL')
   if (!SUPABASE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY')
   if (missing.length > 0) {
@@ -38,7 +54,7 @@ async function sendWhatsAppTemplate(
   headerParams?: string[],
   langCode = 'es_MX'
 ): Promise<void> {
-  const url = `https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`
+  const url = `https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`
 
   const components: any[] = []
   if (headerParams && headerParams.length > 0) {
@@ -55,14 +71,14 @@ async function sendWhatsAppTemplate(
   }
 
   const payload = {
-    messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'template',
+    from: WA_PHONE_ID, to, type: 'template',
     template: { name: templateName, language: { code: langCode }, components }
   }
   console.log(`[TEMPLATE] Enviando '${templateName}' (${langCode}) a ${to} | ${JSON.stringify(components)}`)
 
   const res = await fetchWithTimeout(url, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+    headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   }, 15000)
   const textBody = await res.text()
@@ -74,17 +90,16 @@ async function sendWhatsAppTemplate(
 }
 
 async function sendInteractiveButton(to: string, text: string, buttonId: string, buttonTitle: string): Promise<void> {
-  const url = `https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`
+  const url = `https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`
   console.log(`Sending Interactive Button to ${to}:`, { text, buttonId, buttonTitle })
   const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${WA_TOKEN}`,
+      'X-API-Key': WA_TOKEN,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
+      from: WA_PHONE_ID,
       to,
       type: 'interactive',
       interactive: {
@@ -125,52 +140,102 @@ async function notificarCliente(
 
   switch (estado) {
     case 'creado': {
-      const res0 = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+      const res0 = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+        method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          recipient_type: 'individual',
+          from: WA_PHONE_ID,
           to: telFormateado,
           type: 'text',
           text: { body: `⭐ *Confirmación de Pedido — Estrella Delivery*\n\n¡Hola ${nombreC}! 👋\nRecibimos exitosamente tu orden #${numeroOrden} de *${restC}*.\n\nTe avisaremos en cuanto el repartidor acepte tu servicio. 🛵💨` }
         })
       }, 15000)
       if (!res0.ok) console.error(`Error enviando text 'creado':`, await res0.text())
-      return `✅ Mensaje de confirmación 'creado' enviado al cliente`
+      return `OK: Mensaje de confirmacion 'creado' enviado al cliente`
     }
     case 'aceptado':
     case 'asignado': {
+      const esMandadito = !restC || restC === 'Restaurante' || restC === '' || restC === 'Estrella'
+      if (esMandadito) {
+        let saludo = nombreC && nombreC !== 'Cliente Express' && nombreC !== 'Cliente' ? nombreC : '';
+        saludo = saludo ? `, ${saludo}` : '';
+        const msgMandadito = `🛵 *¡Tu repartidor va en camino${saludo}!* \n\n` +
+          `*${repC}* aceptó tu encargo y saldrá a recogerlo en breve.\n\n` +
+          `📍 Dale click al botón para rastrear su ubicación en tiempo real.`
+        
+        // 🛵 Tracker de Mandadito: usa TrackerPage en estrella-eats.mx/tracker?pedido=UUID
+        // TrackerPage lee el query param ?pedido= con useSearchParams y hace realtime del repartidor
+        const link = `https://estrella-eats.mx/tracker?pedido=${pedidoId}`;
+        
+        const resMand = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+          method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: WA_PHONE_ID,
+            to: telFormateado,
+            type: 'interactive',
+            interactive: {
+              type: 'cta_url',
+              body: { text: msgMandadito },
+              action: {
+                name: 'cta_url',
+                parameters: {
+                  display_text: '🗺️ Ver Ubicación',
+                  url: link
+                }
+              }
+            }
+          })
+        }, 15000)
+        
+        if (!resMand.ok) console.error(`[ASIGNADO] Error interactivo mandadito: ${await resMand.text()}`)
+        return `OK: Interactivo 'asignado' mandadito enviado con tracking`
+      }
       const components = [
         { type: 'header', parameters: [{ type: 'image', image: { link: 'https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png' } }] },
-        {
-          type: 'body', parameters: [
-            { type: 'text', text: nombreC }, // {{1}}
-            { type: 'text', text: restC },   // {{2}}
-            { type: 'text', text: repC }    // {{3}}
-          ]
-        }
+        { type: 'body', parameters: acceptedOrderBodyParameters({
+          customerName: nombreC,
+          driverName: repC,
+          restaurantName: restC,
+        }) }
       ]
-      console.log(`[TEMPLATE] Enviando 'pedido_aceptado_v2' (es_MX) a ${telFormateado} | params: ${nombreC}, ${restC}, ${repC}`)
-      const res = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template', template: { name: 'pedido_aceptado_v2', language: { code: 'es_MX' }, components } })
+      const res = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+        method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: WA_PHONE_ID, to: telFormateado, type: 'template', template: { name: 'pedido_aceptado_v2', language: { code: 'es_MX' }, components } })
       }, 15000)
       const t1 = await res.text()
-      if (!res.ok) console.error(`[TEMPLATE] ❌ 'pedido_aceptado_v2' HTTP ${res.status} → ${t1}`)
-      else console.log(`[TEMPLATE] ✅ 'pedido_aceptado_v2' → ${t1.substring(0, 120)}`)
-      return `✅ Plantilla 'pedido_aceptado_v2' enviada`
+      if (!res.ok) {
+        console.error(`[TEMPLATE] ERROR 'pedido_aceptado_v2' HTTP ${res.status}. Fallback texto plano...`)
+        let saludo = nombreC && nombreC !== 'Cliente Express' && nombreC !== 'Cliente' ? nombreC : '';
+        saludo = saludo ? `, ${saludo}` : '';
+        const msgFb = `🛵 *¡Tu pedido va en camino${saludo}!* \n\nTu repartidor *${repC}* aceptó tu pedido${restC && restC !== 'Restaurante' ? ' de *' + restC + '*' : ''} y va en camino a recogerlo.\n\n📍 Te avisamos cuando salga hacia tu domicilio.`
+        const resFb = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+          method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from: WA_PHONE_ID, to: telFormateado, type: 'text', text: { body: msgFb } })
+        }, 15000)
+        if (!resFb.ok) console.error(`[ASIGNADO] Fallback fallo: ${await resFb.text()}`)
+      } else { console.log(`[TEMPLATE] OK 'pedido_aceptado_v2' enviado`) }
+      return `OK: Notificacion 'asignado' enviada`
     }
-    case 'en_camino':
     case 'recibido': {
-      // Uso de texto plano gratuito en lugar de plantilla (aprovechando ventana 24h)
-      const isEnCamino = estado === 'en_camino';
-      const msgTexto = isEnCamino
-        ? `🚀 *¡Vamos en camino, ${nombreC}!*\n\nTu repartidor *${repC}* ya salió de *${restC}* y se dirige a tu domicilio. 🛵💨\n\nPor favor, mantente al tanto para recibirlo. ⭐`
-        : `🛍️ *¡Tu pedido está en buenas manos, ${nombreC}!*\n\nTu repartidor *${repC}* acaba de recoger tu comida en *${restC}*.\n¡En breves momentos saldrá hacia tu ubicación! 📍`;
+      console.log(`[NOTIFICACION] Estado 'recibido' ignorado (el repartidor solo llegó al origen, no enviamos WA para no confundir al cliente).`)
+      return `✅ Estado 'recibido' silenciado intencionalmente.`
+    }
+    case 'en_camino': {
+      const isEnCamino = true;
+      const esMandadito = !restC || restC === 'Restaurante' || restC === 'Estrella' || restC === '';
+      
+      let saludo = nombreC && nombreC !== 'Cliente Express' && nombreC !== 'Cliente' ? nombreC : '';
+      saludo = saludo ? `, ${saludo}` : '';
+      
+      let msgTexto = '';
+      if (esMandadito) {
+        msgTexto = `🛵 *¡Tu repartidor va en camino!*\n\nTu repartidor *${repC}* ya tiene tu encargo y se dirige a tu ubicación.\n\n📍 Por favor, mantente al tanto para recibirlo. 😊`;
+      } else {
+        msgTexto = `🛵 *¡Tu pedido va en camino${saludo}!*\n\nTu repartidor *${repC}* ya salió de *${restC}* y se dirige a tu domicilio.\n\n📍 Por favor, mantente al tanto para recibirlo. 🍔`;
+      }
 
-      const res = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text', text: { body: msgTexto } })
+      const res = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+        method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: WA_PHONE_ID, to: telFormateado, type: 'text', text: { body: msgTexto } })
       }, 15000)
       if (!res.ok) console.error(`WA error (${estado} texto plano):`, await res.text())
       return `✅ Mensaje de texto plano '${estado}' enviado (Ventana 24h)`
@@ -178,9 +243,9 @@ async function notificarCliente(
     case 'entregado': {
       // Plantilla pedido_entregado_v2 no existe en Meta — usar texto plano como fallback
       const msgEntregado = `✅ *¡Entregado con éxito, ${nombreC}!* 🎉\n\nEsperamos que disfrutes tu pedido de *${restC}*. 🍽️\n\nGracias por confiar en Estrella Delivery. 🌟\n¿Qué tal fue nuestro servicio? ¡Nos encantaría leerte!`;
-      const res = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text', text: { body: msgEntregado } })
+      const res = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+        method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: WA_PHONE_ID, to: telFormateado, type: 'text', text: { body: msgEntregado } })
       }, 15000)
       if (!res.ok) console.error(`WA error (entregado texto):`, await res.text())
 
@@ -189,9 +254,9 @@ async function notificarCliente(
     case 'punto_acumulado': {
       // Solo se llama cuando el cliente acaba de completar un ciclo y tiene envío gratis disponible
       const msgPunto = `🎉 *¡Felicidades, ${nombreC}!*\n\n⭐ Acabas de completar tu ciclo de puntos en *Estrella Delivery*.\n\n🎁 *¡Tienes un envío GRATIS disponible!*\nMuestra tu QR al repartidor en tu próximo pedido para canjearlo.\n\n¡Gracias por tu lealtad! 🌟`
-      const res = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text', text: { body: msgPunto } })
+      const res = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+        method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: WA_PHONE_ID, to: telFormateado, type: 'text', text: { body: msgPunto } })
       }, 15000)
       if (!res.ok) console.error(`WA error (punto_acumulado):`, await res.text())
       return `✅ Notificación 'punto_acumulado' enviada a ${tel}`
@@ -206,10 +271,9 @@ function buildRepartidorAsignacionText(
 ): string {
   const numeroOrden = generarNumeroOrden(pedidoId)
   return [
-    `📦 *Nuevo Pedido Asignado — Estrella Delivery*`,
-    `🔢 *Orden:* ${numeroOrden}`,
-    ``,
-    restaurante ? `🍽️ *Restaurante:* ${restaurante}` : null,
+    `Nuevo Pedido Asignado - Estrella Delivery`,
+    `Orden: ${numeroOrden}`,
+    restaurante ? `Restaurante: ${restaurante}` : null,
     clienteNombre ? `👤 *Cliente:* ${clienteNombre}` : null,
     `📝 *Pedido:* ${descripcion}`,
     direccion ? `📍 *Dirección:* ${direccion}` : null,
@@ -224,12 +288,46 @@ serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { status: 200, headers: CORS_HEADERS })
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: CORS_HEADERS })
 
+  const authorizationClient = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(5000) }) },
+  })
+  const orderGateway=new OrderNotificationGateway(createClient<OrderNotificationDatabase>(SUPABASE_URL,SUPABASE_KEY,{
+    auth:{persistSession:false,autoRefreshToken:false},
+    global:{fetch:(input,init)=>fetch(input,{...init,signal:AbortSignal.timeout(5000)})},
+  }),WA_TOKEN,Deno.env.get('EATS_ORDER_RELAY_TOKEN') || '')
+  if (req.headers.has('x-order-relay-token')) {
+    if (!await relaySecretMatches(req.headers.get('x-order-relay-token'),Deno.env.get('EATS_ORDER_RELAY_TOKEN')))
+      return new Response(JSON.stringify({ok:false,error:'relay_unauthorized'}),{status:401,headers:CORS_HEADERS})
+    try {
+      const event: unknown=await readBoundedJson(req)
+      const result=await handleOrderProviderEvent(event,orderGateway)
+      wakeOrderOutbox(orderGateway)
+      return new Response(JSON.stringify({ok:true,...result}),{status:200,headers:{...CORS_HEADERS,'Content-Type':'application/json'}})
+    } catch (_error: unknown) {
+      console.error(JSON.stringify({event:'order_provider_event_unavailable'}))
+      return new Response(JSON.stringify({ok:false,error:'order_provider_event_unavailable'}),{status:503,headers:CORS_HEADERS})
+    }
+  }
+  const authorization = await authorizeNotificationRequest(req,
+    new SupabaseNotificationAuthorization(authorizationClient), {
+      dispatchToken: Deno.env.get('DISPATCH_TOKEN'), serviceKey: SUPABASE_KEY, supabaseUrl: SUPABASE_URL,
+    })
+  if (!authorization.allowed) return new Response(JSON.stringify({ error: authorization.code }), {
+    status: authorization.status, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+  })
+  req = authorization.request
+
   try {
     const bodyText = await req.text()
-    console.log("NOTIFICAR_WHATSAPP INCOMING BODY:", bodyText)
+    console.log('NOTIFICAR_WHATSAPP_REQUEST', { body_length: bodyText.length })
     if (!bodyText) return new Response(JSON.stringify({ error: 'Body vacio' }), { status: 400 })
 
     const payload = JSON.parse(bodyText)
+    if (await usesOrderOutbox(payload,orderGateway)) {
+      wakeOrderOutbox(orderGateway)
+      return new Response(JSON.stringify({ok:true,durable_route:true,delivered:false}),{status:202,headers:{...CORS_HEADERS,'Content-Type':'application/json'}})
+    }
 
     // ── HANDLER DE DB WEBHOOK (Supabase Database Webhooks) ──────────────────
     // El payload de un DB Webhook tiene { type, table, record, old_record }
@@ -274,20 +372,19 @@ serve(async (req: Request) => {
             console.log(`[DB_WEBHOOK] Teléfono encontrado para ${record.restaurante}: ${restData.telefono}, intentando enviar mensaje...`)
             
             const payloadTemplate = {
-              messaging_product: 'whatsapp',
-              recipient_type: 'individual',
+              from: WA_PHONE_ID,
               to: formatTel(restData.telefono),
               type: 'template',
               template: {
                 name: 'pedido_nuevo_restaurante',
-                language: { code: 'es_MX' },
+                language: { code: 'es' },
                 components: [
                   {
                     type: 'body',
                     parameters: [
                       { type: 'text', text: ticketId }, // {{1}} Orden
-                      { type: 'text', text: record.metodo_pago === 'en_linea' ? 'Tarjeta/Web' : 'Efectivo' }, // {{2}} Metodo de pago
-                      { type: 'text', text: ((record.total || 0) - (record.precio_entrega || 0)).toString() } // {{3}} Total sin envio
+                      { type: 'text', text: record.metodo_pago === 'en_linea' ? 'Pagado (Tarjeta/Web)' : `Cobrar Efectivo: $${(record.total || 0) - (record.precio_entrega || 0)}` }, // {{2}} Metodo y Cobro
+                      { type: 'text', text: record.descripcion ? record.descripcion.substring(0, 800) : 'Sin detalles' } // {{3}} Platillos
                     ]
                   },
                   {
@@ -305,22 +402,14 @@ serve(async (req: Request) => {
                     parameters: [
                       { type: 'payload', payload: `REST_ORDER_REJECT_${record.id}` }
                     ]
-                  },
-                  {
-                    type: 'button',
-                    sub_type: 'url',
-                    index: '2',
-                    parameters: [
-                      { type: 'text', text: record.id } // sufijo dinámico: el UUID del pedido
-                    ]
                   }
                 ]
               }
             };
 
-            const resRest = await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+            const resRest = await fetch(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
               method: 'POST',
-              headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+              headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
               body: JSON.stringify(payloadTemplate)
             })
             const resText = await resRest.text()
@@ -336,11 +425,11 @@ serve(async (req: Request) => {
           // También notificar al admin
           const adminPhone = Deno.env.get('ADMIN_PHONE') || (Deno.env.get('ADMIN_PHONES') ?? '').split(',')[0]?.trim()
           if (adminPhone) {
-            await fetch(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+            await fetch(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
               method: 'POST',
-              headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+              headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                messaging_product: 'whatsapp', recipient_type: 'individual', to: formatTel(adminPhone), type: 'text',
+                from: WA_PHONE_ID, to: formatTel(adminPhone), type: 'text',
                 text: { body: `🚨 *NUEVO PEDIDO WEB (#${ticketId})*\n\n🏪 Restaurante: ${record.restaurante}\n${record.tipo_pedido === 'tienda' ? '🏪 Recoger en Tienda' : '🛵 A Domicilio'}\n\n${record.descripcion}` }
               })
             }).catch(e => console.warn('[DB_WEBHOOK] Error WA admin:', e))
@@ -366,6 +455,13 @@ serve(async (req: Request) => {
 
     // ── HANDLER DE LLAMADAS MANUALES (desde la app Flutter o funciones internas) ──
     const { tipo } = payload
+    
+    // EVITAR DUPLICADOS: Si es una invocación manual desde la app para un cambio de estado,
+    // lo ignoramos porque el DB Webhook de Supabase (payload.type === 'UPDATE') ya lo hace automáticamente.
+    if (!payload.type && ['recibido', 'en_camino', 'entregado', 'asignado'].includes(tipo)) {
+      console.log(`[DE-DUPLICATOR] Ignorando invocación manual de app Flutter para el estado '${tipo}'. El DB Webhook se encargará de enviarlo.`)
+      return new Response(JSON.stringify({ ok: true, message: 'Ignorado por deduplicación' }), { status: 200, headers: CORS_HEADERS })
+    }
 
     if (!tipo) {
       return new Response(JSON.stringify({ error: 'tipo es requerido' }), { status: 400 })
@@ -374,25 +470,34 @@ serve(async (req: Request) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
     if (tipo === 'cupon_generado') {
+      if (payload.redemption_key !== undefined) {
+        return await handleLoyaltyCouponNotice(payload, supabase, {
+          apiKey: WA_TOKEN, sender: WA_PHONE_ID, url: SUPABASE_URL,
+          dispatcher: Deno.env.get('ADMIN_PHONE_BILLETERA') || Deno.env.get('ADMIN_PHONE') || (Deno.env.get('ADMIN_PHONES') ?? '').split(',')[0]?.trim() || undefined,
+        }, CORS_HEADERS)
+      }
       const { cliente_tel, cliente_nombre, codigo_cupon, descuento, expires_at, tipo_canje } = payload
       const telFormateado = formatTel(cliente_tel)
       const f_exp = new Date(expires_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
       const strDesc = tipo_canje === 'billetera' ? `$${descuento} en pedidos/comida` : `Hasta $${descuento} en tu próximo envío`
 
-      const res = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+      const res = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+        method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template',
+          from: WA_PHONE_ID, to: telFormateado, type: 'template',
           template: {
             name: 'estrella_cupon_generado',
             language: { code: 'en' },
             components: [
               {
+                type: 'header',
+                parameters: [{ type: 'image', image: { link: 'https://jdrrkpvodnqoljycixbg.supabase.co/storage/v1/object/public/public-assets/logo.png' } }]
+              },
+              {
                 type: 'body', parameters: [
                   { type: 'text', text: cliente_nombre || 'Cliente' }, // {{1}}
                   { type: 'text', text: codigo_cupon }, // {{2}}
-                  { type: 'text', text: strDesc }, // {{3}}
-                  { type: 'text', text: f_exp } // {{4}}
+                  { type: 'text', text: f_exp } // {{3}}
                 ]
               }
             ]
@@ -405,10 +510,10 @@ serve(async (req: Request) => {
       if (adminPhoneRaw && adminPhoneRaw.length > 0) {
         const adminTelFormateado = formatTel(adminPhoneRaw)
         const horaActual = new Date().toLocaleTimeString('es-MX', { timeZone: 'America/Mexico_City', hour: '2-digit', minute: '2-digit' })
-        const resAdm = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-          method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+        const resAdm = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+          method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            messaging_product: 'whatsapp', recipient_type: 'individual', to: formatTel(adminPhoneRaw), type: 'text',
+            from: WA_PHONE_ID, to: formatTel(adminPhoneRaw), type: 'text',
             text: { body: `🚨 *NUEVO CANJE DE BENEFICIO* 🚨\n\n👤 Cliente: ${cliente_nombre || 'Desconocido'} (${cliente_tel})\n🎯️ Cupón: *${codigo_cupon}*\n⏰ Hora: ${horaActual}\n\n📌 *Asegúrate de no cobrarle este descuento en su ticket.*` }
           })
         }, 15000)
@@ -421,10 +526,10 @@ serve(async (req: Request) => {
     if (tipo === 'bienvenida_vip') {
       const { cliente_tel, cliente_nombre } = payload
       const telFormateado = formatTel(cliente_tel)
-      const resCli = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+      const resCli = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+        method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text',
+          from: WA_PHONE_ID, to: telFormateado, type: 'text',
           text: { body: `👑 *¡BIENVENIDO AL CLUB VIP, ${cliente_nombre || 'Cliente'}!* 👑\n\nHas completado 3 ciclos de envíos con nosotros. 🎉\n\nA partir de este momento eres *Cliente VIP* ⭐.\nPor cada envío que pidas, acumularás saldo real en pesos en tu billetera que podrás usar para pagar futuros envíos o descuentos en comida.\n\n¡Gracias por tu gran preferencia! 🌟` }
         })
       }, 15000)
@@ -433,17 +538,7 @@ serve(async (req: Request) => {
     }
 
     if (tipo === 'notificacion_generica') {
-      const { cliente_tel, mensaje } = payload
-      const telFormateado = formatTel(cliente_tel)
-      const resCli = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text',
-          text: { body: mensaje }
-        })
-      }, 15000)
-      if (!resCli.ok) console.error(`WA error notificacion_generica:`, await resCli.text())
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+      return await handleGenericNotification(payload, {apiKey: WA_TOKEN, sender: WA_PHONE_ID}, CORS_HEADERS)
     }
 
     // ── SOS / Emergencia del Repartidor ─────────────────────────────────────
@@ -468,12 +563,11 @@ serve(async (req: Request) => {
         `⚠️ El repartidor marcó una EMERGENCIA desde la app. Contáctalo de inmediato.`
 
       const adminTelFormateado = formatTel(adminPhoneRaw)
-      const resSOS = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
+      const resSOS = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+        headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          recipient_type: 'individual',
+          from: WA_PHONE_ID,
           to: adminTelFormateado,
           type: 'text',
           text: { body: mensaje }
@@ -490,6 +584,117 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ ok: true, message: 'SOS enviado al admin' }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
     }
 
+    // ── Repartidor no encuentra la dirección → avisa al cliente por WA ──────────
+    if (tipo === 'no_encuentro_dir') {
+      const { pedido_id, repartidor_nombre } = payload
+      if (!pedido_id) {
+        return new Response(JSON.stringify({ error: 'pedido_id es requerido' }), { status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+      }
+
+      const { data: pedDir } = await supabase
+        .from('pedidos')
+        .select('cliente_tel, cliente_nombre, destino, direccion')
+        .eq('id', pedido_id)
+        .maybeSingle()
+
+      if (!pedDir?.cliente_tel) {
+        return new Response(JSON.stringify({ error: 'Pedido no encontrado' }), { status: 404, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+      }
+
+      const clienteTelFormateado = formatTel(pedDir.cliente_tel)
+      const nombreCliente = pedDir.cliente_nombre?.split(' ')[0] || 'amigo/a'
+      const repNombre = repartidor_nombre || 'Tu repartidor'
+
+      const mensaje = `📍 *¡Hola ${nombreCliente}!*\n\n` +
+        `${repNombre} de Estrella ya llegó a tu zona pero no te está encontrando. 😅\n\n` +
+        `¿Nos puedes dar una *referencia* de tu ubicación o compartir tu 📍 *pin de GPS*?\n\n` +
+        `_Ejemplo: "Frente a la tienda azul", "Junto al árbol grande", etc._`
+
+      const resDir = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+        method: 'POST',
+        headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: WA_PHONE_ID,
+          to: clienteTelFormateado,
+          type: 'text',
+          text: { body: mensaje }
+        })
+      }, 15000)
+
+      if (!resDir.ok) {
+        const errBody = await resDir.text()
+        console.error(`[NO_ENCUENTRO] ❌ Error enviando WA al cliente: ${errBody}`)
+        return new Response(JSON.stringify({ error: 'WA error', detail: errBody }), { status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+      }
+
+      // Guardar estado relay en bot_memory para interceptar la respuesta del cliente
+      const clienteTel10 = pedDir.cliente_tel.replace(/\D/g, '').slice(-10)
+      await supabase.from('bot_memory').upsert({
+        phone: `ubicacion_relay_${clienteTel10}`,
+        history: [{ pedido_id, ts: Date.now() }],
+        updated_at: new Date().toISOString()
+      })
+
+      console.log(`[NO_ENCUENTRO] ✅ Aviso enviado al cliente ${pedDir.cliente_tel} para pedido ${pedido_id}`)
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+    }
+
+    // ── Foto de evidencia del repartidor → cliente ──────────────────────────
+    if (tipo === 'evidencia_foto') {
+      const { pedido_id, foto_url, caption } = payload
+      if (!pedido_id || !foto_url) {
+        return new Response(JSON.stringify({ error: 'pedido_id y foto_url son requeridos' }), { status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+      }
+
+      // Buscar datos del pedido para saber a quién enviarle
+      const { data: pedEvi } = await supabase
+        .from('pedidos')
+        .select('cliente_tel, cliente_nombre, id')
+        .eq('id', pedido_id)
+        .maybeSingle()
+
+      if (!pedEvi?.cliente_tel) {
+        return new Response(JSON.stringify({ error: 'Pedido no encontrado o sin teléfono de cliente' }), { status: 404, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+      }
+
+      const clienteTelFormateado = formatTel(pedEvi.cliente_tel)
+      const nombreCliente = pedEvi.cliente_nombre || 'Cliente'
+      const captionFinal = caption || `📸 Tu repartidor de Estrella te envía una foto de evidencia del pedido.\n\n_Si tienes alguna duda, contáctanos._`
+
+      const resEvi = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+        method: 'POST',
+        headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: WA_PHONE_ID,
+          to: clienteTelFormateado,
+          type: 'image',
+          image: { link: foto_url, caption: captionFinal.substring(0, 1000) }
+        })
+      }, 15000)
+
+      const eviBody = await resEvi.text()
+      if (!resEvi.ok) {
+        console.error(`[EVIDENCIA] ❌ Error enviando foto al cliente: ${eviBody}`)
+        return new Response(JSON.stringify({ error: 'WA error', detail: eviBody }), { status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+      }
+
+      // Registrar en BD la foto de evidencia para auditoría
+      try {
+        const { error: auditError } = await supabase.from('pedido_acciones').insert({
+          pedido_id,
+          accion: 'foto_evidencia',
+          detalle: foto_url,
+          created_at: new Date().toISOString()
+        })
+        if (auditError) console.warn('[EVIDENCIA] No se pudo guardar auditoría', {code: auditError.code})
+      } catch (_error: unknown) {
+        console.warn('[EVIDENCIA] No se pudo confirmar la auditoría de la foto')
+      }
+
+      console.log(`[EVIDENCIA] ✅ Foto enviada al cliente ${pedEvi.cliente_tel}`)
+      return new Response(JSON.stringify({ ok: true, message: 'Foto enviada al cliente' }), { status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+    }
+
     if (tipo === 'nueva_orden_admin') {
       const { restaurante, restaurante_id, descripcion, ticket_id, tipo_entrega } = payload
       const adminPhoneRaw = Deno.env.get('ADMIN_PHONE_BILLETERA') || Deno.env.get('ADMIN_PHONE') || (Deno.env.get('ADMIN_PHONES') ?? '').split(',')[0]?.trim()
@@ -501,10 +706,10 @@ serve(async (req: Request) => {
       // 1. Notificar al Admin
       if (adminPhoneRaw && adminPhoneRaw.length > 0) {
         const adminTelFormateado = formatTel(adminPhoneRaw)
-        const resAdm = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-          method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+        const resAdm = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+          method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            messaging_product: 'whatsapp', recipient_type: 'individual', to: adminTelFormateado, type: 'text',
+            from: WA_PHONE_ID, to: adminTelFormateado, type: 'text',
             text: { body: mensajeAdmin }
           })
         }, 15000)
@@ -539,8 +744,7 @@ serve(async (req: Request) => {
           const totalText = pData?.total ? pData.total.toString() : '0';
 
           const payloadTemplate = {
-            messaging_product: 'whatsapp',
-            recipient_type: 'individual',
+            from: WA_PHONE_ID,
             to: restTelFormateado,
             type: 'template',
             template: {
@@ -551,8 +755,8 @@ serve(async (req: Request) => {
                   type: 'body',
                   parameters: [
                     { type: 'text', text: ticket_id }, // {{1}} Orden
-                    { type: 'text', text: metodoPagoText }, // {{2}} Metodo de pago
-                    { type: 'text', text: totalText } // {{3}} Total
+                    { type: 'text', text: pData?.metodo_pago === 'en_linea' ? 'Pagado (Tarjeta/Web)' : `Cobrar Efectivo: $${totalText}` }, // {{2}} Metodo y Cobro
+                    { type: 'text', text: descripcion ? descripcion.substring(0, 800) : 'Sin detalles' } // {{3}} Platillos
                   ]
                 },
                 {
@@ -575,8 +779,8 @@ serve(async (req: Request) => {
             }
           };
 
-          const resRest = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-            method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+          const resRest = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+            method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
             body: JSON.stringify(payloadTemplate)
           }, 15000);
           
@@ -602,10 +806,10 @@ serve(async (req: Request) => {
         const minText = tiempo_preparacion_minutos ? ` en aproximadamente *${tiempo_preparacion_minutos} minutos*` : ''
         const mensaje = `👨‍🍳 *¡Manos a la obra! (#${numeroOrden})*\n\nEl restaurante *${restaurante}* ya está preparando tu pedido y estará listo${minText}. 🍽️\n\nTe avisaremos en cuanto vaya en camino. 🛵💨`
         
-        const res = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-          method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+        const res = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+          method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text',
+            from: WA_PHONE_ID, to: telFormateado, type: 'text',
             text: { body: mensaje }
           })
         }, 15000);
@@ -634,10 +838,10 @@ serve(async (req: Request) => {
           const telFormateado = formatTel(pedidoData.cliente_tel);
           const mensajeCliente = `🛎️ *¡Tu pedido está listo, ${pedidoData.cliente_nombre}! (#${numeroOrden})*\n\nLa comida de *${restaurante}* acaba de salir de la cocina.\n\nYa puedes pasar a recogerla. ¡Que la disfrutes! 🏃‍♂️💨`;
           
-          const res = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-            method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+          const res = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+            method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text',
+              from: WA_PHONE_ID, to: telFormateado, type: 'text',
               text: { body: mensajeCliente }
             })
           }, 15000);
@@ -660,10 +864,10 @@ serve(async (req: Request) => {
           const telFormateado = formatTel(repartidorTel)
           const mensaje = `🛎️ *¡La comida está lista! (#${numeroOrden})*\n\nEl restaurante *${restaurante || 'Asignado'}* acaba de marcar el pedido como listo para recoger.\n\nPuedes pasar directamente a la cocina por él. 🏃‍♂️💨`
           
-          const res = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-            method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+          const res = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+            method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text',
+              from: WA_PHONE_ID, to: telFormateado, type: 'text',
               text: { body: mensaje }
             })
           }, 15000);
@@ -678,10 +882,10 @@ serve(async (req: Request) => {
           const adminTelFormateado = formatTel(adminPhone);
           const adminMsg = `👨‍🍳 *INFO ADMIN: Pedido Listo (#${numeroOrden})*\n\nEl restaurante *${restaurante || 'No especificado'}* acaba de marcar la comida como lista para recoger.\nEl repartidor ya fue notificado.`;
           
-          await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-            method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+          await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+            method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              messaging_product: 'whatsapp', recipient_type: 'individual', to: adminTelFormateado, type: 'text',
+              from: WA_PHONE_ID, to: adminTelFormateado, type: 'text',
               text: { body: adminMsg }
             })
           }, 15000).catch(e => console.error("Error notificando al admin (comida_lista):", e));
@@ -697,10 +901,10 @@ serve(async (req: Request) => {
       const adminPhoneMain = Deno.env.get('ADMIN_PHONE_BILLETERA') || Deno.env.get('ADMIN_PHONE') || Deno.env.get('ADMIN_PHONES')?.split(',')[0]
 
       // Intentar primero con mensaje de texto libre (más amigable, funciona si hay ventana 24h)
-      let resCli = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+      let resCli = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+        method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'text',
+          from: WA_PHONE_ID, to: telFormateado, type: 'text',
           text: { body: `✅ *¡Cupón Generado!*\n\nHola ${cliente_nombre || 'Cliente'}, has canjeado saldo de tu Billetera VIP.\n\n🎯️ Código: *${codigo_canje || 'CUPON'}*\n💰 Monto: *$${monto} pesos*\n\nMuéstrale o díctale este código a tu repartidor para que aplique el descuento. ⭐️` }
         })
       }, 15000)
@@ -710,10 +914,10 @@ serve(async (req: Request) => {
         // Fallback a la plantilla oficial si falla (ej. fuera de ventana 24h)
         const fExp = 'Válido hoy'
         const strDesc = `Hasta $${monto} en pedidos/comida`
-        resCli = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-          method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+        resCli = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+          method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            messaging_product: 'whatsapp', recipient_type: 'individual', to: telFormateado, type: 'template',
+            from: WA_PHONE_ID, to: telFormateado, type: 'template',
             template: {
               name: 'estrella_cupon_generado',
               language: { code: 'en' },
@@ -734,10 +938,10 @@ serve(async (req: Request) => {
       }
 
       if (adminPhoneMain && adminPhoneMain.length > 0) {
-        const resAdm = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-          method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+        const resAdm = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+          method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            messaging_product: 'whatsapp', recipient_type: 'individual', to: adminPhoneMain, type: 'text',
+            from: WA_PHONE_ID, to: adminPhoneMain, type: 'text',
             text: { body: `🚨 *NUEVO CANJE DE BILLETERA*\n\n👤 Cliente: ${cliente_nombre || 'Desconocido'} (${cliente_tel})\n💰 Monto canjeado: *$${monto}*\n🎯️ Código: *${codigo_canje}*` }
           })
         }, 15000)
@@ -801,8 +1005,7 @@ serve(async (req: Request) => {
       const msgZ = `🚨 *URGENTE: Pedido sin asignar* 🚨\n¡El pedido *${numeroOrden}* se está quedando frío! 🥶\n\n🍽️ *De:* ${pedido.restaurante || 'No especificado'}\n📦 *Lleva:* ${descripcion || pedido.descripcion}\n⏳ *Tiempo esperando:* ${minutos_estancado} min (Total: ${minutos_total}m)\n\n👤 *Cliente:* ${clienteNombre}${clienteLink}\n${repInfoTexto}\n\n🔗 *Ver en panel:* https://admin.estrella-eats.mx\n\n👇 *Acción rápida:*`
 
       const payloadZ = {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
+        from: WA_PHONE_ID,
         to: formatTel(adminPhone),
         type: 'interactive',
         interactive: {
@@ -817,8 +1020,8 @@ serve(async (req: Request) => {
         }
       }
 
-      const resZ = await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+      const resZ = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+        method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
         body: JSON.stringify(payloadZ)
       }, 15000)
       if (!resZ.ok) console.error(`Error enviando Alerta Zombie:`, await resZ.text())
@@ -931,9 +1134,9 @@ serve(async (req: Request) => {
         }
 
         if (msgB2B) {
-          await fetchWithTimeout(`https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`, {
-            method: 'POST', headers: { 'Authorization': `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: formatTel(rInfo.telefono), type: 'text', text: { body: msgB2B } })
+          await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`, {
+            method: 'POST', headers: { 'X-API-Key': WA_TOKEN, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from: WA_PHONE_ID, to: formatTel(rInfo.telefono), type: 'text', text: { body: msgB2B } })
           }, 15000)
           results.push(`✅ Notificación B2B enviada al restaurante ${pedido.restaurante}`)
         }
