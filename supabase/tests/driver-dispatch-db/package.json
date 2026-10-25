@@ -1,0 +1,1 @@
+{"name":"estrella-driver-dispatch-db-tests","private":true,"scripts":{"test":"node test-dispatch.cjs"},"dependencies":{"@electric-sql/pglite":"0.5.8"}}

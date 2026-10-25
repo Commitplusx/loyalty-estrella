@@ -1,57 +1,75 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.6"
+import { dispatchOrder, object, uuid } from "../_shared/driver-dispatch.ts";
+import {
+  authorized,
+  response,
+  serviceClient,
+  SupabaseDispatchGateway,
+} from "../_shared/driver-dispatch-gateway.ts";
 
-serve(async (req) => {
+Deno.serve(async (req) => {
+  if (req.method !== "POST") return response({ error: "POST requerido" }, 405);
+  if (!authorized(req)) return response({ error: "No autorizado" }, 401);
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseKey)
-
-    // Pedidos que llevan más de 2 minutos estancados en estado 'pendiente'
-    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-    
-    const { data: pedidos, error } = await supabase
-      .from('pedidos')
-      .select('id, updated_at')
-      .in('estado', ['pendiente', 'buscando_repartidor'])
-      .lt('updated_at', twoMinutesAgo)
-
-    if (error) {
-      console.error('[CRON-RESCATE] Error fetch pedidos:', error);
-      return new Response(JSON.stringify({ error: error.message }), { status: 500 })
+    const client = serviceClient(),
+      gateway = new SupabaseDispatchGateway(client);
+    const started = performance.now();
+    const now = new Date().toISOString();
+    const { data, error } = await client.from("pedidos")
+      .select("id,estado,repartidor_id,oferta_token")
+      .or(
+        `and(estado.eq.ofrecido,oferta_vence_at.lte.${now}),and(estado.eq.buscando_repartidor,despacho_reintentar_at.lte.${now}),and(estado.eq.buscando_repartidor,despacho_reintentar_at.is.null,despacho_incidente.is.null)`,
+      )
+      .order("created_at").limit(50);
+    if (error) throw new Error("Consulta de recuperación falló");
+    let offered = 0, failed = 0, ignored = 0, processed = 0;
+    // Bounded batch/concurrency. A crash leaves the durable retry deadline.
+    const rows: unknown = data;
+    if (!Array.isArray(rows)) throw new Error("Lote de recuperación inválido");
+    for (let offset = 0; offset < rows.length; offset += 3) {
+      // Stop claiming more work before the Edge wall-clock budget is exhausted.
+      // Unprocessed rows remain due for the next invocation.
+      if (performance.now() - started >= 45000) break;
+      await Promise.all(
+        rows.slice(offset, offset + 3).map(async (value: unknown) => {
+          try {
+            processed++;
+            const row = object(value), id = uuid(row.id);
+            if (row.estado === "ofrecido") {
+              const expired = await gateway.boolRpc("expirar_oferta_pedido", {
+                p_pedido_id: id,
+                p_repartidor_id: uuid(row.repartidor_id),
+                p_oferta_token: uuid(row.oferta_token),
+              });
+              if (!expired) {
+                ignored++;
+                return;
+              }
+            }
+            const result = await dispatchOrder(id, gateway);
+            if (result.status === "offered") offered++;
+            else ignored++;
+          } catch (_) {
+            failed++;
+          }
+        }),
+      );
     }
-
-    if (!pedidos || pedidos.length === 0) {
-      return new Response(JSON.stringify({ success: true, message: 'Ningún pedido estancado.' }), {
-        headers: { 'Content-Type': 'application/json' }
-      })
-    }
-
-    let rescued = 0;
-    for (const pedido of pedidos) {
-      console.log(`[CRON-RESCATE] 🚑 Rescatando pedido estancado: ${pedido.id}`);
-      
-      // Actualizamos el updated_at para que no vuelva a ser barrido en los próximos 2 min
-      await supabase
-          .from('pedidos')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', pedido.id);
-      
-      // Re-inyectamos al sistema de asignación
-      try {
-        await supabase.functions.invoke('asignar-repartidor', {
-          body: { id: pedido.id }
-        })
-        rescued++;
-      } catch(e) {
-        console.error(`[CRON-RESCATE] Error invocando asignar-repartidor para ${pedido.id}:`, e);
-      }
-    }
-
-    return new Response(JSON.stringify({ success: true, rescued_count: rescued }), {
-      headers: { 'Content-Type': 'application/json' }
-    })
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 })
+    console.log(
+      JSON.stringify({
+        event: "dispatch_recovery",
+        scanned: rows.length,
+        processed,
+        offered,
+        failed,
+        ignored,
+      }),
+    );
+    return response(
+      { scanned: rows.length, processed, offered, failed, ignored },
+      failed > 0 ? 503 : 200,
+    );
+  } catch (_) {
+    console.error("dispatch_recovery_failed");
+    return response({ error: "Recuperación no completada" }, 500);
   }
-})
+});
