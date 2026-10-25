@@ -1,5 +1,7 @@
 # Asignación Eats por presencia y tiempo de llegada
 
+Revisión posterior del mismo día: asignación v75/timeout v42/rescate v29 incorporan selección de rescate compartida, vigencia antes del aviso y lectura acotada de Matrix; [evidencia y límites](DISPATCH_RESILIENCE_20261025.md). Las versiones y cifras siguientes corresponden a la entrega original v2.
+
 Entrega del 25 de octubre de 2026 para Eats/Loyalty `jdrrkpvodnqoljycixbg`. El proyecto independiente Robin’s y el worker no se modifican. El PIN sigue exclusivamente en recolección; `avanzar_pedido_repartidor` y cocina conservan las definiciones publicadas anteriores.
 
 ## Contrato implementado

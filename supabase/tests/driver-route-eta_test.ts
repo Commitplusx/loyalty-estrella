@@ -22,6 +22,114 @@ function equal(a: unknown, b: unknown): void {
 }
 const matrix = (rows: (number | null)[]) =>
   Response.json({ code: "Ok", durations: rows.map((v) => [v]) });
+Deno.test("chunked oversized provider body is cancelled at the byte limit", async () => {
+  let cancelled = false, chunks = 0;
+  const estimator = new DriverRouteEstimator(
+    () => "fixture",
+    async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            chunks++;
+            if (chunks <= 20) {
+              controller.enqueue(new Uint8Array(16384).fill(32));
+            } else controller.close();
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+      ),
+  );
+  equal((await estimator.estimate(context)).reason, "provider_error");
+  equal(cancelled, true);
+  equal(chunks <= 6, true);
+});
+Deno.test("a declared oversized body is cancelled before consumption", async () => {
+  let cancelled = false;
+  const estimator = new DriverRouteEstimator(
+    () => "fixture",
+    async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { headers: { "content-length": "65537" } },
+      ),
+  );
+  equal((await estimator.estimate(context)).reason, "provider_error");
+  equal(cancelled, true);
+});
+Deno.test("UTF-8 byte limit cannot be bypassed by a shorter character count", async () => {
+  const body = JSON.stringify({ padding: "é".repeat(33000) });
+  equal(body.length < 65536, true);
+  const estimator = new DriverRouteEstimator(
+    () => "fixture",
+    async () => new Response(body),
+  );
+  equal((await estimator.estimate(context)).reason, "provider_error");
+});
+Deno.test("malformed streamed UTF-8 cancels the remaining response", async () => {
+  let cancelled = false;
+  const estimator = new DriverRouteEstimator(
+    () => "fixture",
+    async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array([255]));
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+      ),
+  );
+  equal((await estimator.estimate(context)).reason, "provider_error");
+  equal(cancelled, true);
+});
+Deno.test("shared timed-out lookup gives every caller the same observable cause", async () => {
+  let rejectRequest: ((error: unknown) => void) | undefined;
+  let calls = 0;
+  const estimator = new DriverRouteEstimator(() => "fixture", () => {
+    calls++;
+    return new Promise<Response>((_resolve, reject) => {
+      rejectRequest = reject;
+    });
+  });
+  const a = estimator.estimate(context), b = estimator.estimate(context);
+  if (!rejectRequest) throw new Error("Request not started");
+  rejectRequest(new DOMException("Synthetic body timeout", "TimeoutError"));
+  equal((await Promise.all([a, b])).map((result) => result.reason), [
+    "provider_timeout",
+    "provider_timeout",
+  ]);
+  equal(calls, 1);
+});
+Deno.test("a body that stalls after headers is covered by the request deadline", async () => {
+  const estimator = new DriverRouteEstimator(
+    () => "fixture",
+    async (_input, init) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("Provider request has no deadline");
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"code":'));
+            signal.addEventListener(
+              "abort",
+              () => controller.error(signal.reason),
+              { once: true },
+            );
+          },
+        }),
+      );
+    },
+  );
+  equal((await estimator.estimate(context)).reason, "provider_timeout");
+});
 Deno.test("road lookup requests only bounded many-to-one pairs at the exact branch", async () => {
   const estimator = new DriverRouteEstimator(() => "fixture", async (input) => {
     const url = new URL(String(input));

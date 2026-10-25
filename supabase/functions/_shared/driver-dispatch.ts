@@ -69,7 +69,9 @@ export async function dispatchOrder(
       const offered = await gateway.read(id);
       if (
         !offered || offered.state !== "ofrecido" ||
-        offered.owner !== candidate.id || !offered.token || !offered.expiresAt
+        offered.owner !== candidate.id || !offered.token ||
+        !offered.expiresAt ||
+        Date.parse(offered.expiresAt) <= Date.now()
       ) {
         return { status: "ignored" };
       }

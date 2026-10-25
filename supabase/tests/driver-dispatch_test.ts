@@ -45,6 +45,7 @@ class Gateway implements DispatchGateway {
     timeout: true,
   };
   concurrentAcceptance = false;
+  expiresOffset = 25000;
   claim(): Promise<boolean> {
     return Promise.resolve(this.claimed);
   }
@@ -62,7 +63,7 @@ class Gateway implements DispatchGateway {
       state: this.concurrentAcceptance ? "asignado" : "ofrecido",
       owner: driver,
       token: id,
-      expiresAt: new Date(Date.now() + 25000).toISOString(),
+      expiresAt: new Date(Date.now() + this.expiresOffset).toISOString(),
     };
     return Promise.resolve(true);
   }
@@ -128,6 +129,14 @@ Deno.test("acceptance between offer and readback never emits a stale offer", asy
   g.concurrentAcceptance = true;
   expect((await dispatchOrder(id, g)).status, "ignored");
   expect(g.notifications, 0);
+});
+Deno.test("offer that expires before readback never emits an unusable notification", async () => {
+  const g = new Gateway();
+  g.expiresOffset = -1000;
+  expect((await dispatchOrder(id, g)).status, "ignored");
+  expect(g.notifications, 0);
+  // Expiration/recovery still owns the durable state; do not free it from a stale read.
+  expect(g.order.state, "ofrecido");
 });
 Deno.test("an unpaid/foreign state cannot be dispatched from stale trigger payload", async () => {
   for (

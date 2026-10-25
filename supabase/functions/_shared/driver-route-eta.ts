@@ -26,6 +26,43 @@ export interface RouteEvidence {
   reason: RouteReason | null;
   routes: { id: string; seconds: number | null }[];
 }
+function providerFailure(error: unknown): RouteReason {
+  return error instanceof DOMException &&
+      (error.name === "TimeoutError" || error.name === "AbortError")
+    ? "provider_timeout"
+    : "provider_error";
+}
+async function routeBody(response: Response): Promise<unknown> {
+  const limit = 65536;
+  const size = response.headers.get("content-length");
+  if (size !== null && Number(size) > limit) {
+    await response.body?.cancel();
+    throw new Error("Oversized route response");
+  }
+  if (!response.body) throw new Error("Missing route response");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let bytes = 0, text = "";
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytes += chunk.value.byteLength;
+      if (bytes > limit) {
+        throw new Error("Oversized route response");
+      }
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+    text += decoder.decode();
+    const parsed: unknown = JSON.parse(text);
+    return parsed;
+  } catch (error: unknown) {
+    await reader.cancel(error);
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+}
 function point(value: unknown): RoutePoint {
   const row = object(value);
   if (
@@ -99,8 +136,8 @@ export class DriverRouteEstimator {
       if (pending) {
         try {
           values = await pending;
-        } catch {
-          return fallback("provider_error");
+        } catch (error: unknown) {
+          return fallback(providerFailure(error));
         }
       } else {
         if (this.active >= 3) return fallback("concurrency_limit");
@@ -115,12 +152,7 @@ export class DriverRouteEstimator {
             if (oldest !== undefined) this.cache.delete(oldest);
           }
         } catch (error: unknown) {
-          return fallback(
-            error instanceof DOMException &&
-              (error.name === "TimeoutError" || error.name === "AbortError")
-              ? "provider_timeout"
-              : "provider_error",
-          );
+          return fallback(providerFailure(error));
         } finally {
           this.pending.delete(key);
         }
@@ -167,16 +199,9 @@ export class DriverRouteEstimator {
         await response.body?.cancel();
         throw new Error("Road provider rejected request");
       }
-      // The requested 10x1 matrix is small. A declared oversized response is rejected.
-      const size = response.headers.get("content-length");
-      if (size !== null && Number(size) > 65536) {
-        await response.body?.cancel();
-        throw new Error("Oversized route response");
-      }
-      const text = await response.text();
-      if (text.length > 65536) throw new Error("Oversized route response");
-      const parsed: unknown = JSON.parse(text);
-      const result = object(parsed);
+      // Count bytes while consuming, including chunked/compressed responses.
+      // The same fetch deadline remains in force during body consumption.
+      const result = object(await routeBody(response));
       if (result.code === "NoRoute") {
         this.failures = 0;
         return Array.from({ length: count }, () => null);

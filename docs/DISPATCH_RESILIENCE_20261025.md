@@ -1,0 +1,27 @@
+# Recuperación y límites de proveedores — Eats
+
+Publicado el 25 de octubre de 2026 en Loyalty `jdrrkpvodnqoljycixbg`. Continúa la asignación v2 activa. Esta entrega cambia exclusivamente selección de rescate, lectura de Matrix y comprobación de vigencia antes de avisar. No cambia la APK instalada, cocina, aceptación, entrega ni PIN de recolección. El proyecto independiente Robin’s y su worker quedan fuera.
+
+## Causas reproducidas y correcciones
+
+1. **Rescate bloqueado por una cohorte inválida.** El selector anterior tomaba primero las cincuenta búsquedas más antiguas aunque no admitieran reparto; la RPC de reclamación las rechazaba después. Con cincuenta recogidas históricas y una entrega válida posterior, la entrega no entraba en ningún lote y el cron seguía despertando. La nueva RPC `eats_dispatch_recovery_batch` filtra admisión/propiedad antes de LIMIT, usa el reloj PostgreSQL y conserva orden estable por fecha/ID. El cron y la Edge comparten ese selector. Expirar ofertas sigue siendo responsabilidad de la RPC existente, con propietario/token; seleccionar no reclama ni modifica pedidos.
+2. **Aviso de una oferta vencida durante la lectura.** Antes se comprobaban propietario, token y presencia de fecha, pero no que la fecha siguiera vigente. Ahora se detiene el aviso si ya venció al recuperar la oferta. No borra ni libera una reserva desde una lectura vieja: vencimiento y rescate conservan sus comprobaciones atómicas.
+3. **Respuesta de Matrix leída antes de limitarla.** Antes `response.text()` consumía un cuerpo sin Content-Length completo antes de revisar su tamaño, y el control contaba caracteres. Ahora se consumen como máximo 65,536 bytes, se cancela al excederlos o recibir UTF-8 inválido y se conserva el plazo de 3.5 segundos durante la lectura del cuerpo. Los consumidores concurrentes de una misma consulta reciben la misma causa `provider_timeout` cuando vence, en vez de etiquetar unos como error genérico. Se mantienen circuito, caché, concurrencia y alternativa geográfica; no se inventa una ruta de calles exitosa.
+
+## Publicación y comprobaciones
+
+- Migración nueva `20261025161430_eats_dispatch_recovery_filter`, ensayada con ROLLBACK y registro transaccional. Sólo cambia `dispatch_recovery_due` y añade el selector; otras nueve RPC auditadas conservan exactamente su hash, incluidas aceptación, entrega y cocina. Las migraciones publicadas anteriores no se editan ni reaplican.
+- Asignación **v75**, timeout **v42**, rescate **v29**, ACTIVE. Doce fuentes publicadas comparadas con el candidato por SHA256; respaldo individual anterior v74/v41/v28. Sólo tres archivos de ejecución distintos en esta entrega, compartidos por las tres funciones.
+- **127 comprobaciones locales:** 94 SQL aisladas (87 regresiones y siete de rescate) y 33 Deno con comprobación de tipos. Las 33 se repitieron sobre las fuentes descargadas de producción, junto con `deno check` de las tres entradas. Reproducciones fallidas anteriores conservadas en evidencia privada; no se rebajaron expectativas para hacerlas pasar.
+- Contrato administrativo posterior aprobado. PostgREST real del selector: servidor 200, límite inválido 400, anónimo 401. POST sin autorización a las tres Edge: 401. Selección de hasta cincuenta, concurrencia de tres, seis reclamaciones y derivación manual existente conservadas. No hay reintento infinito ni otra ruta de asignación.
+- Las suites SQL usan PGlite y geometría sintética; esta entrega no repitió carreras entre conexiones ni pruebas físicas de pedidos/avisos/viajes. La evidencia anterior de asignación v2 con PostgreSQL real y Android sigue identificada por su propia fecha y versión.
+
+Se observaron cuatro `job startup timeout` de cron en una ventana de treinta minutos, en rescate y tres trabajos adicionales. Las lecturas posteriores confirmaron ejecuciones recientes exitosas y ningún trabajo retenido. Existe además una fila histórica de rescate con `start_time=NULL`/`server restarted`: no debe confundirse con la ejecución más reciente al ordenar DESC sin `NULLS LAST`. No se borraron fallos ni se cambiaron recursos, facturación, plan, horarios o runtime para ocultarlos. Un timeout de infraestructura sigue siendo una incidencia externa posible; el cron periódico y el estado persistido permiten el siguiente intento mientras PostgreSQL vuelve a estar disponible.
+
+## Operación y límites
+
+Las RPC de selección son SECURITY INVOKER y sólo ejecutables por servidor. No exponen filas de pedidos a roles de clientes. No se enviaron WhatsApps/push, no se crearon pedidos ni se publicaron web/APK. El PIN continúa sólo en recolección.
+
+Si un teléfono no tiene datos, GPS válido, permisos o sesión vigente, no se afirma que esté disponible; la política de presencia v2 y sus plazos continúan. Si ningún conductor reúne las condiciones o el presupuesto se agota, queda la incidencia y se deriva a asignación manual. No se promete recuperación autónoma ante cualquier caída ni se afirma capacidad de otra plataforma sin medirla.
+
+Para revertir una Edge, restaurar únicamente su respaldo individual compatible. El selector es aditivo; primero restaurar los consumidores anteriores si se decide retirarlo, y no borrar ofertas/contextos o reaplicar migraciones antiguas. La guía operativa local y los hashes de publicación se conservan en `C:/Users/Kaleb/Desktop/pollo-robins-panel/.codex-tmp/eats-resilience-20261025/`; esta evidencia privada no debe subirse a Git. La copia de la guía en VPS continúa pendiente si SSH sigue inaccesible.

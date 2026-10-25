@@ -13,13 +13,9 @@ Deno.serve(async (req) => {
     const client = serviceClient(),
       gateway = new SupabaseDispatchGateway(client);
     const started = performance.now();
-    const now = new Date().toISOString();
-    const { data, error } = await client.from("pedidos")
-      .select("id,estado,repartidor_id,oferta_token")
-      .or(
-        `and(estado.eq.ofrecido,oferta_vence_at.lte.${now}),and(estado.eq.buscando_repartidor,despacho_reintentar_at.lte.${now}),and(estado.eq.buscando_repartidor,despacho_reintentar_at.is.null,despacho_incidente.is.null)`,
-      )
-      .order("created_at").limit(50);
+    const { data, error } = await client.rpc("eats_dispatch_recovery_batch", {
+      p_limit: 50,
+    });
     if (error) throw new Error("Consulta de recuperación falló");
     let offered = 0, failed = 0, ignored = 0, processed = 0;
     // Bounded batch/concurrency. A crash leaves the durable retry deadline.
