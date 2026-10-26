@@ -44,6 +44,14 @@ let isolatedDb;
   assert.equal(stored.restaurante_lat,16.1);assert.equal(stored.lat,16.25);assert.equal(stored.estado,'buscando_repartidor');assert.equal(stored.origen,'portal_restaurante');assert.match(stored.pickup_pin,/^[0-9]{4}$/);assert.equal(stored.pin_seguridad,null);assert.match(stored.descripcion,/Cobrar al cliente: \$235\.00/);assert.match(stored.descripcion,/Entregar a la sucursal: \$185\.00/);
   assert.equal((await db.query('SELECT count(*) n FROM dispatch_wakes')).rows[0].n,1);
  });
+ await test('180 food plus 45 shipping and 15 restaurant contribution persist 210 customer and 165 settlement',async()=>{
+  const q=await prepare({food:180,fee:45});
+  assert.equal(q.restaurantContribution,15);assert.equal(q.customerShipping,30);assert.equal(q.customerToCollect,210);assert.equal(q.restaurantSettlement,165);
+  const result=await create();assert.equal(result.total,210);assert.equal(result.fee,45);assert.equal(result.restaurantSettlement,165);
+  await role();const stored=(await db.query('SELECT * FROM pedidos')).rows[0];
+  assert.equal(stored.total,'210');assert.equal(stored.precio_entrega,'45');
+  assert.match(stored.descripcion,/Cobrar al cliente: \$210\.00/);assert.match(stored.descripcion,/Entregar a la sucursal: \$165\.00/);
+ });
  await test('paid food records receiving the restaurant contribution, without a negative customer charge',async()=>{
   await prepare({food:0});const result=await create();assert.equal(result.total,35);assert.equal(result.restaurantSettlement,-15);assert.equal(result.total-result.restaurantSettlement,50);
   await role();assert.match((await db.query('SELECT descripcion FROM pedidos')).rows[0].descripcion,/Recibir de la sucursal: \$15\.00/);

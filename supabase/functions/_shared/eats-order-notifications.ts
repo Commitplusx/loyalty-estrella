@@ -182,7 +182,7 @@ export async function processOrderOutbox(jobs: NotificationJobs, apiKey: string,
             approval === 'PENDING' ? 'template_pending' : 'template_unavailable'); processed++; continue;
         }
       }
-      if (n.kind === 'restaurant_new' && !await jobs.current(n)) {
+      if ((n.kind === 'restaurant_new' || n.kind === 'driver_ready') && !await jobs.current(n)) {
         await jobs.finish(n,'superseded',null,'order_already_advanced'); processed++; continue;
       }
       if (!await jobs.start(n)) continue;

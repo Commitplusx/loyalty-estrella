@@ -26,7 +26,8 @@ export class OrderNotificationGateway implements NotificationJobs {
     if (n.kind==='preparing') return ['pendiente','buscando_repartidor','ofrecido'].includes(String(p.estado)) && p.estado_cocina==='en_cocina';
     if (n.kind==='restaurant_new' || n.kind==='kitchen_prompt') return p.estado==='pendiente' && (p.estado_cocina===null || p.estado_cocina==='pendiente');
     if (n.kind==='restaurant_receipt') return p.estado_cocina==='en_cocina' && !['cancelado','entregado'].includes(String(p.estado));
-    if (n.kind==='driver_ready') return p.estado_cocina==='listo_para_recoger' && ['asignado','recibido'].includes(String(p.estado));
+    if (n.kind==='driver_ready') return p.estado_cocina==='listo_para_recoger' && ['asignado','recibido'].includes(String(p.estado))
+      && typeof n.snapshot.driver_id==='string' && p.repartidor_id===n.snapshot.driver_id;
     if (n.kind==='pickup_ready') return p.estado_cocina==='listo_para_recoger' && p.estado!=='entregado';
     if (['entregado','en_camino','cancelado'].includes(n.kind)) return p.estado===n.kind;
     return n.kind==='restaurant_rejected';
