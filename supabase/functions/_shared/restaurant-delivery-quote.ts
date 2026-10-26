@@ -5,7 +5,7 @@ import {DeliveryPinError,resolveDeliveryMapsPin} from './delivery-maps-pin.ts';
 
 type ObjectData = Record<string, unknown>;
 export class DeliveryRequestError extends Error {
-  constructor(message: string, readonly status = 400) {
+  constructor(message: string, readonly status = 400, readonly code='delivery_request_invalid') {
     super(message);
   }
 }
@@ -111,6 +111,13 @@ export class RestaurantDeliveryQuoteGateway {
     private readonly serviceKey: string,
     private readonly transport: typeof fetch = fetch,
   ) {}
+  private async upstream(stage:'session'|'scope'|'price',url:string,init:RequestInit):Promise<Response>{
+    try{return await this.transport(url,init);}
+    catch{
+      const messages={session:'No pudimos comprobar tu sesión a tiempo. Tus datos siguen aquí; vuelve a revisar los importes.',scope:'No pudimos comprobar el acceso a la sucursal a tiempo. Conservamos tus datos.',price:'El cálculo tardó más de lo esperado. Conservamos tus datos; vuelve a revisar los importes.'};
+      throw new DeliveryRequestError(messages[stage],503,'delivery_'+stage+'_unavailable');
+    }
+  }
   private async json(response: Response): Promise<unknown> {
     try {
       return await readBoundedJsonBody(response.body, 65536, 5000);
@@ -136,12 +143,18 @@ export class RestaurantDeliveryQuoteGateway {
       );
     }
     const input = parseRestaurantDeliveryQuote(value);
-    const auth = await this.transport(this.url + "/auth/v1/user", {
+    const authPromise = this.upstream('session',this.url + "/auth/v1/user", {
       headers: { apikey: this.anonKey, Authorization: authorization },
       signal: AbortSignal.any([deadline,AbortSignal.timeout(8000)]),
     });
+    const scopePromise=input.mapsUrl===undefined?Promise.resolve(null):this.upstream('scope',this.url+'/rest/v1/rpc/eats_restaurant_delivery_capability',{
+      method:'POST',headers:{apikey:this.anonKey,Authorization:authorization,'Content-Type':'application/json'},
+      body:JSON.stringify({p_restaurante_id:input.restaurantId}),signal:AbortSignal.any([deadline,AbortSignal.timeout(8000)]),
+    });
+    const [auth,scope]=await Promise.all([authPromise,scopePromise]);
     if (!auth.ok) {
       await auth.body?.cancel();
+      await scope?.body?.cancel();
       throw new DeliveryRequestError(
         auth.status >= 500
           ? "No pudimos comprobar tu sesión. Intenta de nuevo."
@@ -152,17 +165,14 @@ export class RestaurantDeliveryQuoteGateway {
     const actor = uuid(deliveryObject(await this.json(auth)).id);
     let destination=input.destination;
     if(input.mapsUrl!==undefined){
-      const scope=await this.transport(this.url+'/rest/v1/rpc/eats_restaurant_delivery_capability',{
-        method:'POST',headers:{apikey:this.anonKey,Authorization:authorization,'Content-Type':'application/json'},
-        body:JSON.stringify({p_restaurante_id:input.restaurantId}),signal:AbortSignal.any([deadline,AbortSignal.timeout(8000)]),
-      });
+      if(!scope)throw new DeliveryRequestError('No pudimos comprobar el acceso a esta sucursal.',503);
       if(!scope.ok){await scope.body?.cancel();throw new DeliveryRequestError('No pudimos comprobar el acceso a esta sucursal.',scope.status>=500?503:403);}
       if(deliveryObject(await this.json(scope)).enabled!==true)throw new DeliveryRequestError('No tienes acceso a los envíos de esta sucursal.',403);
       try{destination={...await resolveDeliveryMapsPin(input.mapsUrl,this.transport,deadline),address:input.destination.address.trim()||'Ubicación compartida en Google Maps'};}
       catch(error:unknown){if(error instanceof DeliveryPinError)throw new DeliveryRequestError(error.message);throw error;}
     }
     const cell=input.source==='pin'&&destination.lat!==null&&destination.lng!==null?latLngToCell(destination.lat,destination.lng,10):null;
-    const response = await this.transport(
+    const response = await this.upstream('price',
       this.url + "/rest/v1/rpc/eats_restaurant_delivery_prepare_location",
       {
         method: "POST",

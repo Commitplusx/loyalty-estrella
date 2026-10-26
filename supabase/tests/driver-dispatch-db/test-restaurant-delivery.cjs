@@ -14,6 +14,7 @@ let isolatedDb;
  if(!admission)throw new Error('Reviewed admission missing');await db.exec(admission[0]);
  await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261025202620_eats_restaurant_delivery_requests.sql'),'utf8'));
  await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261026144246_eats_restaurant_delivery_location_modes.sql'),'utf8'));
+ await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261026165038_eats_portal_pickup_notice_policy.sql'),'utf8'));
  const role=async(actor='',name='service_role')=>{await db.exec('RESET ROLE');await db.query("SELECT set_config('test.uid',$1,false),set_config('test.role',$2,false)",[actor,name]);};
  const reset=async()=>{
   await role();await db.exec('TRUNCATE eats_restaurant_delivery_requests,eats_restaurant_delivery_quotes,eats_restaurant_delivery_access,h3_zonas,test_notices,dispatch_wakes,repartidores,pedidos,restaurantes CASCADE');
@@ -42,7 +43,30 @@ let isolatedDb;
   const result=await create();assert.equal(result.total,235);assert.equal(result.restaurantSettlement,185);assert.equal(result.total-result.restaurantSettlement,50);
   await role();const stored=(await db.query('SELECT * FROM pedidos')).rows[0];assert.equal(stored.total,'235');assert.equal(stored.precio_entrega,'50');assert.equal(stored.tipo_pedido,'restaurante_delivery');assert.equal(stored.restaurante,'Robin sintético · Sucursal');
   assert.equal(stored.restaurante_lat,16.1);assert.equal(stored.lat,16.25);assert.equal(stored.estado,'buscando_repartidor');assert.equal(stored.origen,'portal_restaurante');assert.match(stored.pickup_pin,/^[0-9]{4}$/);assert.equal(stored.pin_seguridad,null);assert.match(stored.descripcion,/Cobrar al cliente: \$235\.00/);assert.match(stored.descripcion,/Entregar a la sucursal: \$185\.00/);
+  assert.equal(result.pickupPin,stored.pickup_pin);
   assert.equal((await db.query('SELECT count(*) n FROM dispatch_wakes')).rows[0].n,1);
+ });
+ await test('pickup receipt retains leading zeros, replays the same PIN and hides it after collection',async()=>{
+  await prepare();const receipt=await create();await role();await db.query("UPDATE pedidos SET pickup_pin='0042' WHERE id=$1",[receipt.orderId]);
+  const replay=await create();assert.equal(replay.pickupPin,'0042');
+  const recent=(await db.query('SELECT eats_restaurant_delivery_recent($1) result',[branch])).rows[0].result;assert.equal(recent[0].pickupPin,'0042');
+  await role();await db.query("UPDATE pedidos SET estado='en_camino' WHERE id=$1",[receipt.orderId]);
+  const collected=await create();assert.equal(collected.pickupPin,null);
+ });
+ await test('manual services suppress customer lifecycle notices while preserving the driver ready notice and web checkout',async()=>{
+  await prepare();const receipt=await create();await role();
+  const driver=id(500);await db.query("INSERT INTO repartidores(user_id,telefono,nombre) VALUES($1,'0000000000','Conductor sintético')",[driver]);
+  for(const origin of ['portal_restaurante','web']){
+   await db.exec('TRUNCATE test_notices');
+   await db.query("SELECT eats_capture_order_event(next,previous,'UPDATE') FROM (SELECT (jsonb_populate_record(p,jsonb_build_object('origen',$2::text,'estado','asignado','estado_cocina','listo_para_recoger','repartidor_id',$3::uuid))) next,jsonb_populate_record(p,jsonb_build_object('estado_cocina','listo_para_recoger')) previous FROM pedidos p WHERE id=$1) rows",[receipt.orderId,origin,driver]);
+   const notices=(await db.query('SELECT kind FROM test_notices ORDER BY kind')).rows.map(row=>row.kind);
+   assert.deepEqual(notices,origin==='web'?['asignado','driver_ready']:['driver_ready']);
+   for(const state of ['en_camino','entregado','cancelado']){
+    await db.exec('TRUNCATE test_notices');
+    await db.query("SELECT eats_capture_order_event(next,previous,'UPDATE') FROM (SELECT (jsonb_populate_record(p,jsonb_build_object('origen',$2::text,'estado',$3::text))) next,p previous FROM pedidos p WHERE id=$1) rows",[receipt.orderId,origin,state]);
+    assert.equal((await db.query('SELECT count(*) n FROM test_notices')).rows[0].n,origin==='web'?1:0);
+   }
+  }
  });
  await test('180 food plus 45 shipping and 15 restaurant contribution persist 210 customer and 165 settlement',async()=>{
   const q=await prepare({food:180,fee:45});
@@ -133,7 +157,7 @@ let isolatedDb;
   assert.equal((await db.query('SELECT count(*) n FROM test_notices')).rows[0].n,0);
   await db.exec("CREATE TEMP TABLE before_order AS SELECT * FROM pedidos; UPDATE pedidos SET estado='asignado'");
   assert.equal((await db.query("SELECT eats_capture_order_event(p,jsonb_populate_record(NULL::pedidos,to_jsonb(b)),'UPDATE') handled FROM pedidos p CROSS JOIN before_order b")).rows[0].handled,true);
-  assert.equal((await db.query('SELECT kind FROM test_notices ORDER BY kind')).rows[0].kind,'asignado');
+  assert.equal((await db.query('SELECT count(*) n FROM test_notices')).rows[0].n,0);
   assert.equal((await db.query("SELECT eats_capture_order_event(jsonb_populate_record(NULL::pedidos,to_jsonb(p)||jsonb_build_object('id',gen_random_uuid())),NULL,'INSERT') handled FROM pedidos p")).rows[0].handled,false);
   for(const origin of[null,'whatsapp','robins','otra_ruta'])assert.equal((await db.query("SELECT eats_capture_order_event(jsonb_populate_record(NULL::pedidos,to_jsonb(p)||jsonb_build_object('origen',$1::text)),NULL,'INSERT') handled FROM pedidos p",[origin])).rows[0].handled,false);
  });

@@ -38,6 +38,7 @@ Deno.serve(async (request) => {
     return respond(result);
   } catch (error: unknown) {
     if (error instanceof DeliveryRequestError) {
+      if(error.status>=500)console.error(JSON.stringify({event:'restaurant_delivery_quote_failed',code:error.code}));
       return respond({ error: error.message }, error.status);
     }
     if (error instanceof BoundedRequestError) {

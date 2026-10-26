@@ -37,6 +37,25 @@ const reply = {
   expiresAt: new Date(Date.now() + 300000).toISOString(),
 };
 const automatic={...reply,pricing:'h3',locationSource:'pin',h3Index:'8a6d2e884807fff',fee:60,customerShipping:45,customerToCollect:245};
+Deno.test('session and branch checks overlap, but no external Maps request happens before both authorize',async()=>{
+ let releaseSession:()=>void=()=>{throw new Error('Session was not requested');};let checkedScope=false,external=0;
+ const sessionGate=new Promise<void>(resolve=>{releaseSession=resolve;});
+ const g=gateway(async(url)=>{
+  const path=new URL(String(url));
+  if(path.pathname==='/auth/v1/user'){await sessionGate;return Response.json({id:id(3)});}
+  if(path.pathname.endsWith('/eats_restaurant_delivery_capability')){checkedScope=true;releaseSession();return Response.json({enabled:false});}
+  external++;throw new Error('Unauthorized Maps/price request');
+ });
+ await rejected(()=>g.quote('Bearer fixture-token',{...input,source:'pin',shippingPrice:undefined,mapsUrl:'https://maps.app.goo.gl/fixture',destination:{lat:null,lng:null,address:''}}),403);
+ equal(checkedScope,true);equal(external,0);
+});
+Deno.test('upstream network failure names its stage and never creates a quote or retries',async()=>{
+ let calls=0;
+ const g=gateway(()=>{calls++;return Promise.reject(new TypeError('Network fixture'));});
+ try{await g.quote('Bearer fixture-token',input);throw new Error('Unexpected success');}
+ catch(error:unknown){if(!(error instanceof DeliveryRequestError)||error.code!=='delivery_session_unavailable'||error.status!==503)throw error;}
+ equal(calls,1);
+});
 function requestBody(init?:RequestInit):Record<string,unknown>{const value:unknown=JSON.parse(String(init?.body));return deliveryObject(value);}
 Deno.test('a precise pin sends a derived resolution-10 cell and no caller-supplied price to PostgreSQL',async()=>{
  const request={...input,source:'pin',shippingPrice:undefined};let fee:unknown='not-called',cell:unknown;

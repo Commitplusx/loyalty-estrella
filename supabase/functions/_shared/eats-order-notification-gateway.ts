@@ -19,9 +19,12 @@ export class OrderNotificationGateway implements NotificationJobs {
   }
   async current(n: Notice): Promise<boolean> {
     if(typeof n.snapshot.id!=='string') throw new Error('invalid_order_id');
-    const {data,error} = await this.client.from('pedidos').select('estado,estado_cocina,repartidor_id').eq('id',n.snapshot.id).abortSignal(AbortSignal.timeout(5000)).maybeSingle();
+    const {data,error} = await this.client.from('pedidos').select('estado,estado_cocina,repartidor_id,origen').eq('id',n.snapshot.id).abortSignal(AbortSignal.timeout(5000)).maybeSingle();
     if (error || !data) throw new Error('order_state_unavailable');
     const p = object(data);
+    // Only a customer checkout opts the customer into storefront notices.
+    // Check the persisted order, including previously queued manual jobs.
+    if (['asignado','preparing','en_camino','entregado','cancelado','pickup_ready'].includes(n.kind) && p.origen!=='web') return false;
     if (n.kind==='asignado') return ['asignado','recibido'].includes(String(p.estado)) && p.repartidor_id===n.snapshot.driver_id;
     if (n.kind==='preparing') return ['pendiente','buscando_repartidor','ofrecido'].includes(String(p.estado)) && p.estado_cocina==='en_cocina';
     if (n.kind==='restaurant_new' || n.kind==='kitchen_prompt') return p.estado==='pendiente' && (p.estado_cocina===null || p.estado_cocina==='pendiente');
