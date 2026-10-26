@@ -12,10 +12,10 @@ const admin=new Client(config),clients=[];let connected=false,db,count=0;
 async function connect(){const c=new Client({...config,database:name,statement_timeout:5000,query_timeout:6000});await c.connect();clients.push(c);return c;}
 const role=(c,actor='',name='service_role')=>c.query("SELECT set_config('test.uid',$1,false),set_config('test.role',$2,false)",[actor,name]);
 const prepare=(c,key=quote)=>c.query('SELECT eats_restaurant_delivery_prepare($1,$2,$3,$4,50,200,\'50 pesos\',null) result',[operator,key,branch,point]);
-const create=(c,key=request)=>c.query('SELECT eats_restaurant_delivery_create($1,$2) result',[key,input]);
+const create=(c,key=request,body=input)=>c.query('SELECT eats_restaurant_delivery_create($1,$2) result',[key,body]);
 async function waiting(c){const pid=(await c.query('SELECT pg_backend_pid() pid')).rows[0].pid;return pid;}
 async function waitLock(pid){for(let i=0;i<100;i++){if((await db.query('SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1',[pid])).rows[0]?.wait_event_type==='Lock')return;await new Promise(resolve=>setTimeout(resolve,10));}throw new Error('Expected database lock was not reached');}
-async function reset(){await db.query('TRUNCATE eats_restaurant_delivery_requests,eats_restaurant_delivery_quotes,eats_restaurant_delivery_access,test_notices,dispatch_wakes,repartidores,pedidos,restaurantes CASCADE');
+async function reset(){await db.query('TRUNCATE eats_restaurant_delivery_requests,eats_restaurant_delivery_quotes,eats_restaurant_delivery_access,h3_zonas,test_notices,dispatch_wakes,repartidores,pedidos,restaurantes CASCADE');
  await db.query("INSERT INTO restaurantes(id,nombre,nombre_sucursal,matriz_id,admin_id,activo,lat,lng,direccion) VALUES($1,'Robin sintético','Matriz',NULL,$3,true,16,-92,'Origen'),($2,'Robin sintético','Sucursal',$1,$4,true,16.1,-92.1,'Sucursal')",[matrix,branch,owner,operator]);await db.query('INSERT INTO eats_restaurant_delivery_access(matriz_id,enabled) VALUES($1,true)',[matrix]);await role(db);await prepare(db);
 }
 async function test(label,run){await reset();await run();count++;console.log('PASS '+label);}
@@ -29,6 +29,7 @@ async function race(a,b,first,second,commit=true){await a.query('BEGIN');try{
  await db.query(file('supabase/tests/fixtures/eats-restaurant-delivery-schema.sql').replace(/CREATE ROLE (anon|authenticated|service_role);/g,''));
  const admission=file('supabase/migrations/20261006000001_driver_dispatch_reliability.sql').match(/CREATE OR REPLACE FUNCTION public\.pedido_admite_repartidor[\s\S]*?\$\$;/);if(!admission)throw new Error('Reviewed admission missing');await db.query(admission[0]);
  await db.query(file('supabase/migrations/20261025202620_eats_restaurant_delivery_requests.sql'));
+ await db.query(file('supabase/migrations/20261026144246_eats_restaurant_delivery_location_modes.sql'));
  const a=await connect(),b=await connect();
  await test('two real sessions replay one request as one order and one dispatch wake',async()=>{
   await role(a,operator,'authenticated');await role(b,operator,'authenticated');const r=await race(a,b,()=>create(a),()=>create(b));assert.equal(r.next.ok,true);assert.deepEqual(r.initial.rows[0].result,r.next.value.rows[0].result);
@@ -49,6 +50,12 @@ async function race(a,b,first,second,commit=true){await a.query('BEGIN');try{
  });
  await test('concurrent quote retries preserve one manual financial snapshot',async()=>{
   await role(a);await role(b);const r=await race(a,b,()=>prepare(a,id(101)),()=>prepare(b,id(101)));assert.equal(r.next.ok,true);assert.deepEqual(r.initial.rows[0].result,r.next.value.rows[0].result);assert.equal((await db.query('SELECT count(*)::int n FROM eats_restaurant_delivery_quotes WHERE id=$1',[id(101)])).rows[0].n,1);
+ });
+ await test('a concurrent H3 request still creates one order with its reviewed tariff',async()=>{
+  await role(db);await db.query("INSERT INTO h3_zonas VALUES('8a6d2e884807fff',60)");
+  await db.query("SELECT eats_restaurant_delivery_prepare_location($1,$2,$3,$4,'pin',null,200,'',null,'8a6d2e884807fff')",[operator,id(101),branch,point]);
+  await role(a,operator,'authenticated');await role(b,operator,'authenticated');const body={...input,quoteId:id(101)};
+  const r=await race(a,b,()=>create(a,request,body),()=>create(b,request,body));assert.equal(r.next.ok,true);assert.deepEqual(r.initial.rows[0].result,r.next.value.rows[0].result);assert.equal(r.next.value.rows[0].result.fee,60);assert.equal(r.next.value.rows[0].result.pricing,'h3');assert.equal((await db.query('SELECT count(*)::int n FROM pedidos')).rows[0].n,1);
  });
  console.log(count+' real multi-session restaurant delivery checks passed on an isolated loopback database.');
 })().catch(error=>{console.error(error.message);process.exitCode=1;}).finally(async()=>{

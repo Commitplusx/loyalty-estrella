@@ -1,5 +1,7 @@
 import { parseDeliveryMoney } from "./delivery-money.ts";
 import { readBoundedJsonBody } from "./http-request.ts";
+import {latLngToCell} from 'https://esm.sh/h3-js@4.4.0';
+import {DeliveryPinError,resolveDeliveryMapsPin} from './delivery-maps-pin.ts';
 
 type ObjectData = Record<string, unknown>;
 export class DeliveryRequestError extends Error {
@@ -24,8 +26,10 @@ function uuid(value: unknown): string {
 export interface RestaurantDeliveryQuoteInput {
   id: string;
   restaurantId: string;
-  destination: { lat: number; lng: number; address: string };
-  shippingPrice: string;
+  destination: { lat: number|null; lng: number|null; address: string };
+  source: 'pin'|'address';
+  mapsUrl?: string;
+  shippingPrice?: string;
   foodTotal: string;
   restaurantContribution?: string;
 }
@@ -42,25 +46,27 @@ export function parseRestaurantDeliveryQuote(
         "shippingPrice",
         "foodTotal",
         "restaurantContribution",
+        "source","mapsUrl",
       ].includes(key)
     ) ||
     Object.keys(point).some((key) =>
       !["lat", "lng", "address"].includes(key)
     ) ||
-    typeof point.lat !== "number" || !Number.isFinite(point.lat) ||
-    Math.abs(point.lat) > 90 ||
-    typeof point.lng !== "number" || !Number.isFinite(point.lng) ||
-    Math.abs(point.lng) > 180 ||
-    typeof point.address !== "string" || point.address.trim().length < 5 ||
-    point.address.length > 300
+    !((point.lat===null&&point.lng===null)||(typeof point.lat==='number'&&Number.isFinite(point.lat)&&Math.abs(point.lat)<=90
+      &&typeof point.lng==='number'&&Number.isFinite(point.lng)&&Math.abs(point.lng)<=180)) ||
+    typeof point.address !== "string" || point.address.length > 300 ||
+    row.source!==undefined&&row.source!=='pin'&&row.source!=='address' ||
+    row.mapsUrl!==undefined&&(typeof row.mapsUrl!=='string'||row.mapsUrl.length>2048||row.source!=='pin') ||
+    row.source==='pin'&&(row.mapsUrl===undefined&&point.lat===null || row.mapsUrl!==undefined&&point.lat!==null) ||
+    !(row.source==='pin'&&typeof row.mapsUrl==='string')&&point.address.trim().length<5
   ) {
     throw new DeliveryRequestError(
       "Confirma el destino en el mapa y revisa la dirección.",
     );
   }
   if (
-    typeof row.shippingPrice !== "string" ||
-    typeof row.foodTotal !== "string" || row.shippingPrice.length > 100 ||
+    (row.source==='pin'?row.shippingPrice!==undefined:typeof row.shippingPrice!=='string'||row.shippingPrice.length>100) ||
+    typeof row.foodTotal !== "string" ||
     row.foodTotal.length > 100 ||
     row.restaurantContribution !== undefined &&
       (typeof row.restaurantContribution !== "string" ||
@@ -71,7 +77,7 @@ export function parseRestaurantDeliveryQuote(
     );
   }
   try {
-    parseDeliveryMoney(row.shippingPrice);
+    if(row.source!=='pin')parseDeliveryMoney(row.shippingPrice);
     parseDeliveryMoney(row.foodTotal, 100000);
     if (row.restaurantContribution !== undefined) {
       parseDeliveryMoney(row.restaurantContribution);
@@ -85,11 +91,13 @@ export function parseRestaurantDeliveryQuote(
     id: uuid(row.id),
     restaurantId: uuid(row.restaurantId),
     destination: {
-      lat: point.lat,
-      lng: point.lng,
+      lat: point.lat as number|null,
+      lng: point.lng as number|null,
       address: point.address.trim(),
     },
-    shippingPrice: row.shippingPrice,
+    source:row.source==='pin'?'pin':'address',
+    ...(typeof row.shippingPrice==='string'?{shippingPrice:row.shippingPrice}:{}),
+    ...(typeof row.mapsUrl==='string'?{mapsUrl:row.mapsUrl}:{}),
     foodTotal: row.foodTotal,
     ...(row.restaurantContribution === undefined
       ? {}
@@ -117,6 +125,7 @@ export class RestaurantDeliveryQuoteGateway {
     authorization: string | null,
     value: unknown,
   ): Promise<ObjectData> {
+    const deadline=AbortSignal.timeout(18000);
     if (
       !authorization || !/^Bearer [A-Za-z0-9_.-]+$/.test(authorization) ||
       authorization.length > 8192
@@ -129,7 +138,7 @@ export class RestaurantDeliveryQuoteGateway {
     const input = parseRestaurantDeliveryQuote(value);
     const auth = await this.transport(this.url + "/auth/v1/user", {
       headers: { apikey: this.anonKey, Authorization: authorization },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.any([deadline,AbortSignal.timeout(8000)]),
     });
     if (!auth.ok) {
       await auth.body?.cancel();
@@ -141,8 +150,20 @@ export class RestaurantDeliveryQuoteGateway {
       );
     }
     const actor = uuid(deliveryObject(await this.json(auth)).id);
+    let destination=input.destination;
+    if(input.mapsUrl!==undefined){
+      const scope=await this.transport(this.url+'/rest/v1/rpc/eats_restaurant_delivery_capability',{
+        method:'POST',headers:{apikey:this.anonKey,Authorization:authorization,'Content-Type':'application/json'},
+        body:JSON.stringify({p_restaurante_id:input.restaurantId}),signal:AbortSignal.any([deadline,AbortSignal.timeout(8000)]),
+      });
+      if(!scope.ok){await scope.body?.cancel();throw new DeliveryRequestError('No pudimos comprobar el acceso a esta sucursal.',scope.status>=500?503:403);}
+      if(deliveryObject(await this.json(scope)).enabled!==true)throw new DeliveryRequestError('No tienes acceso a los envíos de esta sucursal.',403);
+      try{destination={...await resolveDeliveryMapsPin(input.mapsUrl,this.transport,deadline),address:input.destination.address.trim()||'Ubicación compartida en Google Maps'};}
+      catch(error:unknown){if(error instanceof DeliveryPinError)throw new DeliveryRequestError(error.message);throw error;}
+    }
+    const cell=input.source==='pin'&&destination.lat!==null&&destination.lng!==null?latLngToCell(destination.lat,destination.lng,10):null;
     const response = await this.transport(
-      this.url + "/rest/v1/rpc/eats_restaurant_delivery_prepare",
+      this.url + "/rest/v1/rpc/eats_restaurant_delivery_prepare_location",
       {
         method: "POST",
         headers: {
@@ -150,18 +171,20 @@ export class RestaurantDeliveryQuoteGateway {
           Authorization: "Bearer " + this.serviceKey,
           "Content-Type": "application/json",
         },
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.any([deadline,AbortSignal.timeout(10000)]),
         body: JSON.stringify({
           p_actor: actor,
           p_quote_id: input.id,
           p_restaurante_id: input.restaurantId,
-          p_destination: input.destination,
-          p_fee: parseDeliveryMoney(input.shippingPrice),
+          p_destination: destination,
+          p_source:input.source,
+          p_h3_index:cell,
+          p_fee: input.source==='address'?parseDeliveryMoney(input.shippingPrice):null,
           p_food: parseDeliveryMoney(input.foodTotal, 100000),
           p_contribution: input.restaurantContribution === undefined
             ? null
             : parseDeliveryMoney(input.restaurantContribution),
-          p_price_input: input.shippingPrice,
+          p_price_input: input.shippingPrice??'',
         }),
       },
     );
@@ -186,10 +209,12 @@ export class RestaurantDeliveryQuoteGateway {
     }
     if (
       result.id !== input.id || result.restaurantId !== input.restaurantId ||
-      result.pricing !== "manual" ||
+      result.pricing !== (input.source==='pin'?'h3':'manual') ||
+      result.locationSource!==input.source||result.h3Index!==cell||
+      deliveryObject(result.destination).lat!==destination.lat||deliveryObject(result.destination).lng!==destination.lng||
       typeof result.fee !== "number" || !Number.isFinite(result.fee) ||
       result.fee <= 0 || result.fee > 10000 ||
-      result.fee !== parseDeliveryMoney(input.shippingPrice) ||
+      input.source==='address'&&result.fee !== parseDeliveryMoney(input.shippingPrice) ||
       result.food !== parseDeliveryMoney(input.foodTotal, 100000) ||
       typeof result.restaurantContribution !== "number" ||
       !Number.isFinite(result.restaurantContribution) ||

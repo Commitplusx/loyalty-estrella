@@ -13,9 +13,10 @@ let isolatedDb;
  const admission=baseline.match(/CREATE OR REPLACE FUNCTION public\.pedido_admite_repartidor[\s\S]*?\$\$;/);
  if(!admission)throw new Error('Reviewed admission missing');await db.exec(admission[0]);
  await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261025202620_eats_restaurant_delivery_requests.sql'),'utf8'));
+ await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261026144246_eats_restaurant_delivery_location_modes.sql'),'utf8'));
  const role=async(actor='',name='service_role')=>{await db.exec('RESET ROLE');await db.query("SELECT set_config('test.uid',$1,false),set_config('test.role',$2,false)",[actor,name]);};
  const reset=async()=>{
-  await role();await db.exec('TRUNCATE eats_restaurant_delivery_requests,eats_restaurant_delivery_quotes,eats_restaurant_delivery_access,test_notices,dispatch_wakes,repartidores,pedidos,restaurantes CASCADE');
+  await role();await db.exec('TRUNCATE eats_restaurant_delivery_requests,eats_restaurant_delivery_quotes,eats_restaurant_delivery_access,h3_zonas,test_notices,dispatch_wakes,repartidores,pedidos,restaurantes CASCADE');
   await db.query("INSERT INTO restaurantes(id,nombre,nombre_sucursal,matriz_id,admin_id,activo,lat,lng,direccion) VALUES($1,'Robin sintético','Matriz',NULL,$4,true,16,-92,'Origen matriz'),($2,'Robin sintético','Sucursal',$1,$5,true,16.1,-92.1,'Origen sucursal'),($3,'Otro sintético','',NULL,$6,true,16,-92,'Otro origen')",[matrix,branch,other,owner,operator,foreign]);
   await db.query('INSERT INTO eats_restaurant_delivery_access(matriz_id,enabled) VALUES($1,true)',[matrix]);
  };
@@ -25,6 +26,9 @@ let isolatedDb;
  const create=async({key=request,actor=operator,body=input}={})=>{
   await role(actor,'authenticated');await db.exec('SET ROLE authenticated');
   return(await db.query('SELECT eats_restaurant_delivery_create($1,$2) result',[key,body])).rows[0].result;
+ };
+ const location=async({key=quote,source='address',point=destination,fee=source==='pin'?null:50,cell=source==='pin'?'8a6d2e884807fff':null}={})=>{
+  await role();return(await db.query('SELECT eats_restaurant_delivery_prepare_location($1,$2,$3,$4,$5,$6,200,$7,null,$8) result',[operator,key,branch,point,source,fee,'50 pesos',cell])).rows[0].result;
  };
  const test=async(name,run)=>{await reset();await run();passed++;console.log('PASS '+name);};
  await test('brand entitlement and actual branch ownership are both required',async()=>{
@@ -132,6 +136,35 @@ let isolatedDb;
   await role();await db.query("INSERT INTO repartidores(user_id,telefono,nombre,activo) VALUES($1,'0000000000','Repartidor sintético',true)",[foreign]);
   await role(foreign,'authenticated');await db.exec('SET ROLE authenticated');assert.equal((await db.query('SELECT count(*) n FROM pedidos')).rows[0].n,1);
   await role();await db.exec("UPDATE pedidos SET estado='ofrecido',repartidor_id='00000000-0000-4000-8000-000000000099'");await role(foreign,'authenticated');await db.exec('SET ROLE authenticated');assert.equal((await db.query('SELECT count(*) n FROM pedidos')).rows[0].n,0);
+ });
+ await test('a pin uses the configured full H3 fee before the restaurant contribution',async()=>{
+  await db.query("INSERT INTO h3_zonas VALUES('8a6d2e884807fff',60)");const q=await location({source:'pin'});
+  assert.equal(q.pricing,'h3');assert.equal(q.locationSource,'pin');assert.equal(q.fee,60);assert.equal(q.customerToCollect,245);assert.equal(q.restaurantSettlement,185);
+  const result=await create();assert.equal(result.fee,60);assert.equal(result.pricing,'h3');assert.equal(result.total-result.restaurantSettlement,60);
+ });
+ await test('a written address is accepted without inventing a destination coordinate or H3 fee',async()=>{
+  const q=await location({point:{lat:null,lng:null,address:'Calle escrita por el cliente, número 12'}});assert.equal(q.pricing,'manual');assert.equal(q.destination.lat,null);await create();await role();
+  const p=(await db.query('SELECT *,pedido_admite_repartidor(pedidos) admitted FROM pedidos')).rows[0];
+  for(const key of['lat','lng','lat_entrega','lng_entrega'])assert.equal(p[key],null);
+  assert.equal(p.restaurante_lat,16.1);assert.equal(p.admitted,true);assert.match(p.descripcion,/sin pin confirmado/);
+ });
+ await test('missing, duplicate and invalid H3 tariffs are explicit errors, never a default price',async()=>{
+  for(const prices of[[],[45,60],[0],[-1],[10.001]]){await role();await db.exec('TRUNCATE h3_zonas');for(const price of prices)await db.query("INSERT INTO h3_zonas VALUES('8a6d2e884807fff',$1)",[price]);await assert.rejects(location({source:'pin'}),/tarifa H3 válida/);}
+  assert.equal((await db.query('SELECT count(*) n FROM eats_restaurant_delivery_quotes')).rows[0].n,0);
+ });
+ await test('the automatic mode rejects a manual fee, an absent pin and mixed location metadata',async()=>{
+  await assert.rejects(location({source:'pin',fee:50}),/tarifa la calcula/);
+  await assert.rejects(location({source:'pin',point:{lat:null,lng:null,address:'Sin pin'}}),/pin necesita/);
+  await assert.rejects(location({source:'address',cell:'8a6d2e884807fff'}),/precio acordado/);
+  await assert.rejects(location({point:{lat:null,lng:-92.13,address:'Coordenada incompleta'}}),/ubicación de entrega válida/);
+ });
+ await test('an H3 quote replay retains its reviewed tariff even when the configured price changes',async()=>{
+  await db.query("INSERT INTO h3_zonas VALUES('8a6d2e884807fff',60)");const first=await location({source:'pin'});await db.exec('UPDATE h3_zonas SET precio=75');assert.deepEqual(await location({source:'pin'}),first);
+  assert.equal((await create()).fee,60);await role();assert.equal((await location({source:'pin',key:id(101)})).fee,75);
+ });
+ await test('changing pin versus written address needs a new quote; the location RPC is service-only',async()=>{
+  await location();await assert.rejects(location({source:'pin'}),/tipo de ubicación cambió/);
+  for(const name of['anon','authenticated']){await role(operator,name);await db.exec('SET ROLE '+name);await assert.rejects(db.query('SELECT eats_restaurant_delivery_prepare_location($1,$2,$3,$4,$5,50,200,$6,null,null)',[operator,id(101),branch,destination,'address','50']),/permission denied/);}
  });
  await db.close();isolatedDb=null;console.log(passed+' isolated restaurant delivery contracts passed; no production rows or messages.');
 })().catch(error=>{console.error(error.message);process.exitCode=1;}).finally(async()=>{if(isolatedDb)await isolatedDb.close();});

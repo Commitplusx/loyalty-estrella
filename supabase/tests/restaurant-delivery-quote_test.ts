@@ -2,7 +2,9 @@ import {
   DeliveryRequestError,
   parseRestaurantDeliveryQuote,
   RestaurantDeliveryQuoteGateway,
+  deliveryObject,
 } from "../functions/_shared/restaurant-delivery-quote.ts";
+import {deepStrictEqual} from 'node:assert/strict';
 const id = (n: number) =>
   "00000000-0000-4000-8000-" + String(n).padStart(12, "0");
 const input = {
@@ -25,6 +27,7 @@ const reply = {
     lng: -92,
   },
   pricing: "manual",
+  locationSource:'address',h3Index:null,
   fee: 50,
   food: 200,
   restaurantContribution: 15,
@@ -33,10 +36,40 @@ const reply = {
   restaurantSettlement: 185,
   expiresAt: new Date(Date.now() + 300000).toISOString(),
 };
+const automatic={...reply,pricing:'h3',locationSource:'pin',h3Index:'8a6d2e884807fff',fee:60,customerShipping:45,customerToCollect:245};
+function requestBody(init?:RequestInit):Record<string,unknown>{const value:unknown=JSON.parse(String(init?.body));return deliveryObject(value);}
+Deno.test('a precise pin sends a derived resolution-10 cell and no caller-supplied price to PostgreSQL',async()=>{
+ const request={...input,source:'pin',shippingPrice:undefined};let fee:unknown='not-called',cell:unknown;
+ const g=gateway(async(url,init)=>{if(new URL(String(url)).pathname==='/auth/v1/user')return Response.json({id:id(3)});const body=requestBody(init);fee=body.p_fee;cell=body.p_h3_index;equal(body.p_source,'pin');return Response.json(automatic);});
+ equal((await g.quote('Bearer fixture-token',request)).fee,60);equal(fee,null);equal(cell,'8a6d2e884807fff');
+ await rejected(()=>g.quote('Bearer fixture-token',{...request,shippingPrice:'1'}),400);
+});
+Deno.test('written text may lack a point and keeps the explicitly agreed manual price',async()=>{
+ const request={...input,source:'address',destination:{lat:null,lng:null,address:'Dirección copiada del cliente'}};
+ const g=gateway(async(url,init)=>{if(new URL(String(url)).pathname==='/auth/v1/user')return Response.json({id:id(3)});const body=requestBody(init);equal(deliveryObject(body.p_destination).lat,null);equal(body.p_fee,50);equal(body.p_h3_index,null);return Response.json({...reply,destination:request.destination});});
+ equal((await g.quote('Bearer fixture-token',request)).pricing,'manual');
+});
+Deno.test('a Maps short link is resolved only after the exact restaurant capability is verified',async()=>{
+ const request={...input,source:'pin',mapsUrl:'https://maps.app.goo.gl/example',destination:{lat:null,lng:null,address:''},shippingPrice:undefined};
+ for(const enabled of[false,true]){
+  let external=0;
+  const g=gateway(async(url,init)=>{const parsed=new URL(String(url));
+   if(parsed.pathname==='/auth/v1/user')return Response.json({id:id(3)});
+   if(parsed.pathname.endsWith('/eats_restaurant_delivery_capability')){equal(new Headers(init?.headers).get('authorization'),'Bearer fixture-token');return Response.json({enabled});}
+   if(parsed.hostname==='maps.app.goo.gl'){external++;return new Response(null,{status:302,headers:{Location:'https://maps.google.com/?q=16.25,-92.13'}});}
+   const body=requestBody(init);equal(body.p_fee,null);equal(deliveryObject(body.p_destination).lat,16.25);return Response.json({...automatic,destination:{...input.destination,address:'Ubicación compartida en Google Maps'}});
+  });
+  if(enabled){equal((await g.quote('Bearer fixture-token',request)).pricing,'h3');equal(external,1);}else{await rejected(()=>g.quote('Bearer fixture-token',request),403);equal(external,0);}
+ }
+});
+Deno.test('a forged automatic provenance or mismatched resolved pin cannot become a verified summary',async()=>{
+ for(const patch of[{h3Index:'8a0000000000000'},{locationSource:'address'},{destination:{...input.destination,lat:17}}]){
+  const g=gateway(url=>Promise.resolve(new URL(String(url)).pathname==='/auth/v1/user'?Response.json({id:id(3)}):Response.json({...automatic,...patch})));
+  await rejected(()=>g.quote('Bearer fixture-token',{...input,source:'pin',shippingPrice:undefined}),503);
+ }
+});
 function equal(actual: unknown, expected: unknown) {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error("Restaurant quote contract mismatch");
-  }
+  deepStrictEqual(actual,expected);
 }
 async function rejected(work: () => Promise<unknown>, status: number) {
   try {
@@ -82,13 +115,14 @@ Deno.test("an authenticated identity, not a body actor or phone, owns the manual
       p_food: 200,
       p_contribution: null,
       p_price_input: "cincuenta pesos",
+      p_source:'address',p_h3_index:null,
     });
     return Response.json(reply);
   });
   equal(await g.quote("Bearer fixture-token", input), reply);
   equal(paths, [
     "/auth/v1/user",
-    "/rest/v1/rpc/eats_restaurant_delivery_prepare",
+    "/rest/v1/rpc/eats_restaurant_delivery_prepare_location",
   ]);
 });
 Deno.test("missing or expired credentials cannot call the privileged quote RPC", async () => {

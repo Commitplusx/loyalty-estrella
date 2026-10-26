@@ -17,6 +17,7 @@ CREATE ROLE anon;CREATE ROLE authenticated;CREATE ROLE service_role;CREATE SCHEM
  ALTER TABLE restaurantes ADD COLUMN es_socio boolean DEFAULT true;
  ALTER TABLE restaurantes ADD COLUMN telefono text DEFAULT '0000000000';
  CREATE TABLE repartidores(user_id uuid,telefono text,nombre text,activo boolean DEFAULT true);
+ CREATE TABLE h3_zonas(h3_index text,precio numeric);
  CREATE FUNCTION loyalty_manages_restaurant(p_restaurante_id uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT EXISTS(SELECT 1 FROM restaurantes r WHERE r.id=p_restaurante_id AND(r.admin_id=auth.uid() OR EXISTS(
    SELECT 1 FROM restaurantes parent WHERE parent.id=r.matriz_id AND parent.matriz_id IS NULL AND parent.admin_id=auth.uid())))
